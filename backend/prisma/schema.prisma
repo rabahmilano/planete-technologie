@@ -1,0 +1,161 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["views"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model categorie {
+  id_cat          Int    @id
+  designation_cat String @db.VarChar(50)
+
+  colis colis[]
+}
+
+model colis {
+  id_colis      Int       @id
+  cat_id        Int
+  prd_id        Int
+  cpt_id        Int
+  mnt_tot_dev   Decimal   @db.Decimal(10, 4)
+  date_achat    DateTime  @db.Date()
+  date_stock    DateTime? @db.Date()
+  qte_achat     Int
+  qte_stock     Int?
+  droits_timbre Boolean?
+  mnt_tot_dzd   Decimal   @db.Decimal(10, 4)
+  pu_dev        Decimal   @db.Decimal(10, 4)
+  pu_dzd        Decimal   @db.Decimal(10, 4)
+  pu_dzd_ttc    Decimal   @db.Decimal(10, 4)
+
+  lignes    ligne_commande_colis[]
+  categorie categorie              @relation(fields: [cat_id], references: [id_cat])
+  produit   produit                @relation(fields: [prd_id], references: [id_prd])
+  compte    compte                 @relation(fields: [cpt_id], references: [id_cpt])
+}
+
+model produit {
+  id_prd          Int    @id
+  designation_prd String @db.VarChar(150)
+  qte_dispo       Int    @default(0)
+
+  colis          colis[]
+  ligne_commande ligne_commande[]
+}
+
+model commande {
+  id_cde   Int      @id
+  date_cde DateTime @db.Date()
+  mnt_cde  Decimal  @db.Decimal(10, 4)
+
+  ligne_commande ligne_commande[]
+}
+
+model ligne_commande {
+  cde_id   Int
+  prd_id   Int
+  qte_cde  Int
+  pu_vente Decimal @db.Decimal(10, 4)
+
+  colis    ligne_commande_colis[]
+  commande commande               @relation(fields: [cde_id], references: [id_cde])
+  produit  produit                @relation(fields: [prd_id], references: [id_prd])
+
+  @@id([cde_id, prd_id])
+}
+
+model ligne_commande_colis {
+  cde_id   Int
+  prd_id   Int
+  colis_id Int
+  qte      Int
+
+  ligne_commande ligne_commande @relation(fields: [cde_id, prd_id], references: [cde_id, prd_id])
+  colis          colis          @relation(fields: [colis_id], references: [id_colis])
+
+  @@id([cde_id, prd_id, colis_id])
+}
+
+model compte {
+  id_cpt             Int     @id
+  dev_code           String  @db.Char(4)
+  type_cpt           String  @db.VarChar(50)
+  designation_cpt    String  @db.VarChar(50)
+  solde_actuel       Decimal @default(0.00) @db.Decimal(10, 2)
+  taux_change_actuel Decimal @default(0.00) @db.Decimal(10, 2)
+
+  colis    colis[]
+  depenses depense[]
+  crediter crediter[]
+  devise   devise     @relation(fields: [dev_code], references: [code_dev])
+}
+
+model crediter {
+  id_op_crd   Int      @id
+  cpt_id      Int
+  date_op     DateTime @db.Date()
+  montant_op  Decimal  @db.Decimal(10, 2)
+  taux_change Decimal  @db.Decimal(10, 2)
+
+  compte compte @relation(fields: [cpt_id], references: [id_cpt])
+}
+
+model devise {
+  code_dev    String @id @db.Char(4)
+  nom_dev     String @db.VarChar(20)
+  symbole_dev String @db.VarChar(3)
+
+  compte compte[]
+  // info_taux_change info_taux_change[]
+  // depense          depense[]
+}
+
+// model taux_change {
+//   id_taux Int     @id
+//   taux    Decimal @db.Decimal(5, 2)
+
+//   info_taux_change info_taux_change[]
+// }
+
+// model info_taux_change {
+//   dev_code   String    @db.Char(4)
+//   taux_id    Int
+//   date_debut DateTime  @db.Date()
+//   date_fin   DateTime? @db.Date()
+
+//   devise      devise      @relation(fields: [dev_code], references: [code_dev])
+//   taux_change taux_change @relation(fields: [taux_id], references: [id_taux])
+
+//   @@id([dev_code, taux_id])
+// }
+
+model depense {
+  id_op_dep   Int      @id
+  cpt_id      Int
+  nat_dep_id  Int
+  date_dep    DateTime @db.Date()
+  mnt_dep     Decimal  @db.Decimal(12, 4)
+  mnt_dep_dzd Decimal  @db.Decimal(12, 4)
+
+  compte     compte     @relation(fields: [cpt_id], references: [id_cpt])
+  nature_dep nature_dep @relation(fields: [nat_dep_id], references: [id_nat_dep])
+
+  // devise     devise     @relation(fields: [dev_code], references: [code_dev])
+  // dev_code    String   @db.Char(4)
+}
+
+model nature_dep {
+  id_nat_dep          Int    @id
+  designation_nat_dep String @db.VarChar(50)
+
+  depense depense[]
+}

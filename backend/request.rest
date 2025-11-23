@@ -1,0 +1,18 @@
+###
+POST http://localhost:3001/api/devises/addDevise
+content-type: application/json
+
+{
+    "codeDevise": "eur",
+    "nomDevise": "Dollar ameriCain",
+    "symboleDevise": "   $   "
+}
+
+###
+
+GET http://localhost:3001/api/comptes/allComptesTaux
+content-type: application/json
+
+
+
+###
