@@ -98,7 +98,7 @@ export const addCommande = [
             });
 
             // Décrémentation atomique du Colis spécifique (FIFO)
-            await tx.colis.update({
+            const updatedColis =await tx.colis.update({
               where: { id_colis: colis.id_colis },
               data: {
                 qte_stock: { decrement: deduction },

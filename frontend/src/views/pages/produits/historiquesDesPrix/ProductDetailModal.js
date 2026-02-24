@@ -19,7 +19,9 @@ import {
   TablePagination,
   Paper,
   CircularProgress,
-  TableContainer
+  TableContainer,
+  Collapse,
+
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import axios from 'axios'
@@ -92,6 +94,74 @@ const StatCard = ({ title, value, subValue = '', color = 'text.primary' }) => (
     </CardContent>
   </Card>
 )
+
+// --- COMPOSANT DE LIGNE EXTENSIBLE ---
+const ColisRow = ({ row }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <TableRow sx={{ "& > *": { borderBottom: "unset" } }}>
+        <TableCell>
+          <IconButton aria-label="expand row" size="small" onClick={() => setOpen(!open)}>
+            <Icon icon={open ? 'tabler:chevron-up' : 'tabler:chevron-down'} />
+          </IconButton>
+        </TableCell>
+        <TableCell>{dayjs(row.date_achat).format("DD/MM/YYYY")}</TableCell>
+        <TableCell>{row.statut}</TableCell>
+        <TableCell align="center">{row.qte_achat}</TableCell>
+        <TableCell align="center">{row.qte_stock}</TableCell>
+        <TableCell align="right">{row.prix_achat_dev}</TableCell>
+        <TableCell align="right">
+          {row.prix_achat_dzd.toLocaleString("fr-DZ", { style: "currency", currency: "DZD" })}
+        </TableCell>
+      </TableRow>
+      
+      {/* SOUS-TABLEAU DES VENTES (Caché par défaut) */}
+      <TableRow>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ margin: 2, padding: 3, backgroundColor: 'action.hover', borderRadius: 1 }}>
+              <Typography variant="h6" gutterBottom component="div">
+                Historique des ventes de ce lot
+              </Typography>
+              {row.ventes && row.ventes.length > 0 ? (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Date de vente</TableCell>
+                      <TableCell align="center">Quantité vendue</TableCell>
+                      <TableCell align="right">Prix Vente</TableCell>
+                      <TableCell align="right">Bénéfice unitaire</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {row.ventes.map((vente, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{dayjs(vente.date_vente).format("DD/MM/YYYY")}</TableCell>
+                        <TableCell align="center">{vente.qte_vendue}</TableCell>
+                        <TableCell align="right">
+                          {vente.prix_vente.toLocaleString("fr-DZ", { style: "currency", currency: "DZD" })}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: vente.benefice > 0 ? 'success.main' : 'error.main' }}>
+                          {vente.benefice > 0 ? "+" : ""}{vente.benefice.toLocaleString("fr-DZ", { style: "currency", currency: "DZD" })}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Aucune vente enregistrée pour ce lot.
+                </Typography>
+              )}
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+};
 
 const ProductDetailModal = ({ open, onClose, productId }) => {
   const [loading, setLoading] = useState(true)
@@ -191,6 +261,20 @@ const ProductDetailModal = ({ open, onClose, productId }) => {
     )
   }
 
+  // Fonction pour déterminer la couleur du bénéfice
+const getBeneficeColor = (benefice, coutAchat) => {
+  if (benefice < 0) return "#E57373"; // Rouge doux (Perte)
+  
+  // On calcule le pourcentage de marge : (Bénéfice / Coût) * 100
+  const marge = (benefice / coutAchat) * 100;
+  
+  if (marge < 100) { 
+    return "#FFB74D"; // Orange doux (Bénéfice minime, marge < 15%)
+  }
+  
+  return "#81C784"; // Vert reposant (Bon bénéfice, marge >= 15%)
+};
+
   return (
     <Dialog
       fullScreen
@@ -273,7 +357,7 @@ const ProductDetailModal = ({ open, onClose, productId }) => {
                 <Card>
                   <CardHeader title='Analyse Financière (sur Ventes)' />
                   <CardContent>
-                    <ResponsiveContainer width='100%' height={300}>
+                    {/* <ResponsiveContainer width='100%' height={300}>
                       <PieChart>
                         <Pie
                           activeIndex={activeIndex}
@@ -287,6 +371,40 @@ const ProductDetailModal = ({ open, onClose, productId }) => {
                           dataKey='value'
                           onMouseEnter={onPieEnter}
                         />
+                      </PieChart>
+                    </ResponsiveContainer> */}
+                    <ResponsiveContainer width='100%' height={300}>
+                      <PieChart>
+                        <Pie
+                          activeIndex={activeIndex}
+                          activeShape={renderActiveShape}
+                          data={details.chartData.financials}
+                          cx='50%'
+                          cy='50%'
+                          innerRadius={80}
+                          outerRadius={100}
+                          dataKey='value'
+                          onMouseEnter={onPieEnter}
+                        >
+                          {details.chartData.financials.map((entry, index) => {
+                            // 1. Si la part est le "Coût", on met le Bleu Azur fixe
+                            if (entry.name.includes("Coût")) {
+                              return <Cell key={`cell-${index}`} fill="#4FC3F7" />;
+                            }
+                            
+                            // 2. Si c'est le "Bénéfice", on utilise ta fonction getBeneficeColor
+                            // On récupère d'abord le coût total pour pouvoir calculer le % de marge
+                            const coutAchatItem = details.chartData.financials.find(item => item.name.includes("Coût"));
+                            const coutAchatValeur = coutAchatItem ? coutAchatItem.value : 1;
+                            
+                            return (
+                              <Cell 
+                                key={`cell-${index}`} 
+                                fill={getBeneficeColor(entry.value, coutAchatValeur)} 
+                              />
+                            );
+                          })}
+                        </Pie>
                       </PieChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -312,64 +430,24 @@ const ProductDetailModal = ({ open, onClose, productId }) => {
                 <Paper>
                   <TableContainer>
                     <Table>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Date d'Achat</TableCell>
-                          <TableCell align='right'>Prix Achat (DZD)</TableCell>
-                          <TableCell>Catégorie</TableCell>
-                          <TableCell align='center'>Statut</TableCell>
-                          <TableCell>Date Vente</TableCell>
-                          <TableCell align='right'>Prix Vente</TableCell>
-                          <TableCell align='right'>Bénéfice</TableCell>
-                          <TableCell sx={{ minWidth: 120 }}>Taux de Marque (Vente)</TableCell>
-                          <TableCell sx={{ minWidth: 120 }}>Taux de Marge (Achat)</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {colis.map(c => {
-                          const tauxDeMarque = c.prix_vente ? (c.benefice / c.prix_vente) * 100 : null
-                          const tauxDeMarge = c.prix_achat_dzd > 0 ? (c.benefice / c.prix_achat_dzd) * 100 : null
-
-                          return (
-                            <TableRow key={c.id_colis}>
-                              <TableCell>{dayjs(c.date_achat).format('DD/MM/YYYY')}</TableCell>
-                              <TableCell align='right'>
-                                {parseFloat(c.prix_achat_dzd || 0).toLocaleString('fr-DZ', {
-                                  style: 'currency',
-                                  currency: 'DZD'
-                                })}
-                              </TableCell>{' '}
-                              <TableCell>{c.categorie}</TableCell>
-                              <TableCell align='center'>
-                                <Chip
-                                  label={c.statut}
-                                  color={
-                                    c.statut === 'En Stock' ? 'success' : c.statut === 'Vendu' ? 'secondary' : 'warning'
-                                  }
-                                  size='small'
-                                />
-                              </TableCell>
-                              <TableCell>{c.date_vente ? dayjs(c.date_vente).format('DD/MM/YYYY') : 'N/A'}</TableCell>
-                              <TableCell align='right'>
-                                {c.prix_vente !== null
-                                  ? c.prix_vente.toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })
-                                  : 'N/A'}
-                              </TableCell>
-                              <TableCell align='right'>
-                                {c.benefice !== null
-                                  ? c.benefice.toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })
-                                  : 'N/A'}
-                              </TableCell>
-                              <TableCell>
-                                <ProfitBar percentage={tauxDeMarque} />
-                              </TableCell>
-                              <TableCell>
-                                <ProfitBar percentage={tauxDeMarge} />
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
+                      <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell /> {/* Colonne vide pour la flèche */}
+                      <TableCell>Date d'Achat</TableCell>
+                      <TableCell>Statut</TableCell>
+                      <TableCell align="center">Qté Initiale</TableCell>
+                      <TableCell align="center">Qté Restante</TableCell>
+                      <TableCell align="right">Prix Achat (Devise)</TableCell>
+                      <TableCell align="right">Prix Achat (DZD)</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {colis.map((row) => (
+                      <ColisRow key={row.id_colis} row={row} />
+                    ))}
+                  </TableBody>
+                </Table>
                     </Table>
                   </TableContainer>
                   <TablePagination

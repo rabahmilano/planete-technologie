@@ -83,6 +83,7 @@ export const getNomSearch = async (req, res) => {
       orderBy: {
         designation_prd: "asc",
       },
+      take: 15, // Ne ramène que 15 produits max
     });
 
     res.status(200).json(produits);
@@ -1063,10 +1064,11 @@ export const getProduitDetails = async (req, res) => {
       WHERE prd_id = ${idProduit}
       GROUP BY YEAR(date_achat) ORDER BY year DESC LIMIT 5`;
 
+    // Le .reverse() remet les années dans l'ordre chronologique croissant (gauche à droite)
     const qteParAnnee = qteParAnneeRaw.map((item) => ({
       year: item.year.toString(),
       value: Number(item.value),
-    }));
+    })).reverse();
 
     res.status(200).json({
       produitInfo: {
@@ -1118,7 +1120,6 @@ export const getColisForProduit = async (req, res) => {
       include: {
         categorie: true,
         lignes: {
-          // Correction du nom de la relation
           include: {
             ligne_commande: {
               include: { commande: true },
@@ -1126,16 +1127,10 @@ export const getColisForProduit = async (req, res) => {
           },
         },
         compte: {
-          select: {
-            devise: {
-              select: {
-                symbole_dev: true,
-              },
-            },
-          },
+          select: { devise: { select: { symbole_dev: true } } },
         },
       },
-      orderBy: { date_achat: "desc" },
+      orderBy: [{ date_achat: "desc" }, {qte_stock : "desc"}],
       skip: skip,
       take: parseInt(limit),
     });
@@ -1143,30 +1138,34 @@ export const getColisForProduit = async (req, res) => {
     const total = await prisma.colis.count({ where: { prd_id: idProduit } });
 
     const formattedColis = colis.map((c) => {
-      const venteInfo = c.lignes[0];
-      const pu_vente = venteInfo
-        ? parseFloat(venteInfo.ligne_commande.pu_vente)
-        : null;
-      const benefice = pu_vente ? pu_vente - parseFloat(c.pu_dzd_ttc) : null;
-
+      // 1. Calcul du statut global du lot
       let statut = "En Route";
       if (c.date_stock) statut = "En Stock";
-      if (c.qte_stock === 0 && c.date_stock) statut = "Vendu";
+      if (c.qte_stock === 0 && c.date_stock) statut = "Vendu (Totalement)";
+      else if (c.qte_stock < c.qte_achat && c.date_stock) statut = "Vendu (Partiel)";
 
+      // 2. Formatage du sous-tableau des ventes de CE lot
+      const ventesList = c.lignes.map((vente) => {
+        const pu_vente = parseFloat(vente.ligne_commande.pu_vente);
+        return {
+          date_vente: vente.ligne_commande.commande.date_cde,
+          qte_vendue: vente.qte,
+          prix_vente: pu_vente,
+          benefice: pu_vente - parseFloat(c.pu_dzd_ttc),
+        };
+      });
+
+      // 3. Retour de l'objet imbriqué
       return {
         id_colis: c.id_colis,
         date_achat: c.date_achat,
-        prix_achat_dev: `${parseFloat(c.pu_dev).toFixed(2)} ${
-          c.compte.devise.symbole_dev
-        }`, // Prix en devise ajouté
-        prix_achat_dzd: c.pu_dzd_ttc,
+        qte_achat: c.qte_achat,
+        qte_stock: c.qte_stock,
+        prix_achat_dev: `${parseFloat(c.pu_dev).toFixed(2)} ${c.compte.devise.symbole_dev}`,
+        prix_achat_dzd: parseFloat(c.pu_dzd_ttc),
         statut: statut,
         categorie: c.categorie.designation_cat.substring(0, 4) + ".",
-        date_vente: venteInfo
-          ? venteInfo.ligne_commande.commande.date_cde
-          : null,
-        prix_vente: pu_vente,
-        benefice: benefice,
+        ventes: ventesList, // <--- Le tableau imbriqué est ici !
       };
     });
 
