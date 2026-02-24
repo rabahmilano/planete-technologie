@@ -29,3 +29,8 @@ export const getSpecialDate = (interval = 0) => {
 
   return date;
 };
+
+export const arrondir = (nombre) => {
+  // On utilise 10000 pour garder 4 chiffres après la virgule
+  return Math.round((nombre + Number.EPSILON) * 10000) / 10000;
+};

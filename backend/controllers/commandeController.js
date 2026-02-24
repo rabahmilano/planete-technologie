@@ -1,5 +1,5 @@
 import prisma from "../config/dbConfig.js";
-import { getMaxValue } from "../config/utils.js";
+import { getMaxValue, arrondir } from "../config/utils.js";
 
 import { body, validationResult } from "express-validator";
 
@@ -55,10 +55,16 @@ export const addCommande = [
         });
 
         for (const produit of produits) {
-          await tx.produit.update({
+          // Décrémentation atomique du Produit global avec vérification
+          const updatedProduit = await tx.produit.update({
             where: { id_prd: produit.id_prd },
             data: { qte_dispo: { decrement: produit.quantity } },
           });
+
+          // Blocage immédiat si le stock tombe en négatif
+          if (updatedProduit.qte_dispo < 0) {
+            throw new Error(`Stock insuffisant pour le produit ID: ${produit.id_prd}. Un autre utilisateur vient peut-être de l'acheter.`);
+          }
 
           let quantityToDeduct = produit.quantity;
           const achats = await tx.colis.findMany({
@@ -91,12 +97,18 @@ export const addCommande = [
               },
             });
 
+            // Décrémentation atomique du Colis spécifique (FIFO)
             await tx.colis.update({
               where: { id_colis: colis.id_colis },
               data: {
-                qte_stock: availableStock - deduction,
+                qte_stock: { decrement: deduction },
               },
             });
+
+            // Sécurité anti-conflit sur le colis
+            if (updatedColis.qte_stock < 0) {
+              throw new Error(`Conflit d'inventaire sur le lot/colis ${colis.id_colis}. Veuillez réessayer la vente.`);
+            }
 
             await tx.ligne_commande_colis.create({
               data: {
@@ -109,8 +121,11 @@ export const addCommande = [
 
             // Gestion des remboursements si le compte de paiement n'est pas de type "COMMUN"
             if (infoColis.compte.type_cpt !== "COMMUN") {
-              const refundAmount = deduction * colis.pu_dzd;
-              totalRefund += refundAmount;
+              // 1. On sécurise la multiplication (Quantité * Prix)
+              const refundAmount = arrondir(deduction * colis.pu_dzd); // <--- CORRIGÉ
+              
+              // 2. On sécurise l'addition au total
+              totalRefund = arrondir(totalRefund + refundAmount);      // <--- CORRIGÉ
             }
 
             quantityToDeduct -= deduction;
@@ -125,13 +140,16 @@ export const addCommande = [
           },
         });
 
+        // 3. On sécurise le calcul final du solde (Total - Remboursements)
+        const montantFinalCaisse = arrondir(totalAmount - totalRefund); // <--- CORRIGÉ
+
         await tx.compte.update({
           where: {
             id_cpt: cptCaisse.id_cpt,
           },
           data: {
             solde_actuel: {
-              increment: totalAmount - totalRefund,
+              increment: montantFinalCaisse,
             },
           },
         });
@@ -147,9 +165,16 @@ export const addCommande = [
       });
     } catch (error) {
       console.error("Erreur lors de la création de la commande:", error);
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+
+      // Si c'est une erreur de stock, on renvoie un code 409 (Conflit)
+      if (error.message.includes("Stock insuffisant") || error.message.includes("Conflit d'inventaire")) {
+        return res.status(409).json({ message: error.message });
+      }
+
+      res.status(500).json({ 
+        message: "Une erreur interne est survenue", 
+        error: { code: error.code, message: error.message } 
+      });
     }
   },
 ];
