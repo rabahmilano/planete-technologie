@@ -2,10 +2,10 @@ import { Card, CardContent, CardHeader, Box, Typography } from '@mui/material'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { stringToColor } from 'src/@core/utils/colorUtils'
 
-const ExpensesChart = ({ data }) => {
+const ExpensesChart = ({ title, data }) => {
   return (
     <Card>
-      <CardHeader title='Répartition des Dépenses (Période)' />
+      <CardHeader title={title} />
       <CardContent>
         {data.length > 0 ? (
           <ResponsiveContainer width='100%' height={350}>

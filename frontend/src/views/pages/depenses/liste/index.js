@@ -9,10 +9,11 @@ import FinancialDashboard from './FinancialDashboard'
 import ExpensesChart from './ExpensesChart'
 import ExpensesTable from './ExpensesTable'
 
+
 dayjs.locale('fr')
 
 const ListeDepensesView = () => {
-  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats } = useDepense()
+  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats, globalChartData } = useDepense()
 
   const [natureFiltre, setNatureFiltre] = useState('')
   const [periodeFiltre, setPeriodeFiltre] = useState('all')
@@ -110,8 +111,12 @@ const ListeDepensesView = () => {
           totalCoffreFortFiltre={totalCoffreFortFiltre}
         />
       </Grid>
-      <Grid item xs={12} lg={5}>
-        <ExpensesChart data={chartData} />
+      {/* COLONNE DE GAUCHE : LES GRAPHES */}
+      <Grid item xs={12} md={5} sx={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* 1er GRAPHE : LA PÉRIODE */}
+        <ExpensesChart title='Répartition des Dépenses (Période)' data={chartData} />
+        {/* 2ème GRAPHE : LE GLOBAL */}
+        <ExpensesChart title='Répartition des Dépenses (Global)' data={globalChartData} />
       </Grid>
       <Grid item xs={12} lg={7}>
         <ExpensesTable
