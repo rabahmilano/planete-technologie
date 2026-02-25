@@ -96,21 +96,55 @@ const StatCard = ({ title, value, subValue = '', color = 'text.primary' }) => (
 )
 
 // --- COMPOSANT DE LIGNE EXTENSIBLE ---
+// --- COMPOSANT DE LIGNE EXTENSIBLE ---
 const ColisRow = ({ row }) => {
   const [open, setOpen] = useState(false);
 
+  // Fonction pour styliser le statut avec les Chips MUI
+  const renderStatus = (statut) => {
+    switch (statut) {
+      case "En Stock":
+        return <Chip label={statut} color="success" size="small" variant="outlined" />;
+      case "Vendu (Partiel)":
+        return <Chip label={statut} color="warning" size="small" variant="outlined" />;
+      case "Vendu (Totalement)":
+        return <Chip label={statut} color="default" size="small" />;
+      case "En Route":
+        return <Chip label={statut} color="info" size="small" variant="outlined" />;
+      default:
+        return <Chip label={statut} size="small" />;
+    }
+  };
+
   return (
     <>
-      <TableRow sx={{ "& > *": { borderBottom: "unset" } }}>
+      <TableRow sx={{ "& > *": { borderBottom: "unset" }, backgroundColor: row.qte_stock === 0 ? 'rgba(0, 0, 0, 0.02)' : 'inherit' }}>
         <TableCell>
           <IconButton aria-label="expand row" size="small" onClick={() => setOpen(!open)}>
             <Icon icon={open ? 'tabler:chevron-up' : 'tabler:chevron-down'} />
           </IconButton>
         </TableCell>
         <TableCell>{dayjs(row.date_achat).format("DD/MM/YYYY")}</TableCell>
-        <TableCell>{row.statut}</TableCell>
+        
+        {/* STATUT AVEC COULEUR */}
+        <TableCell>{renderStatus(row.statut)}</TableCell>
+        
+        {/* QUANTITÉ INITIALE (Normale) */}
         <TableCell align="center">{row.qte_achat}</TableCell>
-        <TableCell align="center">{row.qte_stock}</TableCell>
+        
+        {/* QUANTITÉ RESTANTE (Dynamique : Grise si 0, Gras/Vert si > 0) */}
+        <TableCell align="center">
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              fontWeight: row.qte_stock > 0 ? 'bold' : 'normal',
+              color: row.qte_stock > 0 ? 'success.main' : 'text.disabled'
+            }}
+          >
+            {row.qte_stock}
+          </Typography>
+        </TableCell>
+        
         <TableCell align="right">{row.prix_achat_dev}</TableCell>
         <TableCell align="right">
           {row.prix_achat_dzd.toLocaleString("fr-DZ", { style: "currency", currency: "DZD" })}
@@ -143,7 +177,7 @@ const ColisRow = ({ row }) => {
                         <TableCell align="right">
                           {vente.prix_vente.toLocaleString("fr-DZ", { style: "currency", currency: "DZD" })}
                         </TableCell>
-                        <TableCell align="right" sx={{ color: vente.benefice > 0 ? 'success.main' : 'error.main' }}>
+                        <TableCell align="right" sx={{ color: vente.benefice > 0 ? 'success.main' : 'error.main', fontWeight: 'bold' }}>
                           {vente.benefice > 0 ? "+" : ""}{vente.benefice.toLocaleString("fr-DZ", { style: "currency", currency: "DZD" })}
                         </TableCell>
                       </TableRow>
@@ -262,18 +296,18 @@ const ProductDetailModal = ({ open, onClose, productId }) => {
   }
 
   // Fonction pour déterminer la couleur du bénéfice
-const getBeneficeColor = (benefice, coutAchat) => {
-  if (benefice < 0) return "#E57373"; // Rouge doux (Perte)
-  
-  // On calcule le pourcentage de marge : (Bénéfice / Coût) * 100
-  const marge = (benefice / coutAchat) * 100;
-  
-  if (marge < 100) { 
-    return "#FFB74D"; // Orange doux (Bénéfice minime, marge < 15%)
-  }
-  
-  return "#81C784"; // Vert reposant (Bon bénéfice, marge >= 15%)
-};
+  const getBeneficeColor = (benefice, coutAchat) => {
+    if (benefice < 0) return "#E57373"; // Rouge doux (Perte)
+
+    // On calcule le pourcentage de marge : (Bénéfice / Coût) * 100
+    const marge = (benefice / coutAchat) * 100;
+
+    if (marge < 100) {
+      return "#FFB74D"; // Orange doux (Bénéfice minime, marge < 15%)
+    }
+
+    return "#81C784"; // Vert reposant (Bon bénéfice, marge >= 15%)
+  };
 
   return (
     <Dialog
@@ -391,16 +425,16 @@ const getBeneficeColor = (benefice, coutAchat) => {
                             if (entry.name.includes("Coût")) {
                               return <Cell key={`cell-${index}`} fill="#4FC3F7" />;
                             }
-                            
+
                             // 2. Si c'est le "Bénéfice", on utilise ta fonction getBeneficeColor
                             // On récupère d'abord le coût total pour pouvoir calculer le % de marge
                             const coutAchatItem = details.chartData.financials.find(item => item.name.includes("Coût"));
                             const coutAchatValeur = coutAchatItem ? coutAchatItem.value : 1;
-                            
+
                             return (
-                              <Cell 
-                                key={`cell-${index}`} 
-                                fill={getBeneficeColor(entry.value, coutAchatValeur)} 
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={getBeneficeColor(entry.value, coutAchatValeur)}
                               />
                             );
                           })}
@@ -410,9 +444,10 @@ const getBeneficeColor = (benefice, coutAchat) => {
                   </CardContent>
                 </Card>
               </Grid>
+
               <Grid item xs={12} md={6}>
                 <Card>
-                  <CardHeader title='Quantités Achetées par An' />
+                  <CardHeader title='Quantités Achetées par Année' />
                   <CardContent>
                     <ResponsiveContainer width='100%' height={300}>
                       <LineChart data={details.chartData.qteParAnnee}>
@@ -427,27 +462,25 @@ const getBeneficeColor = (benefice, coutAchat) => {
               </Grid>
 
               <Grid item xs={12}>
-                <Paper>
-                  <TableContainer>
-                    <Table>
-                      <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell /> {/* Colonne vide pour la flèche */}
-                      <TableCell>Date d'Achat</TableCell>
-                      <TableCell>Statut</TableCell>
-                      <TableCell align="center">Qté Initiale</TableCell>
-                      <TableCell align="center">Qté Restante</TableCell>
-                      <TableCell align="right">Prix Achat (Devise)</TableCell>
-                      <TableCell align="right">Prix Achat (DZD)</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {colis.map((row) => (
-                      <ColisRow key={row.id_colis} row={row} />
-                    ))}
-                  </TableBody>
-                </Table>
+                <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+                  <TableContainer sx={{ maxHeight: '80vh', overflowY: 'scroll' }}>
+                    <Table stickyHeader aria-label="sticky table">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell /> {/* Colonne vide pour la flèche */}
+                          <TableCell>Date d'Achat</TableCell>
+                          <TableCell>Statut</TableCell>
+                          <TableCell align="center">Qté Initiale</TableCell>
+                          <TableCell align="center">Qté Restante</TableCell>
+                          <TableCell align="right">Prix Achat (Devise)</TableCell>
+                          <TableCell align="right">Prix Achat (DZD)</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {colis.map((row) => (
+                          <ColisRow key={row.id_colis} row={row} />
+                        ))}
+                      </TableBody>
                     </Table>
                   </TableContainer>
                   <TablePagination
