@@ -16,7 +16,8 @@ export const DepenseProvider = ({ children }) => {
   const [globalStats, setGlobalStats] = useState({
     totalDepenses: 0,
     totalEpargne: 0,
-    totalDroitsTimbreColis: 0
+    totalDroitsTimbreColis: 0,
+    globalChartData: []
   })
 
   const fetchListNature = useCallback(async () => {

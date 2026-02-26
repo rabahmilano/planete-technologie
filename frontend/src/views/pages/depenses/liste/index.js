@@ -13,7 +13,8 @@ import ExpensesTable from './ExpensesTable'
 dayjs.locale('fr')
 
 const ListeDepensesView = () => {
-  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats, globalChartData } = useDepense()
+  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats } = useDepense()
+  const { globalChartData } = globalStats;
 
   const [natureFiltre, setNatureFiltre] = useState('')
   const [periodeFiltre, setPeriodeFiltre] = useState('all')

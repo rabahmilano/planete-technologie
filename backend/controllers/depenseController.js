@@ -141,7 +141,7 @@ export const addNewDepense = [
 
 export const getGlobalStats = async (req, res) => {
   try {
-    const [totalDepensesResult, totalEpargneResult, droitsTimbreColisCount] =
+    const [totalDepensesResult, totalEpargneResult, droitsTimbreColisCount, globalDepensesRaw, naturesList] =
       await Promise.all([
         prisma.depense.aggregate({
           _sum: { mnt_dep_dzd: true },
@@ -156,14 +156,37 @@ export const getGlobalStats = async (req, res) => {
         prisma.colis.count({
           where: { droits_timbre: true },
         }),
+        // Requête pour le graphique global
+        prisma.depense.groupBy({
+          by: ['nat_dep_id'],
+          _sum: { mnt_dep_dzd: true },
+        }),
+        // Récupération des noms des natures pour le mapping
+        prisma.nature_dep.findMany()
       ]);
 
     const totalDroitsTimbreColis = droitsTimbreColisCount * 130;
+
+    // Création du dictionnaire pour associer l'ID à sa désignation
+    const natureMap = {};
+    naturesList.forEach(n => {
+      natureMap[n.id_nat_dep] = n.designation_nat_dep;
+    });
+
+    // Formatage des données du graphique
+    let globalChartData = globalDepensesRaw
+      .filter(g => natureMap[g.nat_dep_id] !== "COFFRE FORT") // Exclusion stricte du coffre fort
+      .map(g => ({
+        name: natureMap[g.nat_dep_id] || "Autre",
+        value: parseFloat(g._sum.mnt_dep_dzd) || 0
+      }))
+      .filter(item => item.value > 0); // Exclusion des montants à zéro
 
     res.status(200).json({
       totalDepenses: totalDepensesResult._sum.mnt_dep_dzd || 0,
       totalDroitsTimbreColis: totalDroitsTimbreColis,
       totalEpargne: totalEpargneResult._sum.mnt_dep_dzd || 0,
+      globalChartData: globalChartData // Nouvelle donnée renvoyée au frontend
     });
   } catch (error) {
     console.error("Erreur dans getGlobalStats:", error);
@@ -242,33 +265,29 @@ export const getDepensesFiltrees = async (req, res) => {
       montant: d.mnt_dep_dzd,
     }));
 
+    // 1. REGROUPEMENT MENSUEL DES TIMBRES POUR LE TABLEAU
+    // (droitsTimbreResult ne contient déjà que les colis avec droits_timbre = true)
     const timbresParMois = droitsTimbreResult.reduce((acc, c) => {
-      // On extrait uniquement l'année et le mois (ex: "2024-02")
       const moisCle = dayjs(c.date_stock).format('YYYY-MM');
-      
       if (!acc[moisCle]) {
         acc[moisCle] = 0;
       }
-      
-      // On cumule les 130 DZD pour chaque colis de ce mois
       acc[moisCle] += 130; 
       return acc;
     }, {});
 
     const formattedDroitsTimbre = Object.keys(timbresParMois).map((moisCle) => {
-      // Magie de dayjs : on cible automatiquement le dernier jour du mois (28, 29, 30 ou 31)
       const dernierJour = dayjs(`${moisCle}-01`).endOf('month').toDate();
-
       return {
-        id: `timbre-mensuel-${moisCle}`, // ID unique pour React
-        nature: "DROITS DE TIMBRE (MENSUEL)", // Le nouveau libellé propre
+        id: `timbre-mensuel-${moisCle}`,
+        nature: "DROITS DE TIMBRE (MENSUEL)",
         date: dernierJour,
         montant: timbresParMois[moisCle],
       };
     });
 
+    // 2. FUSION ET PAGINATION POUR LE TABLEAU
     let allDepenses = [...formattedDepenses, ...formattedDroitsTimbre];
-
     allDepenses.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const total = allDepenses.length;
@@ -289,14 +308,17 @@ export const getDepensesFiltrees = async (req, res) => {
       value: parseFloat(g._sum.mnt_dep_dzd) || 0
     }));
 
-    // Ajout des Droits de timbre globaux (130 DZD par colis reçu)
+    // On compte le nombre TOTAL de colis qui ont VRAIMENT eu des droits de timbre
     const totalColisGlobal = await prisma.colis.count({
-      where: { date_stock: { not: null } }
+      where: { 
+        droits_timbre: true,
+        date_stock: { not: null } 
+      }
     });
 
     if (totalColisGlobal > 0) {
       globalChartData.push({
-        name: "DROITS DE TIMBRE (MENSUEL)", // On garde le même libellé pour la cohérence
+        name: "DROITS DE TIMBRE (MENSUEL)", // On garde le même libellé pour garder la couleur
         value: totalColisGlobal * 130
       });
     }
@@ -308,7 +330,7 @@ export const getDepensesFiltrees = async (req, res) => {
     res.status(200).json({
       depenses: paginatedDepenses,
       total: total,
-      globalChartData: globalChartData // NOUVELLE LIGNE AJOUTÉE
+      globalChartData: globalChartData
     });
   } catch (error) {
     console.error("ERREUR DÉTAILLÉE dans getDepensesFiltrees:", error);
