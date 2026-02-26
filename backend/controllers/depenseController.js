@@ -272,7 +272,7 @@ export const getDepensesFiltrees = async (req, res) => {
       if (!acc[moisCle]) {
         acc[moisCle] = 0;
       }
-      acc[moisCle] += 130; 
+      acc[moisCle] += 130;
       return acc;
     }, {});
 
@@ -293,44 +293,9 @@ export const getDepensesFiltrees = async (req, res) => {
     const total = allDepenses.length;
     const paginatedDepenses = allDepenses.slice(skip, skip + limitNum);
 
-    // --- CALCUL DU GRAPHIQUE GLOBAL (Sans filtre de date) ---
-    const globalDepensesRaw = await prisma.depense.groupBy({
-      by: ['nat_dep_id'],
-      _sum: { mnt_dep_dzd: true },
-    });
-
-    const naturesList = await prisma.nature_dep.findMany();
-    const natureMap = {};
-    naturesList.forEach(n => { natureMap[n.id_nat_dep] = n.designation_nat_dep; });
-
-    let globalChartData = globalDepensesRaw.map(g => ({
-      name: natureMap[g.nat_dep_id] || "Autre",
-      value: parseFloat(g._sum.mnt_dep_dzd) || 0
-    }));
-
-    // On compte le nombre TOTAL de colis qui ont VRAIMENT eu des droits de timbre
-    const totalColisGlobal = await prisma.colis.count({
-      where: { 
-        droits_timbre: true,
-        date_stock: { not: null } 
-      }
-    });
-
-    if (totalColisGlobal > 0) {
-      globalChartData.push({
-        name: "DROITS DE TIMBRE (MENSUEL)", // On garde le même libellé pour garder la couleur
-        value: totalColisGlobal * 130
-      });
-    }
-
-    // Filtrer pour ne garder que les valeurs > 0
-    globalChartData = globalChartData.filter(item => item.value > 0);
-    
-
     res.status(200).json({
       depenses: paginatedDepenses,
       total: total,
-      globalChartData: globalChartData
     });
   } catch (error) {
     console.error("ERREUR DÉTAILLÉE dans getDepensesFiltrees:", error);

@@ -10,9 +10,7 @@ export const DepenseProvider = ({ children }) => {
   const [depenses, setDepenses] = useState([])
   const [totalDepenses, setTotalDepenses] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [globalChartData, setGlobalChartData] = useState([]);
 
-  // MISE À JOUR: L'état initial inclut maintenant une clé pour les droits de timbre des colis
   const [globalStats, setGlobalStats] = useState({
     totalDepenses: 0,
     totalEpargne: 0,
@@ -49,9 +47,6 @@ export const DepenseProvider = ({ children }) => {
 
       setDepenses(response.data.depenses)
       setTotalDepenses(response.data.total)
-      if (response.data.globalChartData) {
-        setGlobalChartData(response.data.globalChartData);
-      }
     } catch (error) {
       toast.error('Erreur lors de la récupération des dépenses.')
     } finally {
@@ -64,7 +59,7 @@ export const DepenseProvider = ({ children }) => {
     fetchGlobalStats()
   }, [fetchListNature, fetchGlobalStats])
 
-  const value = { listNature, depenses, totalDepenses, loading, fetchData, globalStats, globalChartData }
+  const value = { listNature, depenses, totalDepenses, loading, fetchData, globalStats }
 
   return <DepenseContext.Provider value={value}>{children}</DepenseContext.Provider>
 }
