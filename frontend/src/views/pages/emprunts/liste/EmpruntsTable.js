@@ -9,13 +9,13 @@ import {
   TableRow,
   Typography,
   TablePagination,
-  LinearProgress,
-  Chip
+  LinearProgress
 } from '@mui/material'
-import dayjs from 'dayjs'
+
+// On importe notre nouvelle ligne découpée !
+import EmpruntRow from './EmpruntRow'
 
 const EmpruntsTable = ({ loading, emprunts }) => {
-  // Gestion de la pagination côté client (puisque l'API renvoie tout d'un coup)
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
 
@@ -25,7 +25,6 @@ const EmpruntsTable = ({ loading, emprunts }) => {
     setPage(0)
   }
 
-  // Découpage du tableau pour l'affichage de la page courante
   const paginatedEmprunts = emprunts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
 
   return (
@@ -35,6 +34,7 @@ const EmpruntsTable = ({ loading, emprunts }) => {
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
             <TableRow sx={{ backgroundColor: '#0d1b2a' }}>
+              <TableCell sx={{ width: 50 }} />
               <TableCell sx={{ color: 'white' }}>Désignation</TableCell>
               <TableCell sx={{ color: 'white' }}>Compte</TableCell>
               <TableCell sx={{ color: 'white' }}>Date</TableCell>
@@ -46,59 +46,14 @@ const EmpruntsTable = ({ loading, emprunts }) => {
           <TableBody>
             {emprunts.length === 0 && !loading ? (
               <TableRow>
-                <TableCell colSpan={6} align='center'>
+                <TableCell colSpan={7} align='center'>
                   <Typography sx={{ p: 4 }}>Aucun emprunt à afficher.</Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedEmprunts.map((emprunt) => {
-                // Règle métier : Calcul du reste à payer
-                const totalRembourse = emprunt.remboursements.reduce(
-                  (acc, curr) => acc + parseFloat(curr.montant_remb),
-                  0
-                )
-                const resteAPayer = parseFloat(emprunt.montant_emprunt) - totalRembourse
-
-                return (
-                  <TableRow key={emprunt.id_emprunt} hover>
-                    <TableCell sx={{ fontWeight: 'medium' }}>
-                      {emprunt.designation}
-                    </TableCell>
-                    <TableCell>
-                      {emprunt.compte?.designation_cpt || 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      {dayjs(emprunt.date_emprunt).format('DD MMMM YYYY')}
-                    </TableCell>
-                    <TableCell align='right'>
-                      {parseFloat(emprunt.montant_emprunt || 0).toLocaleString('fr-DZ', {
-                        style: 'currency',
-                        currency: 'DZD'
-                      })}
-                    </TableCell>
-                    <TableCell 
-                      align='right' 
-                      sx={{ 
-                        fontWeight: 'bold', 
-                        color: resteAPayer > 0 ? 'error.main' : 'success.main' 
-                      }}
-                    >
-                      {resteAPayer.toLocaleString('fr-DZ', {
-                        style: 'currency',
-                        currency: 'DZD'
-                      })}
-                    </TableCell>
-                    <TableCell align='center'>
-                      <Chip
-                        label={emprunt.statut_emprunt === 'SOLDE' ? 'SOLDÉ' : 'EN COURS'}
-                        color={emprunt.statut_emprunt === 'SOLDE' ? 'success' : 'warning'}
-                        size='small'
-                        sx={{ fontWeight: 'bold' }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                )
-              })
+              paginatedEmprunts.map((emprunt) => (
+                <EmpruntRow key={emprunt.id_emprunt} emprunt={emprunt} />
+              ))
             )}
           </TableBody>
         </Table>
@@ -118,4 +73,4 @@ const EmpruntsTable = ({ loading, emprunts }) => {
   )
 }
 
-export default EmpruntsTable;
+export default EmpruntsTable
