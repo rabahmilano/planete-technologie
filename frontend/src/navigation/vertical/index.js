@@ -54,6 +54,22 @@ const navigation = () => {
       ]
     },
     {
+      title: 'Emprunts',
+      icon: 'tabler:cash-banknote',
+      children: [
+        {
+          title: 'Mes emprunts',
+          path: '/emprunts/mesEmprunts',
+          icon: 'tabler:list-details'
+        },
+        {
+          title: 'Nouvel emprunt',
+          path: '/emprunts/ajouter',
+          icon: 'tabler:file-plus'
+        }
+      ]
+    },
+    {
       title: 'Paramètres',
       icon: 'tabler:settings',
       children: [
