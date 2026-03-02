@@ -66,6 +66,11 @@ const navigation = () => {
           title: 'Nouvel emprunt',
           path: '/emprunts/ajouter',
           icon: 'tabler:file-plus'
+        },
+        {
+          title: 'Rembourser',
+          path: '/emprunts/rembourser',
+          icon: 'tabler:receipt-refund'
         }
       ]
     },
