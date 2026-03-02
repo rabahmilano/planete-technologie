@@ -1,16 +1,5 @@
-import { useState, useEffect } from 'react'
-import { 
-  Card, 
-  Grid, 
-  Button, 
-  MenuItem, 
-  CardHeader, 
-  CardContent, 
-  InputAdornment, 
-  Box, 
-  Divider, 
-  Typography 
-} from '@mui/material'
+import { useState } from 'react'
+import { Card, Grid, Button, MenuItem, CardHeader, CardContent, InputAdornment, Box, Divider, Typography } from '@mui/material'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
@@ -18,10 +7,14 @@ import 'dayjs/locale/fr'
 dayjs.locale('fr')
 
 import CustomTextField from 'src/@core/components/mui/text-field'
-import Icon from 'src/@core/components/icon' // Ajout des icônes de ton template
+import Icon from 'src/@core/components/icon'
 import toast from 'react-hot-toast'
 import { useForm, Controller } from 'react-hook-form'
 import axios from 'axios'
+
+// Imports vitaux pour synchroniser les données instantanément
+import { useCompte } from 'src/context/CompteContext'
+import { useEmprunt } from 'src/context/EmpruntContext'
 
 const defaultValues = {
   desEmprunt: '',
@@ -31,14 +24,19 @@ const defaultValues = {
 }
 
 const AjouterEmprunt = () => {
-  const [listCompte, setListCompte] = useState([])
   const [symboleDev, setSymboleDev] = useState('')
+
+  // Récupération globale au lieu d'un fetch local
+  const { comptes, fetchComptes } = useCompte()
+  const { fetchEmprunts } = useEmprunt()
 
   const { control, handleSubmit, formState: { errors }, getValues, reset } = useForm({ defaultValues })
 
   const handleCompteChange = (newCompteId) => {
-    const selectedCompte = listCompte.find(compte => compte.id_cpt === newCompteId)
-    if (selectedCompte) setSymboleDev(selectedCompte.devise.symbole_dev)
+    const selectedCompte = comptes.find(compte => compte.id_cpt === newCompteId)
+    if (selectedCompte && selectedCompte.devise) {
+      setSymboleDev(selectedCompte.devise.symbole_dev)
+    }
   }
 
   const onSubmit = async () => {
@@ -54,6 +52,11 @@ const AjouterEmprunt = () => {
       const url = `${process.env.NEXT_PUBLIC_BASE_URL}emprunts/addEmprunt`
       await axios.post(url, formattedData)
       toast.success('Emprunt enregistré avec succès')
+      
+      // ✅ SYNCHRONISATION EN TEMPS RÉEL DES KPIs
+      await fetchComptes()
+      await fetchEmprunts()
+
       reset()
       setSymboleDev('')
     } catch (error) {
@@ -61,18 +64,6 @@ const AjouterEmprunt = () => {
       toast.error('Erreur: ' + msg)
     }
   }
-
-  useEffect(() => {
-    const fetchComptes = async () => {
-      try {
-        const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/allComptes`)
-        setListCompte(reponse.data)
-      } catch (error) {
-        toast.error('Erreur lors de la récupération des comptes')
-      }
-    }
-    fetchComptes()
-  }, [])
 
   return (
     <Card sx={{ boxShadow: 3, borderRadius: 2 }}>
@@ -89,7 +80,6 @@ const AjouterEmprunt = () => {
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={6}>
             
-            {/* DATE : Sécurisée maxDate + Validation React Hook Form */}
             <Grid item xs={12} sm={6}>
               <Controller
                 name='dateEmprunt'
@@ -102,19 +92,13 @@ const AjouterEmprunt = () => {
                   <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
                     <DatePicker 
                       {...field} 
-                      maxDate={dayjs()} // Bloque l'UI du calendrier
+                      maxDate={dayjs()} 
                       label='Date de réception' 
                       slotProps={{ 
                         textField: { 
-                          fullWidth: true,
-                          error: !!error,
-                          helperText: error?.message,
+                          fullWidth: true, error: !!error, helperText: error?.message,
                           InputProps: {
-                            startAdornment: (
-                              <InputAdornment position='start'>
-                                <Icon icon='tabler:calendar' fontSize='1.25rem' />
-                              </InputAdornment>
-                            )
+                            startAdornment: <InputAdornment position='start'><Icon icon='tabler:calendar' fontSize='1.25rem' /></InputAdornment>
                           }
                         } 
                       }} 
@@ -124,7 +108,6 @@ const AjouterEmprunt = () => {
               />
             </Grid>
 
-            {/* DESIGNATION */}
             <Grid item xs={12} sm={6}>
               <Controller
                 name='desEmprunt'
@@ -132,24 +115,16 @@ const AjouterEmprunt = () => {
                 rules={{ required: 'La désignation est obligatoire' }}
                 render={({ field, fieldState: { error } }) => (
                   <CustomTextField 
-                    {...field} 
-                    fullWidth 
-                    label='Désignation (Prêteur, Motif...)' 
-                    error={!!error}
-                    helperText={error?.message}
+                    {...field} fullWidth label='Désignation (Prêteur, Motif...)' 
+                    error={!!error} helperText={error?.message}
                     InputProps={{
-                      startAdornment: (
-                        <InputAdornment position='start'>
-                          <Icon icon='tabler:file-description' fontSize='1.25rem' />
-                        </InputAdornment>
-                      )
+                      startAdornment: <InputAdornment position='start'><Icon icon='tabler:file-description' fontSize='1.25rem' /></InputAdornment>
                     }}
                   />
                 )}
               />
             </Grid>
 
-            {/* COMPTE CIBLE */}
             <Grid item xs={12} sm={6}>
               <Controller
                 name='cpt'
@@ -157,28 +132,19 @@ const AjouterEmprunt = () => {
                 rules={{ required: 'Le compte est obligatoire' }}
                 render={({ field, fieldState: { error } }) => (
                   <CustomTextField
-                    select 
-                    fullWidth 
-                    label='Compte crédité'
-                    error={!!error}
-                    helperText={error?.message}
-                    value={field.value}
+                    select fullWidth label='Compte crédité'
+                    error={!!error} helperText={error?.message} value={field.value}
                     onChange={(e) => { field.onChange(e); handleCompteChange(e.target.value) }}
                     InputProps={{
-                      startAdornment: (
-                        <InputAdornment position='start'>
-                          <Icon icon='tabler:building-bank' fontSize='1.25rem' />
-                        </InputAdornment>
-                      )
+                      startAdornment: <InputAdornment position='start'><Icon icon='tabler:building-bank' fontSize='1.25rem' /></InputAdornment>
                     }}
                   >
-                    {listCompte.map(c => <MenuItem key={c.id_cpt} value={c.id_cpt}>{c.designation_cpt}</MenuItem>)}
+                    {comptes.map(c => <MenuItem key={c.id_cpt} value={c.id_cpt}>{c.designation_cpt}</MenuItem>)}
                   </CustomTextField>
                 )}
               />
             </Grid>
 
-            {/* MONTANT */}
             <Grid item xs={12} sm={6}>
               <Controller
                 name='montant'
@@ -186,18 +152,10 @@ const AjouterEmprunt = () => {
                 rules={{ required: 'Le montant est obligatoire', min: { value: 1, message: 'Le montant doit être > 0' } }}
                 render={({ field, fieldState: { error } }) => (
                   <CustomTextField
-                    {...field} 
-                    fullWidth 
-                    type='number' 
-                    label='Montant emprunté'
-                    error={!!error}
-                    helperText={error?.message}
+                    {...field} fullWidth type='number' label='Montant emprunté'
+                    error={!!error} helperText={error?.message}
                     InputProps={{ 
-                      startAdornment: (
-                        <InputAdornment position='start'>
-                          <Icon icon='tabler:report-money' fontSize='1.25rem' />
-                        </InputAdornment>
-                      ),
+                      startAdornment: <InputAdornment position='start'><Icon icon='tabler:report-money' fontSize='1.25rem' /></InputAdornment>,
                       endAdornment: <InputAdornment position='end'>{symboleDev}</InputAdornment> 
                     }}
                   />
@@ -205,14 +163,8 @@ const AjouterEmprunt = () => {
               />
             </Grid>
 
-            {/* BOUTON D'ACTION */}
             <Grid item xs={12} sx={{ mt: 2 }}>
-              <Button 
-                type='submit' 
-                variant='contained' 
-                size='large'
-                startIcon={<Icon icon='tabler:device-floppy' />}
-              >
+              <Button type='submit' variant='contained' size='large' startIcon={<Icon icon='tabler:device-floppy' />}>
                 Enregistrer l'emprunt
               </Button>
             </Grid>
