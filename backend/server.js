@@ -9,6 +9,7 @@ import compteRoutes from "./routes/compteRouter.js";
 import depenseRoutes from "./routes/depenseRouter.js";
 import produitRoutes from "./routes/produitRouter.js";
 import commandeRoutes from "./routes/commandeRouter.js";
+import empruntRoutes from "./routes/empruntRoutes.js"
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -35,6 +36,7 @@ app.use("/api/comptes", compteRoutes);
 app.use("/api/depenses", depenseRoutes);
 app.use("/api/produits", produitRoutes);
 app.use("/api/commandes", commandeRoutes);
+app.use("/api/emprunts", empruntRoutes);
 
 // Gestion des erreurs 404
 app.use((req, res, next) => {
