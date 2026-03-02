@@ -96,6 +96,8 @@ model compte {
   colis    colis[]
   depenses depense[]
   crediter crediter[]
+  // NOUVELLE LIGNE À AJOUTER :
+  emprunts emprunt[]
   devise   devise     @relation(fields: [dev_code], references: [code_dev])
 }
 
@@ -115,28 +117,7 @@ model devise {
   symbole_dev String @db.VarChar(3)
 
   compte compte[]
-  // info_taux_change info_taux_change[]
-  // depense          depense[]
 }
-
-// model taux_change {
-//   id_taux Int     @id
-//   taux    Decimal @db.Decimal(5, 2)
-
-//   info_taux_change info_taux_change[]
-// }
-
-// model info_taux_change {
-//   dev_code   String    @db.Char(4)
-//   taux_id    Int
-//   date_debut DateTime  @db.Date()
-//   date_fin   DateTime? @db.Date()
-
-//   devise      devise      @relation(fields: [dev_code], references: [code_dev])
-//   taux_change taux_change @relation(fields: [taux_id], references: [id_taux])
-
-//   @@id([dev_code, taux_id])
-// }
 
 model depense {
   id_op_dep   Int      @id
@@ -148,9 +129,6 @@ model depense {
 
   compte     compte     @relation(fields: [cpt_id], references: [id_cpt])
   nature_dep nature_dep @relation(fields: [nat_dep_id], references: [id_nat_dep])
-
-  // devise     devise     @relation(fields: [dev_code], references: [code_dev])
-  // dev_code    String   @db.Char(4)
 }
 
 model nature_dep {
@@ -158,4 +136,35 @@ model nature_dep {
   designation_nat_dep String @db.VarChar(50)
 
   depense depense[]
+}
+
+// ==========================================
+// GESTION DES EMPRUNTS ET REMBOURSEMENTS
+// ==========================================
+
+enum StatutEmprunt {
+  EN_COURS
+  SOLDE
+}
+
+model emprunt {
+  id_emprunt      Int             @id
+  designation     String          @db.VarChar(255)
+  montant_emprunt Decimal         @db.Decimal(10, 2)
+  date_emprunt    DateTime        @db.Date()
+  statut_emprunt  StatutEmprunt   @default(EN_COURS)
+  
+  cpt_id          Int       
+  compte          compte          @relation(fields: [cpt_id], references: [id_cpt])
+  
+  remboursements  remboursement[] 
+}
+
+model remboursement {
+  id_remb       Int       @id
+  montant_remb  Decimal   @db.Decimal(10, 2)
+  date_remb     DateTime  @db.Date()
+  
+  emprunt_id    Int
+  emprunt       emprunt   @relation(fields: [emprunt_id], references: [id_emprunt])
 }
