@@ -41,8 +41,8 @@ const ConfirmDialog = ({
             display: 'flex', 
             p: 2, 
             borderRadius: 1, 
-            backgroundColor: theme => theme.palette[config.color].light, 
-            color: theme => theme.palette[config.color].main 
+            backgroundColor: theme => theme.palette[config.color].main, // Fond plein
+            color: '#ffffff' // Icône blanche pure
           }}>
             <Icon icon={config.icon} fontSize="1.75rem" />
           </Box>
