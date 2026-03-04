@@ -2,6 +2,7 @@ import { Grid } from '@mui/material'
 
 import RembourserEmprunt from 'src/views/pages/emprunts/rembourser'
 import KpiEmprunts from 'src/views/pages/emprunts/ajouter/KpiEmprunts' // Réutilisation du même fichier !
+import DerniersRemboursements from 'src/views/pages/emprunts/rembourser/DerniersRemboursements'
 
 import { EmpruntProvider } from 'src/context/EmpruntContext'
 import { CompteProvider } from 'src/context/CompteContext'
@@ -14,6 +15,9 @@ const RembourserEmpruntContent = () => {
       </Grid>
       <Grid item xs={12}>
         <RembourserEmprunt />
+      </Grid>
+      <Grid item xs={12}>
+        <DerniersRemboursements />
       </Grid>
     </Grid>
   )
