@@ -235,3 +235,97 @@ export const addRemboursement = [
     }
   }
 ];
+
+// ==========================================
+// NETTOYAGE : SUPPRESSION D'UN EMPRUNT
+// ==========================================
+export const deleteEmprunt = async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    await prisma.$transaction(async (tx) => {
+      const emprunt = await tx.emprunt.findUnique({
+        where: { id_emprunt: parseInt(id) },
+        include: { remboursements: true }
+      });
+      
+      if (!emprunt) throw new Error("Emprunt introuvable.");
+
+      // Sécurité : Impossible de supprimer s'il y a des remboursements
+      if (emprunt.remboursements.length > 0) {
+        throw new Error("Veuillez d'abord supprimer les remboursements liés à cet emprunt.");
+      }
+
+      // 1. Décrémenter le solde du compte (Retirer l'argent de l'emprunt)
+      await tx.compte.update({
+        where: { id_cpt: emprunt.cpt_id },
+        data: { solde_actuel: { decrement: emprunt.montant_emprunt } }
+      });
+
+      // 2. CRUCIAL : Chercher et détruire la ligne parasite dans `crediter`
+      // On cherche la ligne qui correspond au même compte et au même montant
+      const traceParasite = await tx.crediter.findFirst({
+        where: { 
+          cpt_id: emprunt.cpt_id, 
+          montant_op: emprunt.montant_emprunt
+        }
+      });
+      
+      if (traceParasite) {
+        await tx.crediter.delete({ 
+          where: { id_op_crd: traceParasite.id_op_crd } 
+        });
+      }
+
+      // 3. Supprimer l'emprunt
+      await tx.emprunt.delete({ 
+        where: { id_emprunt: parseInt(id) } 
+      });
+    });
+    
+    res.status(200).json({ message: "Emprunt et traces supprimés. Le solde a été corrigé." });
+  } catch (error) {
+    res.status(403).json({ error: { message: error.message } });
+  }
+};
+
+// ==========================================
+// NETTOYAGE : SUPPRESSION D'UN REMBOURSEMENT
+// ==========================================
+export const deleteRemboursement = async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    await prisma.$transaction(async (tx) => {
+      const remb = await tx.remboursement.findUnique({
+        where: { id_remb: parseInt(id) },
+        include: { emprunt: true }
+      });
+      
+      if (!remb) throw new Error("Remboursement introuvable.");
+
+      // 1. Restituer l'argent (Dans l'état actuel, on le remet sur le compte de l'emprunt parent)
+      await tx.compte.update({
+        where: { id_cpt: remb.emprunt.cpt_id },
+        data: { solde_actuel: { increment: remb.montant_remb } }
+      });
+
+      // 2. Repasser l'emprunt en "EN_COURS" s'il était soldé
+      if (remb.emprunt.statut_emprunt === "SOLDE") {
+        await tx.emprunt.update({
+          where: { id_emprunt: remb.emprunt_id },
+          data: { statut_emprunt: "EN_COURS" }
+        });
+      }
+
+      // 3. Supprimer le remboursement
+      await tx.remboursement.delete({ 
+        where: { id_remb: parseInt(id) } 
+      });
+    });
+    
+    res.status(200).json({ message: "Remboursement annulé, argent restitué au compte." });
+  } catch (error) {
+    res.status(403).json({ error: { message: error.message } });
+  }
+};

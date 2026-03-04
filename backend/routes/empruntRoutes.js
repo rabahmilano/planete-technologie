@@ -2,17 +2,21 @@ import {
   addEmprunt,
   addRemboursement,
   getAllEmprunts,
+  deleteEmprunt,
+  deleteRemboursement 
 } from "../controllers/empruntController.js";
 
 import { Router } from "express";
 
 const router = Router();
 
-// Routes pour la gestion des emprunts
+// Routes Emprunts
 router.get("/allEmprunts", getAllEmprunts);
 router.post("/addEmprunt", addEmprunt);
+router.delete("/:id", deleteEmprunt); 
 
-// Route pour la gestion des remboursements
+// Routes Remboursements
 router.post("/addRemboursement", addRemboursement);
+router.delete("/remboursement/:id", deleteRemboursement); // <-- Route de suppression remboursement
 
 export default router;
