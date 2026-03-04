@@ -21,6 +21,7 @@ import { useEmprunt } from 'src/context/EmpruntContext'
 import { useCompte } from 'src/context/CompteContext'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import EditEmpruntModal from './EditEmpruntModal'
+import EditRemboursementModal from './EditRemboursementModal'
 
 const EmpruntRow = ({ emprunt }) => {
   const [open, setOpen] = useState(false)
@@ -31,6 +32,8 @@ const EmpruntRow = ({ emprunt }) => {
   const [openEditModal, setOpenEditModal] = useState(false)
   const [empruntToDelete, setEmpruntToDelete] = useState(null)
   const [rembToDelete, setRembToDelete] = useState(null)
+  const [openEditRembModal, setOpenEditRembModal] = useState(false)
+  const [rembToEdit, setRembToEdit] = useState(null)
 
   const { fetchEmprunts } = useEmprunt()
   const { fetchComptes } = useCompte()
@@ -53,6 +56,11 @@ const EmpruntRow = ({ emprunt }) => {
   const handleDeleteRemboursement = (remb) => {
     setRembToDelete(remb)
     setOpenDeleteRembModal(true)
+  }
+
+  const handleEditRemboursement = (remb) => {
+    setRembToEdit(remb)
+    setOpenEditRembModal(true)
   }
 
   const executeDeleteEmprunt = async () => {
@@ -149,7 +157,7 @@ const EmpruntRow = ({ emprunt }) => {
                           + {parseFloat(remb.montant_remb).toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
                         </TableCell>
                         <TableCell align='center'>
-                           <IconButton size="small" color="primary" sx={{ mr: 2 }} title="Modifier" >
+                           <IconButton size="small" color="primary" sx={{ mr: 2 }} onClick={() => handleEditRemboursement(remb)} title="Modifier" >
                               <Icon icon="tabler:edit" fontSize="1.1rem" />
                            </IconButton>
                            <IconButton size="small" color="error" onClick={() => handleDeleteRemboursement(remb)} title="Annuler le paiement">
@@ -183,6 +191,13 @@ const EmpruntRow = ({ emprunt }) => {
         open={openEditModal} 
         handleClose={() => setOpenEditModal(false)} 
         emprunt={emprunt} 
+      />
+
+      <EditRemboursementModal
+        open={openEditRembModal}
+        handleClose={() => setOpenEditRembModal(false)}
+        remboursement={rembToEdit}
+        empruntParent={emprunt}
       />
       
       {/* 1. Modal Suppression Emprunt */}
