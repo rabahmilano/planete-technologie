@@ -119,7 +119,7 @@ export const addEmprunt = [
 // REMBOURSEMENT (Sortie de trésorerie)
 // ==========================================
 export const addRemboursement = [
-  // 1. Validation avec variables masquées
+  // 1. Validation avec variables masquées du frontend
   body("idEmpruntCible")
     .isNumeric()
     .notEmpty()
@@ -136,7 +136,7 @@ export const addRemboursement = [
     .notEmpty()
     .withMessage("La date est obligatoire"),
 
-  // 2. Contrôleur
+  // 2. Contrôleur Transactionnel
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -147,7 +147,7 @@ export const addRemboursement = [
 
     try {
       const result = await prisma.$transaction(async (tx) => {
-        // A. Récupérer l'emprunt et l'historique de ses remboursements
+        // A. Récupérer l'emprunt parent et l'historique de ses paiements
         const empruntActuel = await tx.emprunt.findUnique({
           where: { id_emprunt: parseInt(idEmpruntCible) },
           include: { remboursements: true }
@@ -161,7 +161,7 @@ export const addRemboursement = [
           throw new Error("Cet emprunt est déjà totalement soldé.");
         }
 
-        // B. Calcul strict du reste à payer (avec sécurisation des décimales JavaScript)
+        // B. Calcul strict du reste à payer
         const totalDejaRembourse = empruntActuel.remboursements.reduce(
           (sum, remb) => sum + parseFloat(remb.montant_remb), 
           0
@@ -194,17 +194,19 @@ export const addRemboursement = [
         const idRemboursement = await getMaxValue("remboursement", "id_remb", null);
         const dateOperation = new Date(dateRembourse);
 
-        // F. Enregistrer le remboursement (La variable masquée devient la vraie colonne)
+        // F. Enregistrer le remboursement SANS passer par 'crediter'
+        // CRUCIAL : On enregistre 'cpt_remb' pour lier le remboursement à son compte source
         const nouveauRemboursement = await tx.remboursement.create({
           data: {
             id_remb: idRemboursement,
             montant_remb: montantSaisi,
             date_remb: dateOperation,
-            emprunt_id: parseInt(idEmpruntCible)
+            emprunt_id: parseInt(idEmpruntCible),
+            cpt_remb: parseInt(cptCible) // Nouvelle relation DCL appliquée ici
           }
         });
 
-        // G. Décrémenter l'argent du compte
+        // G. Décrémenter l'argent du compte sélectionné
         await tx.compte.update({
           where: { id_cpt: parseInt(cptCible) },
           data: {
@@ -212,7 +214,7 @@ export const addRemboursement = [
           }
         });
 
-        // H. Clôturer l'emprunt si le compte est bon
+        // H. Clôturer automatiquement l'emprunt si le reste est payé
         if (montantSaisi === resteAPayer) {
           await tx.emprunt.update({
             where: { id_emprunt: parseInt(idEmpruntCible) },
@@ -226,7 +228,6 @@ export const addRemboursement = [
       res.status(201).json({ message: "Remboursement ajouté avec succès", data: result });
 
     } catch (error) {
-      // Routage dynamique du code HTTP selon le type d'erreur métier
       let statusCode = 500;
       if (error.message.includes("introuvable")) statusCode = 404;
       if (error.message.includes("dépasse") || error.message.includes("insuffisants") || error.message.includes("soldé")) statusCode = 403;
