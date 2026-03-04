@@ -3,6 +3,7 @@ import { Grid } from '@mui/material'
 // Import des Vues
 import AjouterEmprunt from 'src/views/pages/emprunts/ajouter'
 import KpiEmprunts from 'src/views/pages/emprunts/ajouter/KpiEmprunts'
+import DerniersEmprunts from 'src/views/pages/emprunts/ajouter/DerniersEmprunts'
 
 // Import des Providers
 import { EmpruntProvider } from 'src/context/EmpruntContext'
@@ -16,6 +17,9 @@ const AjouterEmpruntContent = () => {
       </Grid>
       <Grid item xs={12}>
         <AjouterEmprunt />
+      </Grid>
+      <Grid item xs={12}>
+        <DerniersEmprunts />
       </Grid>
     </Grid>
   )
