@@ -12,7 +12,6 @@ import {
   LinearProgress
 } from '@mui/material'
 
-// On importe notre nouvelle ligne découpée !
 import EmpruntRow from './EmpruntRow'
 
 const EmpruntsTable = ({ loading, emprunts }) => {
@@ -41,12 +40,13 @@ const EmpruntsTable = ({ loading, emprunts }) => {
               <TableCell sx={{ color: 'white' }} align='right'>Montant Initial</TableCell>
               <TableCell sx={{ color: 'white' }} align='right'>Reste à Payer</TableCell>
               <TableCell sx={{ color: 'white' }} align='center'>Statut</TableCell>
+              <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell> {/* <-- NOUVELLE COLONNE */}
             </TableRow>
           </TableHead>
           <TableBody>
             {emprunts.length === 0 && !loading ? (
               <TableRow>
-                <TableCell colSpan={7} align='center'>
+                <TableCell colSpan={8} align='center'>
                   <Typography sx={{ p: 4 }}>Aucun emprunt à afficher.</Typography>
                 </TableCell>
               </TableRow>

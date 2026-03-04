@@ -13,9 +13,25 @@ import {
 } from '@mui/material'
 import dayjs from 'dayjs'
 import Icon from 'src/@core/components/icon'
+import axios from 'axios'
+import toast from 'react-hot-toast'
+
+// Imports des contextes et du dialog
+import { useEmprunt } from 'src/context/EmpruntContext'
+import { useCompte } from 'src/context/CompteContext'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 const EmpruntRow = ({ emprunt }) => {
   const [open, setOpen] = useState(false)
+  
+  // Nomenclatures harmonisées avec tes autres pages
+  const [openDeleteModal, setOpenDeleteModal] = useState(false)
+  const [openDeleteRembModal, setOpenDeleteRembModal] = useState(false)
+  const [empruntToDelete, setEmpruntToDelete] = useState(null)
+  const [rembToDelete, setRembToDelete] = useState(null)
+
+  const { fetchEmprunts } = useEmprunt()
+  const { fetchComptes } = useCompte()
 
   const totalRembourse = emprunt.remboursements?.reduce(
     (acc, curr) => acc + parseFloat(curr.montant_remb),
@@ -23,6 +39,43 @@ const EmpruntRow = ({ emprunt }) => {
   ) || 0
   
   const resteAPayer = parseFloat(emprunt.montant_emprunt) - totalRembourse
+  const hasRemboursements = emprunt.remboursements && emprunt.remboursements.length > 0
+
+  // --- ACTIONS API ---
+
+  const handleDeleteEmprunt = (emp) => {
+    setEmpruntToDelete(emp)
+    setOpenDeleteModal(true)
+  }
+
+  const handleDeleteRemboursement = (remb) => {
+    setRembToDelete(remb)
+    setOpenDeleteRembModal(true)
+  }
+
+  const executeDeleteEmprunt = async () => {
+    setOpenDeleteModal(false)
+    try {
+      await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/${empruntToDelete.id_emprunt}`)
+      toast.success('Emprunt supprimé avec succès.')
+      await fetchEmprunts()
+      await fetchComptes()
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || "Erreur lors de la suppression de l'emprunt.")
+    }
+  }
+
+  const executeDeleteRemboursement = async () => {
+    setOpenDeleteRembModal(false)
+    try {
+      await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/remboursement/${rembToDelete.id_remb}`)
+      toast.success('Remboursement annulé, fonds restitués.')
+      await fetchEmprunts()
+      await fetchComptes()
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || 'Erreur lors de l’annulation du remboursement.')
+    }
+  }
 
   return (
     <>
@@ -52,10 +105,24 @@ const EmpruntRow = ({ emprunt }) => {
             sx={{ fontWeight: 'bold' }}
           />
         </TableCell>
+        <TableCell align='center'>
+          <IconButton size="small" color="primary" sx={{ mr: 2 }} title="Modifier">
+            <Icon icon="tabler:edit" fontSize="1.25rem" />
+          </IconButton>
+          <IconButton 
+            size="small" 
+            color="error" 
+            onClick={() => handleDeleteEmprunt(emprunt)}
+            disabled={hasRemboursements}
+            title={hasRemboursements ? "Impossible : remboursements existants" : "Supprimer"}
+          >
+            <Icon icon="tabler:trash" fontSize="1.25rem" />
+          </IconButton>
+        </TableCell>
       </TableRow>
 
       <TableRow>
-        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
           <Collapse in={open} timeout='auto' unmountOnExit>
             <Box sx={{ margin: 4, padding: 4, backgroundColor: 'rgba(0, 0, 0, 0.02)', borderRadius: 1 }}>
               <Typography variant='h6' gutterBottom component='div' sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -63,12 +130,13 @@ const EmpruntRow = ({ emprunt }) => {
                 Historique des remboursements
               </Typography>
               
-              {emprunt.remboursements && emprunt.remboursements.length > 0 ? (
+              {hasRemboursements ? (
                 <Table size='small' aria-label='remboursements'>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 'bold' }}>Date</TableCell>
                       <TableCell sx={{ fontWeight: 'bold' }} align='right'>Montant Remboursé</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }} align='center'>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -78,6 +146,14 @@ const EmpruntRow = ({ emprunt }) => {
                         <TableCell align='right' sx={{ color: 'success.main', fontWeight: 'medium' }}>
                           + {parseFloat(remb.montant_remb).toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
                         </TableCell>
+                        <TableCell align='center'>
+                           <IconButton size="small" color="primary" sx={{ mr: 2 }} title="Modifier">
+                              <Icon icon="tabler:edit" fontSize="1.1rem" />
+                           </IconButton>
+                           <IconButton size="small" color="error" onClick={() => handleDeleteRemboursement(remb)} title="Annuler le paiement">
+                             <Icon icon="tabler:trash" fontSize="1.1rem" />
+                           </IconButton>
+                        </TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
@@ -85,6 +161,7 @@ const EmpruntRow = ({ emprunt }) => {
                       <TableCell align='right' sx={{ fontWeight: 'bold' }}>
                         {totalRembourse.toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
                       </TableCell>
+                      <TableCell />
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -97,6 +174,60 @@ const EmpruntRow = ({ emprunt }) => {
           </Collapse>
         </TableCell>
       </TableRow>
+
+      {/* --- MODALES DE CONFIRMATION (DESIGN HARMONISÉ) --- */}
+      
+      {/* 1. Modal Suppression Emprunt */}
+      <ConfirmDialog 
+        open={openDeleteModal}
+        handleClose={() => setOpenDeleteModal(false)}
+        handleConfirm={executeDeleteEmprunt}
+        actionType="delete"
+        title="Supprimer l'emprunt ?"
+        confirmText="Supprimer définitivement"
+        content={
+          <>
+            <Typography variant='body1' sx={{ mb: 4 }}>
+              Êtes-vous sûr de vouloir supprimer cet emprunt ? Le montant sera déduit du solde de votre compte.
+            </Typography>
+            {empruntToDelete && (
+              <Box sx={{ p: 4, backgroundColor: 'rgba(234, 84, 85, 0.08)', border: '1px dashed red', borderRadius: 1 }}>
+                <Typography variant='body2'><strong>Désignation :</strong> {empruntToDelete.designation}</Typography>
+                <Typography variant='body2'><strong>Date :</strong> {dayjs(empruntToDelete.date_emprunt).format('DD/MM/YYYY')}</Typography>
+                <Typography variant='h6' sx={{ mt: 2, fontWeight: 'bold', color: 'error.main' }}>
+                  Montant à retirer : {parseFloat(empruntToDelete.montant_emprunt).toLocaleString('fr-DZ')} DZD
+                </Typography>
+              </Box>
+            )}
+          </>
+        }
+      />
+
+      {/* 2. Modal Suppression Remboursement */}
+      <ConfirmDialog 
+        open={openDeleteRembModal}
+        handleClose={() => setOpenDeleteRembModal(false)}
+        handleConfirm={executeDeleteRemboursement}
+        actionType="delete"
+        title="Annuler ce remboursement ?"
+        confirmText="Restituer l'argent"
+        content={
+          <>
+            <Typography variant='body1' sx={{ mb: 4 }}>
+              Cette action supprimera la trace de ce paiement et restituera les fonds sur le compte source.
+            </Typography>
+            {rembToDelete && (
+              <Box sx={{ p: 4, backgroundColor: 'rgba(234, 84, 85, 0.08)', border: '1px dashed red', borderRadius: 1 }}>
+                <Typography variant='body2'><strong>Emprunt :</strong> {emprunt.designation}</Typography>
+                <Typography variant='body2'><strong>Date :</strong> {dayjs(rembToDelete.date_remb).format('DD/MM/YYYY')}</Typography>
+                <Typography variant='h6' sx={{ mt: 2, fontWeight: 'bold', color: 'error.main' }}>
+                  Montant à restituer : {parseFloat(rembToDelete.montant_remb).toLocaleString('fr-DZ')} DZD
+                </Typography>
+              </Box>
+            )}
+          </>
+        }
+      />
     </>
   )
 }

@@ -2,6 +2,7 @@ import { Grid } from '@mui/material'
 
 // Imports des contextes
 import { EmpruntProvider, useEmprunt } from 'src/context/EmpruntContext'
+import { CompteProvider } from 'src/context/CompteContext'
 
 // Imports de tes Vues
 import EmpruntsTable from 'src/views/pages/emprunts/liste/EmpruntsTable'
@@ -14,7 +15,7 @@ const MesEmpruntsContent = () => {
 
   return (
     <Grid container spacing={6}>
-      
+
       {/* --- LIGNE DU HAUT : TON DASHBOARD EXPERIMENTAL --- */}
       {/* 4/12 : Le Graphe */}
       <Grid item xs={12} md={4}>
@@ -42,9 +43,11 @@ const MesEmpruntsContent = () => {
 
 const EmpruntsPage = () => {
   return (
-    <EmpruntProvider>
-      <MesEmpruntsContent />
-    </EmpruntProvider>
+    <CompteProvider>
+      <EmpruntProvider>
+        <MesEmpruntsContent />
+      </EmpruntProvider>
+    </CompteProvider>
   )
 }
 
