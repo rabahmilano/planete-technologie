@@ -20,6 +20,7 @@ import toast from 'react-hot-toast'
 import { useEmprunt } from 'src/context/EmpruntContext'
 import { useCompte } from 'src/context/CompteContext'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+import EditEmpruntModal from './EditEmpruntModal'
 
 const EmpruntRow = ({ emprunt }) => {
   const [open, setOpen] = useState(false)
@@ -27,6 +28,7 @@ const EmpruntRow = ({ emprunt }) => {
   // Nomenclatures harmonisées avec tes autres pages
   const [openDeleteModal, setOpenDeleteModal] = useState(false)
   const [openDeleteRembModal, setOpenDeleteRembModal] = useState(false)
+  const [openEditModal, setOpenEditModal] = useState(false)
   const [empruntToDelete, setEmpruntToDelete] = useState(null)
   const [rembToDelete, setRembToDelete] = useState(null)
 
@@ -106,7 +108,7 @@ const EmpruntRow = ({ emprunt }) => {
           />
         </TableCell>
         <TableCell align='center'>
-          <IconButton size="small" color="primary" sx={{ mr: 2 }} title="Modifier">
+          <IconButton size="small" color="primary" sx={{ mr: 2 }}  onClick={() => setOpenEditModal(true)} title="Modifier">
             <Icon icon="tabler:edit" fontSize="1.25rem" />
           </IconButton>
           <IconButton 
@@ -147,7 +149,7 @@ const EmpruntRow = ({ emprunt }) => {
                           + {parseFloat(remb.montant_remb).toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
                         </TableCell>
                         <TableCell align='center'>
-                           <IconButton size="small" color="primary" sx={{ mr: 2 }} title="Modifier">
+                           <IconButton size="small" color="primary" sx={{ mr: 2 }} title="Modifier" >
                               <Icon icon="tabler:edit" fontSize="1.1rem" />
                            </IconButton>
                            <IconButton size="small" color="error" onClick={() => handleDeleteRemboursement(remb)} title="Annuler le paiement">
@@ -176,6 +178,12 @@ const EmpruntRow = ({ emprunt }) => {
       </TableRow>
 
       {/* --- MODALES DE CONFIRMATION (DESIGN HARMONISÉ) --- */}
+
+      <EditEmpruntModal 
+        open={openEditModal} 
+        handleClose={() => setOpenEditModal(false)} 
+        emprunt={emprunt} 
+      />
       
       {/* 1. Modal Suppression Emprunt */}
       <ConfirmDialog 
