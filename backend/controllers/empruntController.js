@@ -24,10 +24,10 @@ export const getAllEmprunts = async (req, res) => {
 };
 
 // ==========================================
-// CRÉATION
+// CRÉATION (Ajout d'un emprunt)
 // ==========================================
 export const addEmprunt = [
-  // 1. Validation avec des variables "masquées" pour le frontend
+  // 1. Validation
   body("desEmprunt")
     .isString()
     .trim()
@@ -52,29 +52,26 @@ export const addEmprunt = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    // Récupération des données depuis le payload (variables frontend)
     const { desEmprunt, montant, cpt, dateEmprunt } = req.body;
 
     try {
       const newEmprunt = await prisma.$transaction(async (tx) => {
-        // A. Vérification du compte (utilisation de la variable 'cpt')
+        // A. Vérification simple du compte (plus besoin du taux_change_actuel)
         const infoCompte = await tx.compte.findUnique({
           where: { id_cpt: parseInt(cpt) },
-          select: { taux_change_actuel: true }
+          select: { id_cpt: true }
         });
 
         if (!infoCompte) {
           throw new Error("Compte introuvable.");
         }
 
-        // B. Génération des IDs
+        // B. Génération de l'ID pour l'emprunt uniquement
         const idEmprunt = await getMaxValue("emprunt", "id_emprunt", null);
-        const idCrediter = await getMaxValue("crediter", "id_op_crd", null);
-        
         const dateOperation = new Date(dateEmprunt);
         const montantOperation = parseFloat(montant);
 
-        // C. Création de l'emprunt (Le Mapping : variable sécurisée -> vraie colonne)
+        // C. Création de l'emprunt
         const empruntCree = await tx.emprunt.create({
           data: {
             id_emprunt: idEmprunt,
@@ -85,18 +82,7 @@ export const addEmprunt = [
           }
         });
 
-        // D. Traçabilité (Table crediter)
-        await tx.crediter.create({
-          data: {
-            id_op_crd: idCrediter,
-            cpt_id: parseInt(cpt),
-            date_op: dateOperation,
-            montant_op: montantOperation,
-            taux_change: infoCompte.taux_change_actuel
-          }
-        });
-
-        // E. Mise à jour du compte
+        // D. Mise à jour du compte (incrémentation directe du solde)
         await tx.compte.update({
           where: { id_cpt: parseInt(cpt) },
           data: {
