@@ -17,18 +17,15 @@ const MesEmpruntsContent = () => {
     <Grid container spacing={6}>
 
       {/* --- LIGNE DU HAUT : TON DASHBOARD EXPERIMENTAL --- */}
-      {/* 4/12 : Le Graphe */}
       <Grid item xs={12} md={4}>
         <EmpruntsChart />
       </Grid>
 
-      {/* 5/12 : Les 4 KPIs */}
-      <Grid item xs={12} md={5}>
+      <Grid item xs={12} md={4}>
         <EmpruntsKpiGrid />
       </Grid>
 
-      {/* 3/12 : Activité récente */}
-      <Grid item xs={12} md={3}>
+      <Grid item xs={12} md={4}>
         <EmpruntsActivite />
       </Grid>
 
