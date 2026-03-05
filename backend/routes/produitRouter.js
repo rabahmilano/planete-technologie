@@ -24,6 +24,7 @@ import {
   // getDashboardChartData,
   getTransactionsChartData,
   getProduitsChartData,
+  searchProduits
 } from "../controllers/produitController.js";
 
 import { Router } from "express";
@@ -39,6 +40,7 @@ router.get("/search", getNomSearch);
 router.post("/addProduit", addColis);
 router.get("/allProduitDisponible", getAllProduitDisponible);
 router.get("/allMarchandiseDisponible", getMarchandiseDisponible);
+router.get("/search-autocomplete", searchProduits);
 
 // Routes pour les colis en attente
 router.get("/colisEnRoute", getColisEnRoute);

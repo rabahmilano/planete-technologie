@@ -1392,3 +1392,27 @@ export const getProduitsChartData = async (req, res) => {
     res.status(500).json({ message: "Erreur serveur interne" });
   }
 };
+
+export const searchProduits = async (req, res) => {
+  const q = req.query.q?.trim();
+  
+  if (!q || q.length < 2) {
+    return res.status(200).json([]);
+  }
+
+  try {
+    const words = q.split(' ').filter(word => word.length > 0);
+    const conditions = words.map(word => ({
+      designation_prd: { contains: word }
+    }));
+
+    const produits = await prisma.produit.findMany({
+      where: { AND: conditions },
+      take: 30
+    });
+    
+    res.status(200).json(produits);
+  } catch (error) {
+    res.status(500).json({ error: { message: "Erreur lors de la recherche des produits" } });
+  }
+};

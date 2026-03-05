@@ -226,7 +226,7 @@ export const getAllCommandes = async (req, res) => {
     }
   }
 
-  // 2. Construction de la clause WHERE globale (Date + Produit)
+  // 2. Construction de la clause WHERE globale
   const whereClause = {
     ...(Object.keys(dateWhereClause).length > 0 && { date_cde: dateWhereClause }),
     ...(produit && produit !== "all" && {
@@ -243,7 +243,10 @@ export const getAllCommandes = async (req, res) => {
         where: whereClause,
         skip,
         take: limit,
-        orderBy: { date_cde: "desc" },
+        orderBy: [
+          { date_cde: "desc" }, // 1er Tri : Date la plus récente
+          { id_cde: "desc" }    // 2ème Tri : ID le plus grand pour le même jour
+        ],
         include: {
           ligne_commande: {
             include: {
@@ -254,18 +257,25 @@ export const getAllCommandes = async (req, res) => {
       })
     ]);
 
-    const data = commandes.map(c => ({
-      id_cde: c.id_cde,
-      date_cde: c.date_cde,
-      mnt_cde: c.mnt_cde,
-      lignes: c.ligne_commande.map(l => ({
-        prd_id: l.prd_id,
-        designation: l.produit.designation_prd,
-        qte: l.qte_cde,
-        pu_vente: l.pu_vente,
-        total_ligne: parseFloat(l.qte_cde) * parseFloat(l.pu_vente)
-      }))
-    }));
+    const data = commandes.map(c => {
+      // Calcul du nombre total d'unités physiques dans cette commande
+      const totalUnites = c.ligne_commande.reduce((acc, l) => acc + parseInt(l.qte_cde || 0), 0);
+
+      return {
+        id_cde: c.id_cde,
+        date_cde: c.date_cde,
+        mnt_cde: c.mnt_cde,
+        lignes: c.ligne_commande.map(l => ({
+          prd_id: l.prd_id,
+          designation: l.produit.designation_prd,
+          qte: l.qte_cde,
+          pu_vente: l.pu_vente,
+          total_ligne: parseFloat(l.qte_cde) * parseFloat(l.pu_vente)
+        })),
+        totalProduits: c.ligne_commande.length, // Nombre d'articles distincts
+        totalUnites: totalUnites // Quantité physique totale
+      };
+    });
 
     res.status(200).json({ total, data, page, limit });
   } catch (error) {
