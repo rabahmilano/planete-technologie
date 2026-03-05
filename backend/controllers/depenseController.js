@@ -361,7 +361,7 @@ export const getDepensesFiltrees = async (req, res) => {
       // Filtrage STRICT des dépenses non annulées
       const whereDepense = { 
         date_dep: dateWhereClause,
-        isAnnule: false // <-- Exclusion des annulations
+        //isAnnule: false // <-- Exclusion des annulations
       };
       
       if (natureId) {
