@@ -7,14 +7,30 @@ const CommandeContext = createContext()
 export const CommandeProvider = ({ children }) => {
   const [commandes, setCommandes] = useState([])
   const [totalCommandes, setTotalCommandes] = useState(0)
+  const [globalStats, setGlobalStats] = useState({ totalCA: 0, totalCommandes: 0, panierMoyen: 0 })
   const [loading, setLoading] = useState(true)
 
-  const fetchCommandes = useCallback(async (page = 0, limit = 10) => {
+  // Récupérer les statistiques globales
+  const fetchGlobalStats = useCallback(async () => {
+    try {
+      const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}commandes/stats`)
+      setGlobalStats(response.data)
+    } catch (error) {
+      console.error('Erreur lors du chargement des statistiques', error)
+    }
+  }, [])
+
+  // Récupérer la liste avec gestion des filtres
+  const fetchCommandes = useCallback(async (page = 0, limit = 10, filters = {}) => {
     setLoading(true)
     try {
-      // API attend une page commençant à 1
       const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}commandes`, {
-        params: { page: page + 1, limit }
+        params: { 
+          page: page + 1, 
+          limit,
+          periode: filters.periode || 'all',
+          produit: filters.produit || 'all'
+        }
       })
       setCommandes(response.data.data)
       setTotalCommandes(response.data.total)
@@ -26,7 +42,7 @@ export const CommandeProvider = ({ children }) => {
   }, [])
 
   return (
-    <CommandeContext.Provider value={{ commandes, totalCommandes, loading, fetchCommandes }}>
+    <CommandeContext.Provider value={{ commandes, totalCommandes, globalStats, loading, fetchCommandes, fetchGlobalStats }}>
       {children}
     </CommandeContext.Provider>
   )

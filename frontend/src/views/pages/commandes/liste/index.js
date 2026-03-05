@@ -1,73 +1,81 @@
-import React, { useEffect, useState } from 'react'
-import { Paper, TableContainer, Table, TableHead, TableBody, TableRow, TableCell, TablePagination, LinearProgress, Typography, Box } from '@mui/material'
+import React, { useEffect, useState, useRef } from 'react'
+import { Grid } from '@mui/material'
 import { useCommande } from 'src/context/CommandeContext'
-import CommandeRow from './CommandeRow'
+import CommandesTable from './CommandesTable' 
+import CommandesKpis from './CommandesKpis'
+import CommandesFilters from './CommandesFilters'
 
 const ListeCommandesView = () => {
-  const { commandes, totalCommandes, loading, fetchCommandes } = useCommande()
+  const { globalStats, fetchCommandes, fetchGlobalStats } = useCommande()
+  
+  // États des filtres et pagination
+  const [periodeFiltre, setPeriodeFiltre] = useState('all')
+  const [produitFiltre, setProduitFiltre] = useState('all')
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
 
+  // 1. Charger les KPIs globaux au montage
   useEffect(() => {
-    fetchCommandes(page, rowsPerPage)
-  }, [fetchCommandes, page, rowsPerPage])
+    fetchGlobalStats()
+  }, [fetchGlobalStats])
 
-  const handleChangePage = (event, newPage) => setPage(newPage)
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10))
+  // 2. Revenir à la page 1 si on change un filtre
+  const isInitialMount = useRef(true)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+    } else {
+      if (page !== 0) setPage(0) 
+    }
+  }, [periodeFiltre, produitFiltre])
+
+  // 3. Recharger la table à chaque modification
+  useEffect(() => {
+    fetchCommandes(page, rowsPerPage, { periode: periodeFiltre, produit: produitFiltre })
+  }, [fetchCommandes, page, rowsPerPage, periodeFiltre, produitFiltre])
+
+  // Fonction pour réinitialiser les filtres
+  const handleResetFilters = () => {
+    setPeriodeFiltre('all')
+    setProduitFiltre('all')
     setPage(0)
   }
 
-  const handleRefresh = () => fetchCommandes(page, rowsPerPage)
+  // Fonction pour rafraîchir après une annulation
+  const handleRefreshData = () => {
+    fetchCommandes(page, rowsPerPage, { periode: periodeFiltre, produit: produitFiltre })
+    fetchGlobalStats()
+  }
 
   return (
-    <Paper sx={{ boxShadow: 5, borderRadius: 2, position: 'relative' }}>
-      {loading && <LinearProgress sx={{ position: 'absolute', top: 0, width: '100%' }} />}
-      
-      <TableContainer>
-        <Table sx={{ minWidth: 650 }}>
-          <TableHead>
-            <TableRow sx={{ backgroundColor: '#0d1b2a' }}>
-              <TableCell sx={{ width: 50 }} />
-              <TableCell sx={{ color: 'white' }}>N° Cde</TableCell>
-              <TableCell sx={{ color: 'white' }}>Date</TableCell>
-              <TableCell sx={{ color: 'white' }} align='center'>Articles</TableCell>
-              <TableCell sx={{ color: 'white' }} align='right'>Montant Total</TableCell>
-              <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {commandes.length === 0 && !loading ? (
-              <TableRow>
-                <TableCell colSpan={6} align='center'>
-                  <Typography sx={{ p: 4 }}>Aucune commande trouvée.</Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              commandes.map((commande) => (
-                <CommandeRow 
-                  key={commande.id_cde} 
-                  commande={commande} 
-                  refreshData={handleRefresh} 
-                />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+    <Grid container spacing={6}>
+      {/* Ligne des KPIs */}
+      <Grid item xs={12}>
+        <CommandesKpis stats={globalStats} />
+      </Grid>
 
-      <TablePagination
-        rowsPerPageOptions={[10, 25, 50]}
-        component='div'
-        count={totalCommandes}
-        rowsPerPage={rowsPerPage}
-        page={page}
-        onPageChange={handleChangePage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-        labelRowsPerPage='Lignes par page :'
-        labelDisplayedRows={({ from, to, count }) => `${from}-${to} sur ${count !== -1 ? count : `plus de ${to}`}`}
-      />
-    </Paper>
+      {/* Ligne des Filtres */}
+      <Grid item xs={12}>
+        <CommandesFilters 
+          periodeFiltre={periodeFiltre} 
+          setPeriodeFiltre={setPeriodeFiltre}
+          produitFiltre={produitFiltre}
+          setProduitFiltre={setProduitFiltre}
+          onReset={handleResetFilters}
+        />
+      </Grid>
+
+      {/* Ligne de la Table principale */}
+      <Grid item xs={12}>
+        <CommandesTable 
+          page={page} 
+          setPage={setPage} 
+          rowsPerPage={rowsPerPage} 
+          setRowsPerPage={setRowsPerPage} 
+          refreshData={handleRefreshData}
+        />
+      </Grid>
+    </Grid>
   )
 }
 

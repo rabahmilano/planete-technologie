@@ -1,5 +1,6 @@
 import prisma from "../config/dbConfig.js";
 import { getMaxValue, arrondir } from "../config/utils.js";
+import dayjs from "dayjs";
 
 import { body, validationResult } from "express-validator";
 
@@ -179,17 +180,67 @@ export const addCommande = [
   },
 ];
 
-// ... (garde ton code addCommande existant)
+// ==========================================
+// STATISTIQUES GLOBALES
+// ==========================================
+export const getCommandesStats = async (req, res) => {
+  try {
+    const aggregate = await prisma.commande.aggregate({
+      _sum: { mnt_cde: true },
+      _count: { id_cde: true }
+    });
 
+    const totalCA = parseFloat(aggregate._sum.mnt_cde || 0);
+    const totalCommandes = aggregate._count.id_cde || 0;
+    const panierMoyen = totalCommandes > 0 ? totalCA / totalCommandes : 0;
+
+    res.status(200).json({ totalCA, totalCommandes, panierMoyen });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur lors de la récupération des statistiques.", details: error.message });
+  }
+};
+
+// ==========================================
+// LISTE AVEC FILTRES ET PAGINATION
+// ==========================================
 export const getAllCommandes = async (req, res) => {
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 10;
   const skip = (page - 1) * limit;
+  const { periode, produit } = req.query;
+
+  // 1. Construction du filtre de Date
+  let dateWhereClause = {};
+  if (periode && periode !== "all") {
+    let startDate;
+    if (["1m", "3m", "6m"].includes(periode)) {
+      const months = parseInt(periode.replace("m", ""));
+      startDate = dayjs().subtract(months, "month").toDate();
+    } else if (!isNaN(parseInt(periode, 10))) {
+      startDate = dayjs(periode).startOf("year").toDate();
+      const endDate = dayjs(periode).endOf("year").toDate();
+      dateWhereClause = { gte: startDate, lte: endDate };
+    }
+    if (startDate && !dateWhereClause.gte) {
+      dateWhereClause = { gte: startDate };
+    }
+  }
+
+  // 2. Construction de la clause WHERE globale (Date + Produit)
+  const whereClause = {
+    ...(Object.keys(dateWhereClause).length > 0 && { date_cde: dateWhereClause }),
+    ...(produit && produit !== "all" && {
+      ligne_commande: {
+        some: { prd_id: parseInt(produit) }
+      }
+    })
+  };
 
   try {
     const [total, commandes] = await Promise.all([
-      prisma.commande.count(),
+      prisma.commande.count({ where: whereClause }),
       prisma.commande.findMany({
+        where: whereClause,
         skip,
         take: limit,
         orderBy: { date_cde: "desc" },
