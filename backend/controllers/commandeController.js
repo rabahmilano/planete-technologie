@@ -178,3 +178,112 @@ export const addCommande = [
     }
   },
 ];
+
+// ... (garde ton code addCommande existant)
+
+export const getAllCommandes = async (req, res) => {
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 10;
+  const skip = (page - 1) * limit;
+
+  try {
+    const [total, commandes] = await Promise.all([
+      prisma.commande.count(),
+      prisma.commande.findMany({
+        skip,
+        take: limit,
+        orderBy: { date_cde: "desc" },
+        include: {
+          ligne_commande: {
+            include: {
+              produit: { select: { designation_prd: true } }
+            }
+          }
+        }
+      })
+    ]);
+
+    const data = commandes.map(c => ({
+      id_cde: c.id_cde,
+      date_cde: c.date_cde,
+      mnt_cde: c.mnt_cde,
+      lignes: c.ligne_commande.map(l => ({
+        prd_id: l.prd_id,
+        designation: l.produit.designation_prd,
+        qte: l.qte_cde,
+        pu_vente: l.pu_vente,
+        total_ligne: parseFloat(l.qte_cde) * parseFloat(l.pu_vente)
+      }))
+    }));
+
+    res.status(200).json({ total, data, page, limit });
+  } catch (error) {
+    res.status(500).json({ error: { message: "Erreur lors de la récupération des commandes.", details: error.message } });
+  }
+};
+
+export const deleteCommande = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1. Vérification
+      const commande = await tx.commande.findUnique({
+        where: { id_cde: parseInt(id) },
+        include: { ligne_commande: true }
+      });
+      if (!commande) throw new Error("NOT_FOUND");
+
+      // 2. Récupération de la traçabilité des colis
+      const lcc = await tx.ligne_commande_colis.findMany({
+        where: { cde_id: parseInt(id) },
+        include: { colis: { include: { compte: true } } }
+      });
+
+      let totalRefund = 0;
+
+      // 3. Restauration des Colis et calcul de la part Caisse (Inversion de addCommande)
+      for (const ligne of lcc) {
+        await tx.colis.update({
+          where: { id_colis: ligne.colis_id },
+          data: { qte_stock: { increment: ligne.qte } }
+        });
+
+        if (ligne.colis.compte.type_cpt !== "COMMUN") {
+          const refundAmount = arrondir(ligne.qte * ligne.colis.pu_dzd);
+          totalRefund = arrondir(totalRefund + refundAmount);
+        }
+      }
+
+      // 4. Restauration du Stock Global Produit
+      for (const ligne of commande.ligne_commande) {
+        await tx.produit.update({
+          where: { id_prd: ligne.prd_id },
+          data: { qte_dispo: { increment: ligne.qte_cde } }
+        });
+      }
+
+      // 5. Déduction de la Caisse
+      const cptCaisse = await tx.compte.findFirst({
+        where: { designation_cpt: "Caisse", dev_code: "DZD" }
+      });
+      
+      if (cptCaisse) {
+        const montantFinalCaisse = arrondir(parseFloat(commande.mnt_cde) - totalRefund);
+        await tx.compte.update({
+          where: { id_cpt: cptCaisse.id_cpt },
+          data: { solde_actuel: { decrement: montantFinalCaisse } }
+        });
+      }
+
+      // 6. Suppression en cascade (Enfants vers Parent)
+      await tx.ligne_commande_colis.deleteMany({ where: { cde_id: parseInt(id) } });
+      await tx.ligne_commande.deleteMany({ where: { cde_id: parseInt(id) } });
+      await tx.commande.delete({ where: { id_cde: parseInt(id) } });
+    });
+
+    res.status(200).json({ message: "Commande annulée. Stock restauré et Caisse mise à jour." });
+  } catch (error) {
+    if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Commande introuvable." } });
+    res.status(500).json({ error: { message: "Erreur lors de l'annulation.", details: error.message } });
+  }
+};
