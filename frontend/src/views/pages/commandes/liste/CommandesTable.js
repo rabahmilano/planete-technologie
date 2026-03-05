@@ -23,7 +23,7 @@ const CommandesTable = ({ page, setPage, rowsPerPage, setRowsPerPage, refreshDat
               <TableCell sx={{ width: 50 }} />
               <TableCell sx={{ color: 'white' }}>N° Cde</TableCell>
               <TableCell sx={{ color: 'white' }}>Date</TableCell>
-              <TableCell sx={{ color: 'white' }} align='center'>Articles</TableCell>
+              <TableCell sx={{ color: 'white' }} align='center'>Contenu</TableCell>
               <TableCell sx={{ color: 'white' }} align='right'>Montant Total</TableCell>
               <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell>
             </TableRow>

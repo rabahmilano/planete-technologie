@@ -32,7 +32,14 @@ const CommandeRow = ({ commande, refreshData }) => {
         </TableCell>
         <TableCell sx={{ fontWeight: 'bold' }}>#{commande.id_cde}</TableCell>
         <TableCell>{dayjs(commande.date_cde).format('DD/MM/YYYY')}</TableCell>
-        <TableCell align='center'>{commande.lignes.length} article(s)</TableCell>
+        <TableCell align='center'>
+          <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+             {commande.totalProduits} Produit(s)
+          </Typography>
+          <Typography variant="caption" color="textSecondary">
+             (Total: {commande.totalUnites} unité{commande.totalUnites > 1 ? 's' : ''})
+          </Typography>
+        </TableCell>
         <TableCell align='right' sx={{ fontWeight: 'bold', color: 'success.main' }}>
           {parseFloat(commande.mnt_cde).toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
         </TableCell>

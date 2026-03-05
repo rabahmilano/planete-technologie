@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, Grid, MenuItem, TextField, Button, Box } from '@mui/material'
+import { Card, CardContent, Grid, MenuItem, TextField, Button, Box, Autocomplete, CircularProgress } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import axios from 'axios'
 import dayjs from 'dayjs'
 
 const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setProduitFiltre, onReset }) => {
-  const [produits, setProduits] = useState([])
   const [optionsAnnee, setOptionsAnnee] = useState([])
+
+  // États pour l'Autocomplete (Recherche avec Debounce)
+  const [options, setOptions] = useState([])
+  const [inputValue, setInputValue] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [selectedProduit, setSelectedProduit] = useState(null) // Gère l'affichage dans le champ
 
   // Générer les années depuis 2023
   useEffect(() => {
@@ -16,18 +21,45 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
     setOptionsAnnee(options)
   }, [])
 
-  // Charger la liste des produits pour le filtre
+  // L'astuce du Debounce (Timer de 500ms)
   useEffect(() => {
-    const fetchProduits = async () => {
-      try {
-        const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/allProduits`) // Ajuste l'URL si besoin selon ton produitRouter.js
-        setProduits(Array.isArray(response.data) ? response.data : response.data.data || [])
-      } catch (error) {
-        console.error("Erreur chargement produits", error)
-      }
+    if (inputValue.length < 3) {
+      setOptions([])
+      return
     }
-    fetchProduits()
-  }, [])
+
+    let isActive = true
+    setLoading(true)
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/search-autocomplete`, {
+          params: { q: inputValue }
+        })
+        if (isActive) {
+          setOptions(response.data || [])
+        }
+      } catch (error) {
+        console.error("Erreur lors de la recherche des produits", error)
+      } finally {
+        if (isActive) setLoading(false)
+      }
+    }, 500) // Attente de 500ms après la dernière frappe
+
+    return () => {
+      isActive = false
+      clearTimeout(timeoutId) // On annule le timer si l'utilisateur tape une nouvelle lettre
+    }
+  }, [inputValue])
+
+  // Synchroniser le bouton "Réinitialiser" du parent avec l'Autocomplete local
+  useEffect(() => {
+    if (produitFiltre === 'all') {
+      setSelectedProduit(null)
+      setInputValue('')
+      setOptions([])
+    }
+  }, [produitFiltre])
 
   return (
     <Card sx={{ mb: 6, boxShadow: 3 }}>
@@ -50,22 +82,39 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
               ))}
             </TextField>
           </Grid>
-          
+
           <Grid item xs={12} sm={6}>
-            <TextField
+            <Autocomplete
               fullWidth
-              select
-              label='Filtrer par Produit'
-              value={produitFiltre}
-              onChange={e => setProduitFiltre(e.target.value)}
-            >
-              <MenuItem value='all'>Tous les produits</MenuItem>
-              {produits.map(p => (
-                <MenuItem key={p.id_prd} value={p.id_prd}>
-                  {p.designation_prd}
-                </MenuItem>
-              ))}
-            </TextField>
+              options={options}
+              getOptionLabel={(option) => option.designation_prd || ''}
+              value={selectedProduit}
+              onChange={(event, newValue) => {
+                setSelectedProduit(newValue)
+                setProduitFiltre(newValue ? newValue.id_prd : 'all') // Envoie l'ID au parent
+              }}
+              inputValue={inputValue}
+              onInputChange={(event, newInputValue) => {
+                setInputValue(newInputValue)
+              }}
+              loading={loading}
+              noOptionsText={inputValue.length < 3 ? "Tapez au moins 3 caractères..." : "Aucun produit trouvé"}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Chercher un produit..."
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {loading ? <CircularProgress color="inherit" size={20} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+            />
           </Grid>
 
           <Grid item xs={12} sm={2}>

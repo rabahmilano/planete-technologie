@@ -33,7 +33,7 @@ const CommandesKpis = ({ stats }) => {
                 <Typography variant='body2' sx={{ mb: 1, fontWeight: 600 }}>{item.title}</Typography>
                 <Typography variant='h5' sx={{ fontWeight: 'bold' }}>{item.value}</Typography>
               </Box>
-              <Avatar variant='rounded' sx={{ width: 48, height: 48, backgroundColor: `${item.color}.light`, color: `${item.color}.main` }}>
+              <Avatar variant='rounded' sx={{ width: 48, height: 48, backgroundColor: `${item.color}.main`, color: '#ffffff' }}>
                 <Icon icon={item.icon} fontSize='1.75rem' />
               </Avatar>
             </CardContent>
