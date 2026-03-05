@@ -1,9 +1,11 @@
 import prisma from "../config/dbConfig.js";
-import { body, validationResult } from "express-validator";
-
+import { body, param, validationResult } from "express-validator";
 import dayjs from "dayjs";
-
 import { getMaxValue } from "../config/utils.js";
+
+// ==========================================
+// NATURE DE DÉPENSES
+// ==========================================
 
 export const addNatureDepense = [
   body("natDep")
@@ -14,26 +16,17 @@ export const addNatureDepense = [
 
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { natDep } = req.body;
-
     const cleanedNatDep = natDep.trim().toUpperCase();
 
     try {
       const isExist = await prisma.nature_dep.findFirst({
-        where: {
-          designation_nat_dep: cleanedNatDep,
-        },
+        where: { designation_nat_dep: cleanedNatDep },
       });
 
-      if (isExist) {
-        return res
-          .status(403)
-          .json({ message: `Le type "${cleanedNatDep}" existe déja` });
-      }
+      if (isExist) return res.status(403).json({ message: `Le type "${cleanedNatDep}" existe déja` });
 
       const idNatDep = await getMaxValue("nature_dep", "id_nat_dep", null);
 
@@ -46,9 +39,7 @@ export const addNatureDepense = [
 
       res.status(201).json(newNatDep);
     } catch (error) {
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      res.status(500).json({ error: { code: error.code, message: error.message } });
     }
   },
 ];
@@ -56,88 +47,229 @@ export const addNatureDepense = [
 export const getAllNatDep = async (req, res) => {
   try {
     const listNature = await prisma.nature_dep.findMany({
-      orderBy: {
-        designation_nat_dep: "asc",
-      },
+      orderBy: { designation_nat_dep: "asc" },
     });
-
     res.status(200).json(listNature);
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
+    res.status(500).json({ error: { code: error.code, message: error.message } });
   }
 };
 
+// ==========================================
+// GESTION DES DÉPENSES (CRUD)
+// ==========================================
+
 export const addNewDepense = [
-  body("montant")
-    .isDecimal()
-    .notEmpty()
-    .withMessage("Le montant est obligatoire"),
-  body("cpt").isDecimal().notEmpty().withMessage("Le compte est obligatoire"),
-  body("nature")
-    .isNumeric()
-    .notEmpty()
-    .withMessage("La nature du dépense est obligatoire"),
+  // Validation incluant le nouveau champ observation (optionnel)
+  body("montant").isDecimal().notEmpty().withMessage("Le montant est obligatoire"),
+  body("cpt").isInt().notEmpty().withMessage("Le compte est obligatoire"),
+  body("nature").isInt().notEmpty().withMessage("La nature de la dépense est obligatoire"),
+  body("dateDepense").notEmpty().withMessage("La date est obligatoire"),
+  body("observation").optional({ checkFalsy: true }).isString().trim(),
 
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { montant, cpt, nature, dateDepense } = req.body;
+    const { montant, cpt, nature, dateDepense, observation } = req.body;
 
     try {
       const newDepense = await prisma.$transaction(async (tx) => {
-        const infoCompte = await prisma.compte.findUnique({
-          where: {
-            id_cpt: cpt,
-          },
-          select: {
-            solde_actuel: true,
-            taux_change_actuel: true,
+        const infoCompte = await tx.compte.findUnique({
+          where: { id_cpt: parseInt(cpt) },
+          select: { solde_actuel: true, taux_change_actuel: true },
+        });
+
+        if (!infoCompte) throw new Error("COMPTE_NOT_FOUND");
+        if (parseFloat(infoCompte.solde_actuel) < parseFloat(montant)) throw new Error("INSUFFICIENT_FUNDS");
+
+        const newId = await getMaxValue("depense", "id_op_dep", null);
+        const mnt_dep_dzd = parseFloat(montant) * parseFloat(infoCompte.taux_change_actuel);
+
+        // Création avec observation et statut par défaut
+        const depenseCree = await tx.depense.create({
+          data: {
+            id_op_dep: newId,
+            date_dep: new Date(dateDepense),
+            mnt_dep: parseFloat(montant),
+            mnt_dep_dzd: mnt_dep_dzd,
+            cpt_id: parseInt(cpt),
+            nat_dep_id: parseInt(nature),
+            observation: observation || null,
+            isAnnule: false
           },
         });
 
-        if (infoCompte.solde_actuel >= montant) {
-          const newId = await getMaxValue("depense", "id_op_dep", null);
-          const mnt_dep_dzd = montant * infoCompte.taux_change_actuel;
+        // Décrémentation du compte
+        await tx.compte.update({
+          where: { id_cpt: parseInt(cpt) },
+          data: { solde_actuel: { decrement: parseFloat(montant) } },
+        });
 
-          await tx.depense.create({
-            data: {
-              id_op_dep: newId,
-              date_dep: dateDepense,
-              mnt_dep: montant,
-              mnt_dep_dzd,
-              cpt_id: cpt,
-              nat_dep_id: nature,
-            },
-          });
-
-          await tx.compte.update({
-            where: {
-              id_cpt: cpt,
-            },
-            data: {
-              solde_actuel: {
-                decrement: montant,
-              },
-            },
-          });
-        } else {
-          res.status(405).json({ message: "Votre solde est insuffisant" });
-        }
+        return depenseCree;
       });
 
       res.status(201).json(newDepense);
     } catch (error) {
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      if (error.message === "COMPTE_NOT_FOUND") return res.status(404).json({ error: { message: "Compte introuvable." } });
+      if (error.message === "INSUFFICIENT_FUNDS") return res.status(403).json({ error: { message: "Solde insuffisant pour cette dépense." } });
+      res.status(500).json({ error: { code: error.code, message: error.message } });
     }
   },
 ];
+
+export const updateDepense = [
+  param("id").isInt().withMessage("L'ID de la dépense doit être un entier"),
+  body("nature").isInt().notEmpty().withMessage("La nature est obligatoire"),
+  body("observation").optional({ checkFalsy: true }).isString().trim(),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { id } = req.params;
+    const { nature, observation } = req.body;
+
+    try {
+      // on ne touche pas au solde des comptes !
+      const oldDep = await prisma.depense.findUnique({ where: { id_op_dep: parseInt(id) } });
+      
+      if (!oldDep) return res.status(404).json({ error: { message: "Dépense introuvable." } });
+      if (oldDep.isAnnule) return res.status(403).json({ error: { message: "Impossible de modifier une dépense annulée." } });
+
+      // Mise à jour uniquement des champs textuels/catégoriques
+      await prisma.depense.update({
+        where: { id_op_dep: parseInt(id) },
+        data: {
+          nat_dep_id: parseInt(nature),
+          observation: observation || null
+        }
+      });
+
+      res.status(200).json({ message: "Dépense mise à jour avec succès (Reclassement)." });
+    } catch (error) {
+      res.status(500).json({ error: { code: error.code, message: error.message } });
+    }
+  }
+];
+
+// update complet l'enregistrement
+// export const updateDepense = [
+//   param("id").isInt().withMessage("L'ID de la dépense doit être un entier"),
+//   body("montant").isDecimal().notEmpty(),
+//   body("cpt").isInt().notEmpty(),
+//   body("nature").isInt().notEmpty(),
+//   body("dateDepense").notEmpty(),
+//   body("observation").optional({ checkFalsy: true }).isString().trim(),
+
+//   async (req, res) => {
+//     const errors = validationResult(req);
+//     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+//     const { id } = req.params;
+//     const { montant, cpt, nature, dateDepense, observation } = req.body;
+    
+//     const newMontant = parseFloat(montant);
+//     const newCptId = parseInt(cpt);
+
+//     try {
+//       await prisma.$transaction(async (tx) => {
+//         const oldDep = await tx.depense.findUnique({ where: { id_op_dep: parseInt(id) } });
+        
+//         if (!oldDep) throw new Error("NOT_FOUND");
+//         if (oldDep.isAnnule) throw new Error("IS_ANNULE");
+
+//         const infoNouveauCompte = await tx.compte.findUnique({ 
+//           where: { id_cpt: newCptId }, 
+//           select: { solde_actuel: true, taux_change_actuel: true } 
+//         });
+        
+//         if (!infoNouveauCompte) throw new Error("COMPTE_NOT_FOUND");
+
+//         // Calcul du nouveau montant en DZD selon le taux de change du compte ciblé
+//         const mnt_dep_dzd = newMontant * parseFloat(infoNouveauCompte.taux_change_actuel);
+
+//         // 1. Logique d'ajustement des comptes
+//         if (oldDep.cpt_id !== newCptId) {
+//           // Si le compte a changé : on restitue à l'ancien, on prélève sur le nouveau
+//           await tx.compte.update({ where: { id_cpt: oldDep.cpt_id }, data: { solde_actuel: { increment: oldDep.mnt_dep } } });
+//           if (parseFloat(infoNouveauCompte.solde_actuel) < newMontant) throw new Error("INSUFFICIENT_FUNDS");
+//           await tx.compte.update({ where: { id_cpt: newCptId }, data: { solde_actuel: { decrement: newMontant } } });
+//         } else {
+//           // Si c'est le même compte, on gère la différence
+//           const diff = newMontant - parseFloat(oldDep.mnt_dep);
+//           if (diff > 0) {
+//             if (parseFloat(infoNouveauCompte.solde_actuel) < diff) throw new Error("INSUFFICIENT_FUNDS");
+//             await tx.compte.update({ where: { id_cpt: oldDep.cpt_id }, data: { solde_actuel: { decrement: diff } } });
+//           } else if (diff < 0) {
+//             await tx.compte.update({ where: { id_cpt: oldDep.cpt_id }, data: { solde_actuel: { increment: Math.abs(diff) } } });
+//           }
+//         }
+
+//         // 2. Mise à jour de la dépense
+//         await tx.depense.update({
+//           where: { id_op_dep: parseInt(id) },
+//           data: {
+//             date_dep: new Date(dateDepense),
+//             mnt_dep: newMontant,
+//             mnt_dep_dzd: mnt_dep_dzd,
+//             cpt_id: newCptId,
+//             nat_dep_id: parseInt(nature),
+//             observation: observation || null
+//           }
+//         });
+//       });
+
+//       res.status(200).json({ message: "Dépense mise à jour avec succès." });
+//     } catch (error) {
+//       if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Dépense introuvable." } });
+//       if (error.message === "IS_ANNULE") return res.status(403).json({ error: { message: "Impossible de modifier une dépense annulée." } });
+//       if (error.message === "COMPTE_NOT_FOUND") return res.status(404).json({ error: { message: "Nouveau compte introuvable." } });
+//       if (error.message === "INSUFFICIENT_FUNDS") return res.status(403).json({ error: { message: "Fonds insuffisants." } });
+//       res.status(500).json({ error: { code: error.code, message: error.message } });
+//     }
+//   }
+// ];
+
+export const deleteDepense = [
+  param("id").isInt().withMessage("L'ID doit être un entier"),
+  
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const depense = await tx.depense.findUnique({ where: { id_op_dep: parseInt(id) } });
+        
+        if (!depense) throw new Error("NOT_FOUND");
+        if (depense.isAnnule) throw new Error("ALREADY_ANNULE");
+
+        // 1. Restituer l'argent au compte
+        await tx.compte.update({
+          where: { id_cpt: depense.cpt_id },
+          data: { solde_actuel: { increment: depense.mnt_dep } }
+        });
+
+        // 2. Annuler (Soft Delete) la dépense
+        await tx.depense.update({
+          where: { id_op_dep: parseInt(id) },
+          data: { isAnnule: true }
+        });
+      });
+
+      res.status(200).json({ message: "Dépense annulée avec succès. L'argent a été restitué." });
+    } catch (error) {
+      if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Dépense introuvable." } });
+      if (error.message === "ALREADY_ANNULE") return res.status(403).json({ error: { message: "Cette dépense est déjà annulée." } });
+      res.status(500).json({ error: { code: error.code, message: error.message } });
+    }
+  }
+];
+
+
+// ==========================================
+// STATISTIQUES ET FILTRES (Lecture seule)
+// ==========================================
 
 export const getGlobalStats = async (req, res) => {
   try {
@@ -146,53 +278,51 @@ export const getGlobalStats = async (req, res) => {
         prisma.depense.aggregate({
           _sum: { mnt_dep_dzd: true },
           where: {
+            isAnnule: false, // <-- Exclusion des annulations
             nature_dep: { designation_nat_dep: { not: "COFFRE FORT" } },
           },
         }),
         prisma.depense.aggregate({
           _sum: { mnt_dep_dzd: true },
-          where: { nature_dep: { designation_nat_dep: "COFFRE FORT" } },
+          where: { 
+            isAnnule: false, // <-- Exclusion des annulations
+            nature_dep: { designation_nat_dep: "COFFRE FORT" } 
+          },
         }),
         prisma.colis.count({
           where: { droits_timbre: true },
         }),
-        // Requête pour le graphique global
         prisma.depense.groupBy({
           by: ['nat_dep_id'],
           _sum: { mnt_dep_dzd: true },
+          where: { isAnnule: false } // <-- Exclusion des annulations
         }),
-        // Récupération des noms des natures pour le mapping
         prisma.nature_dep.findMany()
       ]);
 
     const totalDroitsTimbreColis = droitsTimbreColisCount * 130;
 
-    // Création du dictionnaire pour associer l'ID à sa désignation
     const natureMap = {};
     naturesList.forEach(n => {
       natureMap[n.id_nat_dep] = n.designation_nat_dep;
     });
 
-    // Formatage des données du graphique
     let globalChartData = globalDepensesRaw
-      .filter(g => natureMap[g.nat_dep_id] !== "COFFRE FORT") // Exclusion stricte du coffre fort
+      .filter(g => natureMap[g.nat_dep_id] !== "COFFRE FORT")
       .map(g => ({
         name: natureMap[g.nat_dep_id] || "Autre",
         value: parseFloat(g._sum.mnt_dep_dzd) || 0
       }))
-      .filter(item => item.value > 0); // Exclusion des montants à zéro
+      .filter(item => item.value > 0);
 
     res.status(200).json({
       totalDepenses: totalDepensesResult._sum.mnt_dep_dzd || 0,
       totalDroitsTimbreColis: totalDroitsTimbreColis,
       totalEpargne: totalEpargneResult._sum.mnt_dep_dzd || 0,
-      globalChartData: globalChartData // Nouvelle donnée renvoyée au frontend
+      globalChartData: globalChartData
     });
   } catch (error) {
-    console.error("Erreur dans getGlobalStats:", error);
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
+    res.status(500).json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -222,13 +352,18 @@ export const getDepensesFiltrees = async (req, res) => {
   try {
     const natureId = nature ? parseInt(nature, 10) : null;
     const noNatureFilter = !natureId;
-    const natureIsColisTimbre = natureId === 99; // ID 99 pour les droits de timbre des colis
+    const natureIsColisTimbre = natureId === 99;
 
     let depensesFromDbPromise = Promise.resolve([]);
     let droitsTimbreFromColisPromise = Promise.resolve([]);
 
     if (noNatureFilter || !natureIsColisTimbre) {
-      const whereDepense = { date_dep: dateWhereClause };
+      // Filtrage STRICT des dépenses non annulées
+      const whereDepense = { 
+        date_dep: dateWhereClause,
+        isAnnule: false // <-- Exclusion des annulations
+      };
+      
       if (natureId) {
         whereDepense.nat_dep_id = natureId;
       }
@@ -239,6 +374,8 @@ export const getDepensesFiltrees = async (req, res) => {
           id_op_dep: true,
           date_dep: true,
           mnt_dep_dzd: true,
+          observation: true, // <-- Ajout pour l'affichage
+          isAnnule: true,
           nature_dep: { select: { designation_nat_dep: true } },
         },
       });
@@ -263,15 +400,13 @@ export const getDepensesFiltrees = async (req, res) => {
       nature: d.nature_dep?.designation_nat_dep || "N/A",
       date: d.date_dep,
       montant: d.mnt_dep_dzd,
+      observation: d.observation, // <-- Transmission au front
+      isAnnule: d.isAnnule
     }));
 
-    // 1. REGROUPEMENT MENSUEL DES TIMBRES POUR LE TABLEAU
-    // (droitsTimbreResult ne contient déjà que les colis avec droits_timbre = true)
     const timbresParMois = droitsTimbreResult.reduce((acc, c) => {
       const moisCle = dayjs(c.date_stock).format('YYYY-MM');
-      if (!acc[moisCle]) {
-        acc[moisCle] = 0;
-      }
+      if (!acc[moisCle]) acc[moisCle] = 0;
       acc[moisCle] += 130;
       return acc;
     }, {});
@@ -283,10 +418,11 @@ export const getDepensesFiltrees = async (req, res) => {
         nature: "DROITS DE TIMBRE (MENSUEL)",
         date: dernierJour,
         montant: timbresParMois[moisCle],
+        observation: `Regroupement automatique du mois`,
+        isAnnule: false
       };
     });
 
-    // 2. FUSION ET PAGINATION POUR LE TABLEAU
     let allDepenses = [...formattedDepenses, ...formattedDroitsTimbre];
     allDepenses.sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -298,9 +434,6 @@ export const getDepensesFiltrees = async (req, res) => {
       total: total,
     });
   } catch (error) {
-    console.error("ERREUR DÉTAILLÉE dans getDepensesFiltrees:", error);
-    res
-      .status(500)
-      .json({ message: "Erreur interne du serveur.", details: error.message });
+    res.status(500).json({ message: "Erreur interne du serveur.", details: error.message });
   }
 };
