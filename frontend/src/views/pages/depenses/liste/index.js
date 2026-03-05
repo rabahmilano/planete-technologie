@@ -13,7 +13,7 @@ import ExpensesTable from './ExpensesTable'
 dayjs.locale('fr')
 
 const ListeDepensesView = () => {
-  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats } = useDepense()
+  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats, setGlobalStats } = useDepense()
   const { globalChartData } = globalStats;
 
   const [natureFiltre, setNatureFiltre] = useState('')
@@ -86,6 +86,17 @@ const ListeDepensesView = () => {
     setPage(0)
   }
 
+  // Fonction pour rafraîchir les données après une modification ou annulation
+  const handleRefreshData = async () => {
+    // 1. Rafraîchit le tableau principal
+    await fetchData(page, rowsPerPage, { nature: natureFiltre, periode: periodeFiltre })
+    
+    // 2. Force le recalcul des KPIs en haut de la page (Coffre-fort, Total, etc.)
+    if (fetchGlobalStats) {
+      await setGlobalStats() 
+    }
+  }
+
   if (loading && depenses.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -113,13 +124,13 @@ const ListeDepensesView = () => {
         />
       </Grid>
       {/* COLONNE DE GAUCHE : LES GRAPHES */}
-      <Grid item xs={12} md={5} sx={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <Grid item xs={12} md={4} sx={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {/* 1er GRAPHE : LA PÉRIODE */}
         <ExpensesChart title='Répartition des Dépenses (Période)' data={chartData} />
         {/* 2ème GRAPHE : LE GLOBAL */}
         <ExpensesChart title='Répartition des Dépenses (Global)' data={globalChartData} />
       </Grid>
-      <Grid item xs={12} lg={7}>
+      <Grid item xs={12} lg={8}>
         <ExpensesTable
           loading={loading}
           depenses={depenses}
@@ -128,6 +139,8 @@ const ListeDepensesView = () => {
           setPage={setPage}
           rowsPerPage={rowsPerPage}
           setRowsPerPage={setRowsPerPage}
+          refreshData={handleRefreshData}
+          listNature={listNature}
         />
       </Grid>
     </Grid>

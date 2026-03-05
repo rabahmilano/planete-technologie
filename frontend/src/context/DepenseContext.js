@@ -59,7 +59,7 @@ export const DepenseProvider = ({ children }) => {
     fetchGlobalStats()
   }, [fetchListNature, fetchGlobalStats])
 
-  const value = { listNature, depenses, totalDepenses, loading, fetchData, globalStats }
+  const value = { listNature, depenses, totalDepenses, loading, fetchData, globalStats, setGlobalStats }
 
   return <DepenseContext.Provider value={value}>{children}</DepenseContext.Provider>
 }

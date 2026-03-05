@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import {
   Paper,
   TableContainer,
@@ -8,64 +9,203 @@ import {
   TableRow,
   Typography,
   TablePagination,
-  LinearProgress
+  LinearProgress,
+  IconButton,
+  Box
 } from '@mui/material'
 import dayjs from 'dayjs'
+import Icon from 'src/@core/components/icon'
+import axios from 'axios'
+import toast from 'react-hot-toast'
 
-const ExpensesTable = ({ loading, depenses, total, page, setPage, rowsPerPage, setRowsPerPage }) => {
+// Import des modales
+import EditDepenseModal from './EditDepenseModal'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+
+const ExpensesTable = ({ loading, depenses, total, page, setPage, rowsPerPage, setRowsPerPage, refreshData,listNature }) => {
+  // États pour les modales
+  const [openEditModal, setOpenEditModal] = useState(false)
+  const [depenseToEdit, setDepenseToEdit] = useState(null)
+
+  const [openDeleteModal, setOpenDeleteModal] = useState(false)
+  const [depenseToDelete, setDepenseToDelete] = useState(null)
+
+  // Récupération de la liste des natures pour le formulaire de modification
+  useEffect(() => {
+    const fetchNatures = async () => {
+      try {
+        // Assure-toi que la route backend correspond bien à ton depenseRouter.js
+        const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/allNatDep`)
+        setNaturesList(response.data)
+      } catch (error) {
+        console.error('Erreur lors de la récupération des natures', error)
+      }
+    }
+    fetchNatures()
+  }, [])
+
+  // Pagination
   const handleChangePage = (event, newPage) => setPage(newPage)
   const handleChangeRowsPerPage = event => {
     setRowsPerPage(parseInt(event.target.value, 10))
     setPage(0)
   }
 
+  // Actions
+  const handleEditClick = (depense) => {
+    setDepenseToEdit(depense)
+    setOpenEditModal(true)
+  }
+
+  const handleDeleteClick = (depense) => {
+    setDepenseToDelete(depense)
+    setOpenDeleteModal(true)
+  }
+
+  const executeDelete = async () => {
+    try {
+      // On retire le préfixe "d-" qu'on a mis dans le contrôleur pour récupérer l'ID réel
+      const id = depenseToDelete.id.replace('d-', '') 
+      
+      await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/${id}`)
+      toast.success("Dépense annulée avec succès. L'argent a été restitué.")
+      
+      if (refreshData) refreshData()
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || "Erreur lors de l'annulation")
+    } finally {
+      setOpenDeleteModal(false)
+    }
+  }
+
   return (
-    <Paper sx={{ boxShadow: 5, borderRadius: 2, position: 'relative' }}>
-      {loading && <LinearProgress sx={{ position: 'absolute', top: 0, width: '100%' }} />}
-      <TableContainer>
-        <Table sx={{ minWidth: 650 }}>
-          <TableHead>
-            <TableRow sx={{ backgroundColor: '#0d1b2a' }}>
-              <TableCell sx={{ color: 'white' }}>Nature</TableCell>
-              <TableCell sx={{ color: 'white' }}>Date</TableCell>
-              <TableCell sx={{ color: 'white' }} align='right'>
-                Montant
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {depenses.length === 0 && !loading ? (
-              <TableRow>
-                <TableCell colSpan={3} align='center'>
-                  <Typography sx={{ p: 4 }}>Aucune dépense à afficher.</Typography>
-                </TableCell>
+    <>
+      <Paper sx={{ boxShadow: 5, borderRadius: 2, position: 'relative' }}>
+        {loading && <LinearProgress sx={{ position: 'absolute', top: 0, width: '100%' }} />}
+        <TableContainer>
+          <Table sx={{ minWidth: 650 }}>
+            <TableHead>
+              <TableRow sx={{ backgroundColor: '#0d1b2a' }}>
+                <TableCell sx={{ color: 'white' }}>Nature</TableCell>
+                <TableCell sx={{ color: 'white' }}>Observation</TableCell>
+                <TableCell sx={{ color: 'white' }}>Date</TableCell>
+                <TableCell sx={{ color: 'white' }} align='right'>Montant</TableCell>
+                <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell>
               </TableRow>
-            ) : (
-              depenses.map(depense => (
-                <TableRow key={depense.id} hover>
-                  <TableCell>{depense.nature}</TableCell>
-                  <TableCell>{dayjs(depense.date).format('DD MMMM YYYY')}</TableCell>
-                  <TableCell align='right' sx={{ fontWeight: 'medium' }}>
-                    {parseFloat(depense.montant || 0).toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
+            </TableHead>
+            <TableBody>
+              {depenses.length === 0 && !loading ? (
+                <TableRow>
+                  <TableCell colSpan={5} align='center'>
+                    <Typography sx={{ p: 4 }}>Aucune dépense à afficher.</Typography>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <TablePagination
-        rowsPerPageOptions={[10, 25, 50, 75, 100]}
-        component='div'
-        count={total}
-        rowsPerPage={rowsPerPage}
-        page={page}
-        onPageChange={handleChangePage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-        labelRowsPerPage='Lignes par page :'
-        labelDisplayedRows={({ from, to, count }) => `${from}-${to} sur ${count}`}
+              ) : (
+                depenses.map(depense => {
+                  // On vérifie si c'est une ligne de Timbres générée automatiquement
+                  const isAutoGenerated = depense.id.startsWith('timbre')
+
+                  return (
+                    <TableRow 
+                      key={depense.id} 
+                      hover
+                      sx={{
+                        opacity: depense.isAnnule ? 0.5 : 1,
+                        backgroundColor: depense.isAnnule ? 'rgba(0,0,0,0.03)' : 'inherit',
+                        '& td': {
+                          textDecoration: depense.isAnnule ? 'line-through' : 'none',
+                          color: depense.isAnnule ? 'text.disabled' : 'inherit'
+                        }
+                      }}
+                    >
+                      <TableCell sx={{ fontWeight: 'medium' }}>{depense.nature}</TableCell>
+                      
+                      <TableCell>
+                        {depense.observation ? (
+                          <Typography variant="body2" color={depense.isAnnule ? "text.disabled" : "textSecondary"}>
+                            {depense.observation}
+                          </Typography>
+                        ) : (
+                          <Typography variant="caption" color="textSecondary" sx={{ fontStyle: 'italic' }}>-</Typography>
+                        )}
+                      </TableCell>
+                      
+                      <TableCell>{dayjs(depense.date).format('DD MMMM YYYY')}</TableCell>
+                      
+                      <TableCell align='right' sx={{ fontWeight: 'bold' }}>
+                        {parseFloat(depense.montant || 0).toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
+                      </TableCell>
+
+                      <TableCell align='center'>
+                        {depense.isAnnule ? (
+                           <Typography variant="caption" fontWeight="bold" color="error">
+                             ANNULÉE
+                           </Typography>
+                        ) : !isAutoGenerated ? (
+                          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                            <IconButton size="small" color="primary" sx={{ mr: 2 }} onClick={() => handleEditClick(depense)} title="Reclasser/Modifier">
+                              <Icon icon="tabler:edit" fontSize="1.25rem" />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeleteClick(depense)} title="Annuler la dépense">
+                              <Icon icon="tabler:trash" fontSize="1.25rem" />
+                            </IconButton>
+                          </Box>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          rowsPerPageOptions={[10, 25, 50, 75, 100]}
+          component='div'
+          count={total}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          labelRowsPerPage='Lignes par page :'
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} sur ${count}`}
+        />
+      </Paper>
+
+      {/* MODALES */}
+      <EditDepenseModal 
+        open={openEditModal}
+        handleClose={() => setOpenEditModal(false)}
+        depense={depenseToEdit}
+        naturesList={listNature}
+        refreshData={refreshData}
       />
-    </Paper>
+
+      <ConfirmDialog 
+        open={openDeleteModal}
+        handleClose={() => setOpenDeleteModal(false)}
+        handleConfirm={executeDelete}
+        actionType="delete"
+        title="Annuler cette dépense ?"
+        confirmText="Oui, restituer l'argent"
+        content={
+          <>
+            <Typography variant='body1' sx={{ mb: 4 }}>
+              Êtes-vous sûr de vouloir annuler cette dépense ? Cette action supprimera la transaction de vos statistiques et restituera l'argent sur le compte source.
+            </Typography>
+            {depenseToDelete && (
+              <Box sx={{ p: 4, backgroundColor: 'rgba(234, 84, 85, 0.08)', border: '1px dashed red', borderRadius: 1 }}>
+                <Typography variant='body2'><strong>Nature :</strong> {depenseToDelete.nature}</Typography>
+                <Typography variant='body2'><strong>Date :</strong> {dayjs(depenseToDelete.date).format('DD/MM/YYYY')}</Typography>
+                <Typography variant='h6' sx={{ mt: 2, fontWeight: 'bold', color: 'error.main' }}>
+                  Montant à restituer : {parseFloat(depenseToDelete.montant).toLocaleString('fr-DZ')} DZD
+                </Typography>
+              </Box>
+            )}
+          </>
+        }
+      />
+    </>
   )
 }
 
