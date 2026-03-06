@@ -327,7 +327,7 @@ export const getGlobalStats = async (req, res) => {
 };
 
 export const getDepensesFiltrees = async (req, res) => {
-  const { page = 1, limit = 10, nature, periode } = req.query;
+  const { page = 1, limit = 10, nature, periode, excludeTimbres } = req.query;
 
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
@@ -358,12 +358,7 @@ export const getDepensesFiltrees = async (req, res) => {
     let droitsTimbreFromColisPromise = Promise.resolve([]);
 
     if (noNatureFilter || !natureIsColisTimbre) {
-      // Filtrage STRICT des dépenses non annulées
-      const whereDepense = { 
-        date_dep: dateWhereClause,
-        //isAnnule: false // <-- Exclusion des annulations
-      };
-      
+      const whereDepense = { date_dep: dateWhereClause };
       if (natureId) {
         whereDepense.nat_dep_id = natureId;
       }
@@ -373,15 +368,18 @@ export const getDepensesFiltrees = async (req, res) => {
         select: {
           id_op_dep: true,
           date_dep: true,
+          mnt_dep: true,
           mnt_dep_dzd: true,
-          observation: true, // <-- Ajout pour l'affichage
+          observation: true,
           isAnnule: true,
           nature_dep: { select: { designation_nat_dep: true } },
+          compte: { select: { designation_cpt: true, dev_code: true } } 
         },
       });
     }
 
-    if (noNatureFilter || natureIsColisTimbre) {
+    // AJOUT : On génère les timbres UNIQUEMENT si on ne les a pas exclus
+    if ((noNatureFilter || natureIsColisTimbre) && excludeTimbres !== 'true') {
       droitsTimbreFromColisPromise = prisma.colis.findMany({
         where: {
           droits_timbre: true,
@@ -400,7 +398,10 @@ export const getDepensesFiltrees = async (req, res) => {
       nature: d.nature_dep?.designation_nat_dep || "N/A",
       date: d.date_dep,
       montant: d.mnt_dep_dzd,
-      observation: d.observation, // <-- Transmission au front
+      montantDevise: d.mnt_dep, 
+      compte: d.compte?.designation_cpt || "N/A",
+      devise: d.compte?.dev_code || "DZD",
+      observation: d.observation, 
       isAnnule: d.isAnnule
     }));
 
