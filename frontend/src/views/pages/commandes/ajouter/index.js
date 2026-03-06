@@ -1,64 +1,22 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Grid,
-  CardContent,
-  IconButton
-} from '@mui/material'
-
-import CustomAutocomplete from 'src/@core/components/mui/autocomplete'
-import CustomTextField from 'src/@core/components/mui/text-field'
+import { Grid, Box, Typography } from '@mui/material'
 import toast from 'react-hot-toast'
-import { useForm, Controller } from 'react-hook-form'
-import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-import Icon from 'src/@core/components/icon'
 import dayjs from 'dayjs'
 import 'dayjs/locale/fr'
 
-import utc from 'dayjs/plugin/utc'
-dayjs.extend(utc)
+import AjoutRapide from './AjoutRapide'
+import PanierTable from './PanierTable'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+
 dayjs.locale('fr')
 
-const defaultValues = {
-  designationProduit: '',
-  cat: '',
-  mntTotDev: '',
-  cpt: '',
-  qte: '',
-  dateVente: dayjs().utc(true).startOf('day')
-  // dateVente: dayjs('2024-10-01').utc(true).startOf('day')
-}
-
 const PasserCommande = () => {
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-    getValues
-  } = useForm({ defaultValues })
-
-  const [selectedProduct, setSelectedProduct] = useState(null)
-  const [quantity, setQuantity] = useState('')
-  const [unitPrice, setUnitPrice] = useState('')
-  const [products, setProducts] = useState([])
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [totalAmount, setTotalAmount] = useState(0)
-  const [options, setOptions] = useState([])
-
+  const [dateVente, setDateVente] = useState(dayjs())
+  const [options, setOptions] = useState([]) 
+  const [cart, setCart] = useState([]) 
   const [handleGetProducts, setHandleGetProducts] = useState(true)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -67,86 +25,110 @@ const PasserCommande = () => {
         const productsFromAPI = response.data.map(product => ({
           id: product.id_prd,
           designation: product.designation_prd,
-          quantityAvailable: product.qte_dispo,
-          unitPrice: 0 // Si l'API ne fournit pas le prix unitaire, vous devrez gérer cela différemment
+          quantityAvailable: product.qte_dispo
         }))
         setOptions(productsFromAPI)
       } catch (error) {
         toast.error('Erreur lors de la récupération des produits.')
       }
     }
-
     fetchProducts()
   }, [handleGetProducts])
 
-  const handleDialogOpen = () => {
-    setDialogOpen(true)
-  }
+  const totalAmount = cart.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0)
+  const totalUnites = cart.reduce((acc, item) => acc + parseInt(item.quantity || 0), 0)
 
-  const handleDialogClose = () => {
-    setDialogOpen(false)
-    setSelectedProduct(null)
-    setQuantity('')
-    setUnitPrice('')
-  }
+  // =====================================================================
+  // AJOUT AU PANIER AVEC CALCUL DU PRIX UNITAIRE MOYEN PONDÉRÉ (PUMP)
+  // =====================================================================
+  const handleAddToCart = (product, qte, prix) => {
+    const existingItemIndex = cart.findIndex(item => item.id === product.id)
+    const newCart = [...cart]
 
-  const handleProductChange = (event, newValue) => {
-    setSelectedProduct(newValue)
-  }
+    if (existingItemIndex >= 0) {
+      const existingItem = newCart[existingItemIndex]
 
-  const handleQuantityChange = event => {
-    setQuantity(event.target.value)
-  }
+      // Si le prix est différent de celui déjà dans le panier
+      if (existingItem.unitPrice !== prix) {
+        // 1. On calcule la valeur totale ancienne et la nouvelle
+        const valeurAncienne = existingItem.quantity * existingItem.unitPrice
+        const valeurNouvelle = qte * prix
+        
+        // 2. On calcule la nouvelle quantité totale
+        const nouvelleQteTotale = existingItem.quantity + qte
+        
+        // 3. On calcule le PUMP (Prix moyen lissé)
+        const pump = (valeurAncienne + valeurNouvelle) / nouvelleQteTotale
 
-  const handleAddProduct = () => {
-    if (selectedProduct && quantity > 0 && quantity <= selectedProduct.quantityAvailable) {
-      const existingProductIndex = products.findIndex(p => p.id === selectedProduct.id)
-      let newProducts = [...products]
-      let newTotalAmount = totalAmount
+        // 4. On met à jour la ligne
+        existingItem.quantity = nouvelleQteTotale
+        existingItem.unitPrice = parseFloat(pump.toFixed(2)) // Arrondi propre
 
-      if (existingProductIndex >= 0) {
-        newProducts[existingProductIndex].quantity += parseInt(quantity)
-        newProducts[existingProductIndex].totalPrice =
-          newProducts[existingProductIndex].quantity * parseFloat(unitPrice)
+        // 5. On avertit l'utilisateur visuellement
+        toast('Fusion avec un prix différent ! Le prix a été lissé (Moyenne pondérée).', {
+          icon: '⚠️',
+          style: {
+            borderRadius: '10px',
+            background: '#fff3cd',
+            color: '#856404',
+            border: '1px solid #ffeeba'
+          },
+          duration: 5000
+        });
       } else {
-        newProducts.push({
-          id: selectedProduct.id,
-          designation: selectedProduct.designation,
-          unitPrice: parseFloat(unitPrice),
-          quantity: parseInt(quantity),
-          totalPrice: parseFloat(unitPrice) * parseInt(quantity)
-        })
+        // Si le prix est le même, on additionne juste
+        existingItem.quantity += qte
+        toast.success("Quantité ajoutée avec succès.")
       }
-
-      newTotalAmount += parseFloat(unitPrice) * parseInt(quantity)
-
-      setProducts(newProducts)
-      setTotalAmount(newTotalAmount)
-
-      const updatedOptions = options.map(product => {
-        if (product.id === selectedProduct.id) {
-          return { ...product, quantityAvailable: product.quantityAvailable - parseInt(quantity) }
-        }
-        return product
-      })
-
-      setOptions(updatedOptions)
-
-      handleDialogClose()
     } else {
-      toast.error('La quantité doit être supérieure à 0 et ne pas dépasser la quantité disponible.')
+      // S'il n'existe pas, on l'ajoute normalement
+      newCart.push({
+        id: product.id,
+        designation: product.designation,
+        quantity: qte,
+        unitPrice: prix,
+        maxStock: product.quantityAvailable
+      })
     }
+    setCart(newCart)
+  }
+
+  // MISE À JOUR INLINE (On utilise à nouveau item.id)
+  const handleUpdateCartItem = (id, field, value) => {
+    const newCart = cart.map(item => {
+      if (item.id === id) {
+        let newValue = parseFloat(value)
+        if (isNaN(newValue) || newValue < 0) newValue = 0 
+        
+        if (field === 'quantity' && newValue > item.maxStock) {
+          toast.error(`La quantité maximale pour ce produit est de ${item.maxStock}`)
+          newValue = item.maxStock
+        }
+        return { ...item, [field]: newValue }
+      }
+      return item
+    })
+    setCart(newCart)
+  }
+
+  const handleRemoveFromCart = (id) => setCart(cart.filter(item => item.id !== id))
+
+  const handleOpenConfirm = () => {
+    if (cart.length === 0) return toast.error("Le panier est vide.")
+    const hasError = cart.some(item => item.quantity <= 0 || item.unitPrice <= 0)
+    if (hasError) return toast.error("Veuillez vérifier les quantités et les prix (doivent être > 0).")
+    
+    setConfirmOpen(true)
   }
 
   const handleSubmitOrder = async () => {
-    // Préparer les données à envoyer
     const orderData = {
-      dateVente: dayjs(getValues('dateVente')).toISOString(),
-      produits: products.map(product => ({
-        id_prd: product.id,
-        quantity: product.quantity,
-        unitPrice: product.unitPrice,
-        totalPrice: product.totalPrice
+      dateVente: dayjs(dateVente).format('YYYY-MM-DDT12:00:00.000Z'),
+      produits: cart.map(item => ({
+        id_prd: item.id,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.quantity * item.unitPrice
       })),
       totalAmount: totalAmount
     }
@@ -154,173 +136,58 @@ const PasserCommande = () => {
     try {
       const response = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}commandes/createCommande`, orderData)
       if (response.status === 200) {
-        const { message } = response.data
-        toast.success(message)
-        // Réinitialiser l'état après le succès de la commande
-        setProducts([])
-        setTotalAmount(0)
-        setHandleGetProducts(prevState => !prevState)
-      } else {
-        toast.error("Erreur lors de l'ajout de la commande.")
+        toast.success(response.data.message)
+        setCart([])
+        setDateVente(dayjs())
+        setConfirmOpen(false) 
+        setHandleGetProducts(prev => !prev) 
       }
     } catch (error) {
-      console.error("Erreur lors de l'envoi de la commande:", error)
-      toast.error("Erreur lors de l'envoi de la commande.")
+      toast.error(error.response?.data?.message || "Erreur lors de l'envoi de la commande.")
+      setConfirmOpen(false)
     }
   }
 
   return (
-    <CardContent>
-      <Grid container spacing={5}>
-        <Grid item xs={12} sm={3}>
-          <IconButton
-            size='large'
-            onClick={handleDialogOpen}
-            color='info'
-            sx={{
-              animation: 'pulse 2s infinite',
-              '@keyframes pulse': {
-                '0%': {
-                  transform: 'scale(1.5)'
-                },
-                '50%': {
-                  transform: 'scale(1.1)'
-                },
-                '100%': {
-                  transform: 'scale(1.5)'
-                }
-              }
-            }}
-          >
-            <Icon icon='tabler:shopping-cart-plus' />
-          </IconButton>
-        </Grid>
-
-        <Grid item xs={12} sm={9}>
-          <Controller
-            name='dateVente'
-            control={control}
-            rules={{ required: 'Ce champ est obligatoire' }}
-            render={({ field, fieldState: { error } }) => (
-              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
-                <DatePicker
-                  {...field}
-                  maxDate={dayjs()}
-                  label='Date de vente'
-                  slotProps={{
-                    textField: {
-                      variant: 'outlined',
-                      error: !!error,
-                      helperText: error && 'Ce champ est obligatoire'
-                    }
-                  }}
-                />
-              </LocalizationProvider>
-            )}
+    <Box sx={{ py: 4 }}>
+      <Grid container spacing={6}>
+        <Grid item xs={12} md={4}>
+          <AjoutRapide 
+            options={options} 
+            cart={cart}
+            dateVente={dateVente}
+            setDateVente={setDateVente}
+            onAddToCart={handleAddToCart}
           />
         </Grid>
 
-        <Grid item xs={12} sx={{ mt: 5 }}>
-          <TableContainer component={Paper}>
-            <Table sx={{ minWidth: 900 }}>
-              <TableHead>
-                <TableRow sx={{ backgroundColor: '#0d1b2a' }}>
-                  <TableCell align='center' colSpan={3} sx={{ color: 'white' }}>
-                    Désignation
-                  </TableCell>
-                  <TableCell align='center' sx={{ color: 'white' }}>
-                    Prix Unitaire
-                  </TableCell>
-                  <TableCell align='center' sx={{ color: 'white' }}>
-                    Quantité
-                  </TableCell>
-                  <TableCell align='right' sx={{ color: 'white' }}>
-                    Total
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {products.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6}>Aucun produit n'est selectionné</TableCell>
-                  </TableRow>
-                ) : (
-                  products.map((product, index) => (
-                    <TableRow key={product.id}>
-                      <TableCell colSpan={3}>{product.designation}</TableCell>
-                      <TableCell align='right'>{product.unitPrice} DA</TableCell>
-                      <TableCell align='right'>{product.quantity}</TableCell>
-                      <TableCell align='right'>{product.totalPrice} DA</TableCell>
-                    </TableRow>
-                  ))
-                )}
-
-                <TableRow>
-                  <TableCell colSpan={3} />
-                  <TableCell colSpan={2} align='right'>
-                    Montant Total:{' '}
-                  </TableCell>
-                  <TableCell align='right'>{totalAmount} DA</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
+        <Grid item xs={12} md={8}>
+          <PanierTable 
+            cart={cart}
+            totalAmount={totalAmount}
+            totalUnites={totalUnites}
+            onUpdateCartItem={handleUpdateCartItem}
+            onRemoveFromCart={handleRemoveFromCart}
+            onValidateClick={handleOpenConfirm} 
+          />
         </Grid>
-
-        <Grid item xs={12}>
-          <Button type='button' variant='contained' onClick={handleSubmitOrder}>
-            Ajouter
-          </Button>
-        </Grid>
-
-        <Dialog open={dialogOpen} onClose={handleDialogClose}>
-          <DialogTitle>Ajouter un produit</DialogTitle>
-          <DialogContent>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <CustomAutocomplete
-                  fullWidth
-                  options={options}
-                  getOptionLabel={option => option.designation}
-                  onChange={handleProductChange}
-                  renderInput={params => <CustomTextField {...params} label='Produit' />}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label='Prix Unitaire'
-                  value={unitPrice}
-                  onChange={event => setUnitPrice(event.target.value)}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <CustomTextField
-                  fullWidth
-                  type='number'
-                  label='Quantité'
-                  value={quantity}
-                  onChange={handleQuantityChange}
-                  error={quantity > selectedProduct?.quantityAvailable}
-                  helperText={
-                    quantity > selectedProduct?.quantityAvailable && 'Quantité supérieure à la quantité disponible'
-                  }
-                />
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleAddProduct} color='primary'>
-              Ajouter
-            </Button>
-            <Button onClick={handleDialogClose} color='secondary'>
-              Annuler
-            </Button>
-          </DialogActions>
-        </Dialog>
       </Grid>
-    </CardContent>
+
+      <ConfirmDialog 
+        open={confirmOpen}
+        handleClose={() => setConfirmOpen(false)}
+        handleConfirm={handleSubmitOrder}
+        actionType="success"
+        title="Valider la commande ?"
+        confirmText="Oui, encaisser"
+        content={
+          <Typography variant='body1'>
+            Êtes-vous sûr de vouloir valider cette commande de <strong>{totalUnites} article(s)</strong> pour un montant total de 
+            <strong style={{ marginLeft: 5 }}>{totalAmount.toLocaleString('fr-DZ')} DZD</strong> ?
+          </Typography>
+        }
+      />
+    </Box>
   )
 }
 
