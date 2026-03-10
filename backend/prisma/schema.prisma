@@ -41,6 +41,30 @@ model colis {
   categorie categorie              @relation(fields: [cat_id], references: [id_cat])
   produit   produit                @relation(fields: [prd_id], references: [id_prd])
   compte    compte                 @relation(fields: [cpt_id], references: [id_cpt])
+
+  colis_classique      colis_classique?
+  colis_voyage         colis_voyage?
+}
+
+model colis_classique {
+  id_colis_class       Int       @id
+  date_achat           DateTime  @db.Date()
+  droits_timbre        Boolean?
+  frais_bancaires      Decimal?  @db.Decimal(10, 4) 
+
+  colis                colis     @relation(fields: [id_colis_class], references: [id_colis])
+}
+
+model colis_voyage {
+  id_colis_voy          Int      @id
+  transaction_id        Int
+  pu_devise_dest        Decimal  @db.Decimal(10, 2) // Prix d'achat unitaire en devise de destination (ex: CNY)
+  mnt_tot_dev_dest      Decimal  @db.Decimal(10, 2) // Montant total (ex: CNY)
+  pu_dev_ttc            Decimal  @db.Decimal(10, 4) // Prix unitaire final dans la devise de la carte (ex: EUR)
+  mnt_dev_ttc           Decimal  @db.Decimal(10, 4) // Montant total final dans la devise de la carte (ex: EUR)
+
+  colis                 colis              @relation(fields: [id_colis_voy], references: [id_colis])
+  transaction           transaction_voyage @relation(fields: [transaction_id], references: [id_transaction])
 }
 
 model produit {
@@ -90,6 +114,7 @@ model compte {
   dev_code           String  @db.Char(4)
   type_cpt           String  @db.VarChar(50)
   designation_cpt    String  @db.VarChar(50)
+  commission_pct     Decimal @default(0.00) @db.Decimal(5, 2)
   solde_actuel       Decimal @default(0.00) @db.Decimal(10, 2)
   taux_change_actuel Decimal @default(0.00) @db.Decimal(10, 2)
 
@@ -98,6 +123,8 @@ model compte {
   crediter       crediter[]
   emprunts       emprunt[]
   remboursements remboursement[]
+  voyages_defaut      voyage[]
+  transactions_voyage transaction_voyage[]
 
   devise         devise     @relation(fields: [dev_code], references: [code_dev])
 }
@@ -128,11 +155,13 @@ model depense {
   mnt_dep     Decimal  @db.Decimal(12, 4)
   mnt_dep_dzd Decimal  @db.Decimal(12, 4)
 
+  voyage_id   Int?
   observation String?  @db.VarChar(255)
   isAnnule    Boolean  @default(false)
 
   compte     compte     @relation(fields: [cpt_id], references: [id_cpt])
   nature_dep nature_dep @relation(fields: [nat_dep_id], references: [id_nat_dep])
+  voyage     voyage?    @relation(fields: [voyage_id], references: [id_voyage])
 }
 
 model nature_dep {
@@ -141,10 +170,6 @@ model nature_dep {
 
   depense depense[]
 }
-
-// ==========================================
-// GESTION DES EMPRUNTS ET REMBOURSEMENTS
-// ==========================================
 
 enum StatutEmprunt {
   EN_COURS
@@ -156,22 +181,65 @@ model emprunt {
   designation     String          @db.VarChar(255)
   montant_emprunt Decimal         @db.Decimal(10, 2)
   date_emprunt    DateTime        @db.Date()
+  cpt_id          Int       
   statut_emprunt  StatutEmprunt   @default(EN_COURS)
   
-  cpt_id          Int       
-  compte          compte          @relation(fields: [cpt_id], references: [id_cpt])
-  
   remboursements  remboursement[] 
+
+  compte          compte          @relation(fields: [cpt_id], references: [id_cpt])
 }
 
 model remboursement {
   id_remb       Int       @id
   montant_remb  Decimal   @db.Decimal(10, 2)
   date_remb     DateTime  @db.Date()
-  
   emprunt_id    Int
-  emprunt       emprunt   @relation(fields: [emprunt_id], references: [id_emprunt])
-
   cpt_remb      Int
+
+  emprunt       emprunt   @relation(fields: [emprunt_id], references: [id_emprunt])
   compte        compte    @relation(fields: [cpt_remb], references: [id_cpt])
+}
+
+model voyage {
+  id_voyage            Int                  @id
+  designation          String
+  destination          String?
+  date_depart          DateTime             @db.Date()
+  date_retour          DateTime             @db.Date()
+  statut               StatutVoyage         @default(EN_PREPARATION)
+
+  devise_destination   String               @default("CNY")
+  taux_change_devise   Decimal?             @db.Decimal(10, 2) // Rempli avant de passer EN_COURS
+  coefficient_approche Decimal?             @db.Decimal(10, 4) // Rempli à la clôture
+
+  // Le compte utilisé par défaut pour ce voyage (UX)
+  compte_defaut_id     Int?
+
+  transactions         transaction_voyage[]
+  depenses             depense[]
+
+  compte_defaut        compte?              @relation(fields: [compte_defaut_id], references: [id_cpt])
+}
+
+enum StatutVoyage {
+  EN_PREPARATION
+  EN_COURS
+  CLOTURE
+}
+
+model transaction_voyage {
+  id_transaction       Int            @id
+  voyage_id            Int
+  compte_id            Int            
+  fournisseur          String?
+  devise_transaction   String         @default("CNY") // Permet l'exception (ex: paiement USD)
+  taux_transaction     Decimal        @db.Decimal(10, 2) // Taux DZD figé pour cette facture
+  montant_total        Decimal        @db.Decimal(10, 4) // Total de contrôle de la facture
+  commission_banque    Decimal        @default(0) @db.Decimal(5, 2) // Pourcentage (ex: 2.00)
+  commission_paiement  Decimal        @default(0) @db.Decimal(10, 4) // Montant réel prélevé (ex: Alipay)
+
+  colis_voyage         colis_voyage[]
+
+  compte               compte         @relation(fields: [compte_id], references: [id_cpt])
+  voyage               voyage         @relation(fields: [voyage_id], references: [id_voyage])
 }
