@@ -27,7 +27,7 @@ model colis {
   prd_id        Int
   cpt_id        Int
   mnt_tot_dev   Decimal   @db.Decimal(10, 4)
-  date_achat    DateTime  @db.Date()
+  date_achat    DateTime? @db.Date()
   date_stock    DateTime? @db.Date()
   qte_achat     Int
   qte_stock     Int?
