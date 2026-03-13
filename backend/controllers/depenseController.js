@@ -60,18 +60,18 @@ export const getAllNatDep = async (req, res) => {
 // ==========================================
 
 export const addNewDepense = [
-  // Validation incluant le nouveau champ observation (optionnel)
   body("montant").isDecimal().notEmpty().withMessage("Le montant est obligatoire"),
   body("cpt").isInt().notEmpty().withMessage("Le compte est obligatoire"),
   body("nature").isInt().notEmpty().withMessage("La nature de la dépense est obligatoire"),
   body("dateDepense").notEmpty().withMessage("La date est obligatoire"),
   body("observation").optional({ checkFalsy: true }).isString().trim(),
+  body("voyage_id").optional({ checkFalsy: true }).isInt(), // ADAPTATION: Prêt pour le module voyage
 
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { montant, cpt, nature, dateDepense, observation } = req.body;
+    const { montant, cpt, nature, dateDepense, observation, voyage_id } = req.body;
 
     try {
       const newDepense = await prisma.$transaction(async (tx) => {
@@ -86,7 +86,6 @@ export const addNewDepense = [
         const newId = await getMaxValue("depense", "id_op_dep", null);
         const mnt_dep_dzd = parseFloat(montant) * parseFloat(infoCompte.taux_change_actuel);
 
-        // Création avec observation et statut par défaut
         const depenseCree = await tx.depense.create({
           data: {
             id_op_dep: newId,
@@ -96,11 +95,11 @@ export const addNewDepense = [
             cpt_id: parseInt(cpt),
             nat_dep_id: parseInt(nature),
             observation: observation || null,
+            voyage_id: voyage_id ? parseInt(voyage_id) : null, // Liaison au voyage si fourni
             isAnnule: false
           },
         });
 
-        // Décrémentation du compte
         await tx.compte.update({
           where: { id_cpt: parseInt(cpt) },
           data: { solde_actuel: { decrement: parseFloat(montant) } },
@@ -131,13 +130,11 @@ export const updateDepense = [
     const { nature, observation } = req.body;
 
     try {
-      // on ne touche pas au solde des comptes !
       const oldDep = await prisma.depense.findUnique({ where: { id_op_dep: parseInt(id) } });
       
       if (!oldDep) return res.status(404).json({ error: { message: "Dépense introuvable." } });
       if (oldDep.isAnnule) return res.status(403).json({ error: { message: "Impossible de modifier une dépense annulée." } });
 
-      // Mise à jour uniquement des champs textuels/catégoriques
       await prisma.depense.update({
         where: { id_op_dep: parseInt(id) },
         data: {
@@ -153,84 +150,6 @@ export const updateDepense = [
   }
 ];
 
-// update complet l'enregistrement
-// export const updateDepense = [
-//   param("id").isInt().withMessage("L'ID de la dépense doit être un entier"),
-//   body("montant").isDecimal().notEmpty(),
-//   body("cpt").isInt().notEmpty(),
-//   body("nature").isInt().notEmpty(),
-//   body("dateDepense").notEmpty(),
-//   body("observation").optional({ checkFalsy: true }).isString().trim(),
-
-//   async (req, res) => {
-//     const errors = validationResult(req);
-//     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-//     const { id } = req.params;
-//     const { montant, cpt, nature, dateDepense, observation } = req.body;
-    
-//     const newMontant = parseFloat(montant);
-//     const newCptId = parseInt(cpt);
-
-//     try {
-//       await prisma.$transaction(async (tx) => {
-//         const oldDep = await tx.depense.findUnique({ where: { id_op_dep: parseInt(id) } });
-        
-//         if (!oldDep) throw new Error("NOT_FOUND");
-//         if (oldDep.isAnnule) throw new Error("IS_ANNULE");
-
-//         const infoNouveauCompte = await tx.compte.findUnique({ 
-//           where: { id_cpt: newCptId }, 
-//           select: { solde_actuel: true, taux_change_actuel: true } 
-//         });
-        
-//         if (!infoNouveauCompte) throw new Error("COMPTE_NOT_FOUND");
-
-//         // Calcul du nouveau montant en DZD selon le taux de change du compte ciblé
-//         const mnt_dep_dzd = newMontant * parseFloat(infoNouveauCompte.taux_change_actuel);
-
-//         // 1. Logique d'ajustement des comptes
-//         if (oldDep.cpt_id !== newCptId) {
-//           // Si le compte a changé : on restitue à l'ancien, on prélève sur le nouveau
-//           await tx.compte.update({ where: { id_cpt: oldDep.cpt_id }, data: { solde_actuel: { increment: oldDep.mnt_dep } } });
-//           if (parseFloat(infoNouveauCompte.solde_actuel) < newMontant) throw new Error("INSUFFICIENT_FUNDS");
-//           await tx.compte.update({ where: { id_cpt: newCptId }, data: { solde_actuel: { decrement: newMontant } } });
-//         } else {
-//           // Si c'est le même compte, on gère la différence
-//           const diff = newMontant - parseFloat(oldDep.mnt_dep);
-//           if (diff > 0) {
-//             if (parseFloat(infoNouveauCompte.solde_actuel) < diff) throw new Error("INSUFFICIENT_FUNDS");
-//             await tx.compte.update({ where: { id_cpt: oldDep.cpt_id }, data: { solde_actuel: { decrement: diff } } });
-//           } else if (diff < 0) {
-//             await tx.compte.update({ where: { id_cpt: oldDep.cpt_id }, data: { solde_actuel: { increment: Math.abs(diff) } } });
-//           }
-//         }
-
-//         // 2. Mise à jour de la dépense
-//         await tx.depense.update({
-//           where: { id_op_dep: parseInt(id) },
-//           data: {
-//             date_dep: new Date(dateDepense),
-//             mnt_dep: newMontant,
-//             mnt_dep_dzd: mnt_dep_dzd,
-//             cpt_id: newCptId,
-//             nat_dep_id: parseInt(nature),
-//             observation: observation || null
-//           }
-//         });
-//       });
-
-//       res.status(200).json({ message: "Dépense mise à jour avec succès." });
-//     } catch (error) {
-//       if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Dépense introuvable." } });
-//       if (error.message === "IS_ANNULE") return res.status(403).json({ error: { message: "Impossible de modifier une dépense annulée." } });
-//       if (error.message === "COMPTE_NOT_FOUND") return res.status(404).json({ error: { message: "Nouveau compte introuvable." } });
-//       if (error.message === "INSUFFICIENT_FUNDS") return res.status(403).json({ error: { message: "Fonds insuffisants." } });
-//       res.status(500).json({ error: { code: error.code, message: error.message } });
-//     }
-//   }
-// ];
-
 export const deleteDepense = [
   param("id").isInt().withMessage("L'ID doit être un entier"),
   
@@ -244,13 +163,11 @@ export const deleteDepense = [
         if (!depense) throw new Error("NOT_FOUND");
         if (depense.isAnnule) throw new Error("ALREADY_ANNULE");
 
-        // 1. Restituer l'argent au compte
         await tx.compte.update({
           where: { id_cpt: depense.cpt_id },
           data: { solde_actuel: { increment: depense.mnt_dep } }
         });
 
-        // 2. Annuler (Soft Delete) la dépense
         await tx.depense.update({
           where: { id_op_dep: parseInt(id) },
           data: { isAnnule: true }
@@ -266,7 +183,6 @@ export const deleteDepense = [
   }
 ];
 
-
 // ==========================================
 // STATISTIQUES ET FILTRES (Lecture seule)
 // ==========================================
@@ -278,24 +194,30 @@ export const getGlobalStats = async (req, res) => {
         prisma.depense.aggregate({
           _sum: { mnt_dep_dzd: true },
           where: {
-            isAnnule: false, // <-- Exclusion des annulations
+            isAnnule: false,
             nature_dep: { designation_nat_dep: { not: "COFFRE FORT" } },
           },
         }),
         prisma.depense.aggregate({
           _sum: { mnt_dep_dzd: true },
           where: { 
-            isAnnule: false, // <-- Exclusion des annulations
+            isAnnule: false,
             nature_dep: { designation_nat_dep: "COFFRE FORT" } 
           },
         }),
+        // ADAPTATION : Pont de compatibilité pour chercher dans colis ET colis_classique
         prisma.colis.count({
-          where: { droits_timbre: true },
+          where: {
+            OR: [
+              { droits_timbre: true },
+              { colis_classique: { droits_timbre: true } }
+            ]
+          },
         }),
         prisma.depense.groupBy({
           by: ['nat_dep_id'],
           _sum: { mnt_dep_dzd: true },
-          where: { isAnnule: false } // <-- Exclusion des annulations
+          where: { isAnnule: false }
         }),
         prisma.nature_dep.findMany()
       ]);
@@ -316,9 +238,9 @@ export const getGlobalStats = async (req, res) => {
       .filter(item => item.value > 0);
 
     res.status(200).json({
-      totalDepenses: totalDepensesResult._sum.mnt_dep_dzd || 0,
+      totalDepenses: parseFloat(totalDepensesResult._sum.mnt_dep_dzd || 0),
       totalDroitsTimbreColis: totalDroitsTimbreColis,
-      totalEpargne: totalEpargneResult._sum.mnt_dep_dzd || 0,
+      totalEpargne: parseFloat(totalEpargneResult._sum.mnt_dep_dzd || 0),
       globalChartData: globalChartData
     });
   } catch (error) {
@@ -378,11 +300,14 @@ export const getDepensesFiltrees = async (req, res) => {
       });
     }
 
-    // AJOUT : On génère les timbres UNIQUEMENT si on ne les a pas exclus
     if ((noNatureFilter || natureIsColisTimbre) && excludeTimbres !== 'true') {
+      // ADAPTATION : Pont de compatibilité pour chercher les timbres dans l'ancienne et la nouvelle structure
       droitsTimbreFromColisPromise = prisma.colis.findMany({
         where: {
-          droits_timbre: true,
+          OR: [
+            { droits_timbre: true },
+            { colis_classique: { droits_timbre: true } }
+          ],
           date_stock: { not: null, ...dateWhereClause },
         },
       });
@@ -397,8 +322,8 @@ export const getDepensesFiltrees = async (req, res) => {
       id: `d-${d.id_op_dep}`,
       nature: d.nature_dep?.designation_nat_dep || "N/A",
       date: d.date_dep,
-      montant: d.mnt_dep_dzd,
-      montantDevise: d.mnt_dep, 
+      montant: parseFloat(d.mnt_dep_dzd),
+      montantDevise: parseFloat(d.mnt_dep), 
       compte: d.compte?.designation_cpt || "N/A",
       devise: d.compte?.dev_code || "DZD",
       observation: d.observation, 
