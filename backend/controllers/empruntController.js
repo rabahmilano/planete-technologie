@@ -181,14 +181,13 @@ export const addRemboursement = [
         const dateOperation = new Date(dateRembourse);
 
         // F. Enregistrer le remboursement SANS passer par 'crediter'
-        // CRUCIAL : On enregistre 'cpt_remb' pour lier le remboursement à son compte source
         const nouveauRemboursement = await tx.remboursement.create({
           data: {
             id_remb: idRemboursement,
             montant_remb: montantSaisi,
             date_remb: dateOperation,
             emprunt_id: parseInt(idEmpruntCible),
-            cpt_remb: parseInt(cptCible) // Nouvelle relation DCL appliquée ici
+            cpt_remb: parseInt(cptCible) 
           }
         });
 
@@ -252,13 +251,13 @@ export const deleteEmprunt = [
           throw new Error("HAS_CHILDREN");
         }
 
-        // 1. Décrémenter le solde du compte (Retirer l'argent de l'emprunt)
+        // 1. Décrémenter le solde du compte (Retirer l'argent de l'emprunt) avec parseFloat de sécurité
         await tx.compte.update({
           where: { id_cpt: emprunt.cpt_id },
-          data: { solde_actuel: { decrement: emprunt.montant_emprunt } }
+          data: { solde_actuel: { decrement: parseFloat(emprunt.montant_emprunt) } }
         });
 
-        // 2. Supprimer l'emprunt (Plus aucune interaction avec `crediter`)
+        // 2. Supprimer l'emprunt
         await tx.emprunt.delete({ 
           where: { id_emprunt: parseInt(id) } 
         });
@@ -297,10 +296,10 @@ export const deleteRemboursement = [
         
         if (!remb) throw new Error("NOT_FOUND");
 
-        // 1. Restituer l'argent au VRAI compte source du prélèvement
+        // 1. Restituer l'argent au VRAI compte source du prélèvement (avec parseFloat de sécurité)
         await tx.compte.update({
           where: { id_cpt: remb.cpt_remb },
-          data: { solde_actuel: { increment: remb.montant_remb } }
+          data: { solde_actuel: { increment: parseFloat(remb.montant_remb) } }
         });
 
         // 2. Repasser l'emprunt en "EN_COURS" obligatoirement s'il avait été clôturé
@@ -358,10 +357,10 @@ export const updateEmprunt = [
           throw new Error(`Le montant ne peut pas être inférieur au total déjà remboursé (${totalRembourse} DZD).`);
         }
 
-        // 1. Ajustement des soldes de compte
+        // 1. Ajustement des soldes de compte avec parseFloat systématique
         if (oldEmprunt.cpt_id !== parseInt(cpt)) {
           // Changement de compte : on retire l'argent de l'ancien, on l'ajoute au nouveau
-          await tx.compte.update({ where: { id_cpt: oldEmprunt.cpt_id }, data: { solde_actuel: { decrement: oldEmprunt.montant_emprunt } } });
+          await tx.compte.update({ where: { id_cpt: oldEmprunt.cpt_id }, data: { solde_actuel: { decrement: parseFloat(oldEmprunt.montant_emprunt) } } });
           await tx.compte.update({ where: { id_cpt: parseInt(cpt) }, data: { solde_actuel: { increment: newMontant } } });
         } else if (newMontant !== parseFloat(oldEmprunt.montant_emprunt)) {
           // Même compte mais montant différent : on applique la différence
@@ -432,7 +431,7 @@ export const updateRemboursement = [
         // 1. Ajuster les comptes selon la nouvelle architecture DCL
         if (oldRemb.cpt_remb !== newCompteId) {
           // L'utilisateur a changé le compte source : on restitue à l'ancien, on prélève sur le nouveau
-          await tx.compte.update({ where: { id_cpt: oldRemb.cpt_remb }, data: { solde_actuel: { increment: oldRemb.montant_remb } } });
+          await tx.compte.update({ where: { id_cpt: oldRemb.cpt_remb }, data: { solde_actuel: { increment: parseFloat(oldRemb.montant_remb) } } });
           
           // Vérifier les fonds du nouveau compte
           const infoNouveauCompte = await tx.compte.findUnique({ where: { id_cpt: newCompteId }, select: { solde_actuel: true } });
@@ -443,7 +442,6 @@ export const updateRemboursement = [
         } else if (newMontantSaisi !== parseFloat(oldRemb.montant_remb)) {
           // Même compte, mais montant modifié
           const diff = newMontantSaisi - parseFloat(oldRemb.montant_remb);
-          // Si diff > 0, on prélève plus (decrement). Si diff < 0, le decrement d'un négatif revient à un incrément mathématique (restitution).
           await tx.compte.update({ where: { id_cpt: oldRemb.cpt_remb }, data: { solde_actuel: { decrement: diff } } });
         }
 
