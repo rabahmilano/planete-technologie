@@ -68,15 +68,18 @@ export const addCommande = [
           }
 
           let quantityToDeduct = produit.quantity;
+          
+          // ADAPTATION FIFO : Prise en charge de la date_achat facultative
           const achats = await tx.colis.findMany({
             where: {
               prd_id: produit.id_prd,
               qte_stock: { gt: 0 },
               date_stock: { not: null },
             },
-            orderBy: {
-              date_achat: "asc",
-            },
+            orderBy: [
+              { date_achat: "asc" }, // 1er tri : Date d'achat (si elle existe)
+              { date_stock: "asc" }  // Sécurité : Date d'entrée en stock pour pallier aux nulls
+            ],
           });
 
           for (const colis of achats) {
@@ -99,7 +102,7 @@ export const addCommande = [
             });
 
             // Décrémentation atomique du Colis spécifique (FIFO)
-            const updatedColis =await tx.colis.update({
+            const updatedColis = await tx.colis.update({
               where: { id_colis: colis.id_colis },
               data: {
                 qte_stock: { decrement: deduction },
@@ -123,10 +126,10 @@ export const addCommande = [
             // Gestion des remboursements si le compte de paiement n'est pas de type "COMMUN"
             if (infoColis.compte.type_cpt !== "COMMUN") {
               // 1. On sécurise la multiplication (Quantité * Prix)
-              const refundAmount = arrondir(deduction * colis.pu_dzd); // <--- CORRIGÉ
+              const refundAmount = arrondir(deduction * colis.pu_dzd); 
               
               // 2. On sécurise l'addition au total
-              totalRefund = arrondir(totalRefund + refundAmount);      // <--- CORRIGÉ
+              totalRefund = arrondir(totalRefund + refundAmount);      
             }
 
             quantityToDeduct -= deduction;
@@ -142,7 +145,7 @@ export const addCommande = [
         });
 
         // 3. On sécurise le calcul final du solde (Total - Remboursements)
-        const montantFinalCaisse = arrondir(totalAmount - totalRefund); // <--- CORRIGÉ
+        const montantFinalCaisse = arrondir(totalAmount - totalRefund); 
 
         await tx.compte.update({
           where: {
