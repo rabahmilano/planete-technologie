@@ -48,11 +48,17 @@ export const crediterCompte = [
           },
         });
 
+        // Conversion stricte des variables Prisma Decimal pour éviter les erreurs NaN
+        const soldeAncien = parseFloat(infoCompte.solde_actuel || 0);
+        const tauxAncien = parseFloat(infoCompte.taux_change_actuel || 0);
+        const montantAjout = parseFloat(mnt);
+        const tauxAjout = parseFloat(taux);
+
+        // Formule de moyenne pondérée intacte
         const newTauxChange =
           Math.round(
-            ((infoCompte.solde_actuel * infoCompte.taux_change_actuel +
-              mnt * taux) /
-              (parseFloat(infoCompte.solde_actuel) + mnt) +
+            ((soldeAncien * tauxAncien + montantAjout * tauxAjout) /
+              (soldeAncien + montantAjout) +
               Number.EPSILON) *
               100
           ) / 100;
@@ -63,7 +69,7 @@ export const crediterCompte = [
           },
           data: {
             solde_actuel: {
-              increment: mnt,
+              increment: montantAjout,
             },
             taux_change_actuel: newTauxChange,
           },
@@ -80,7 +86,9 @@ export const crediterCompte = [
             },
           });
 
-          if (parseFloat(caisse.solde_actuel) < mnt * taux) {
+          const montantADeduire = montantAjout * tauxAjout;
+
+          if (parseFloat(caisse.solde_actuel) < montantADeduire) {
             throw new Error("Le solde de la CAISSE est insuffisant");
           }
 
@@ -89,7 +97,7 @@ export const crediterCompte = [
               id_cpt: caisse.id_cpt,
             },
             data: {
-              solde_actuel: { decrement: mnt * taux },
+              solde_actuel: { decrement: montantADeduire },
             },
           });
         }
@@ -167,14 +175,12 @@ export const addCompte = [
 
       return res.status(201).json(newCompte);
     } catch (error) {
-      // Gestion des erreurs spécifiques de la base de données
       if (error.code === "P2002") {
         return res
           .status(409)
           .json({ error: { code: "P2002", message: "Devise already exists" } });
       }
 
-      // Gestion des autres erreurs serveur
       return res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -184,31 +190,17 @@ export const addCompte = [
 
 export const getComptesWithTauxChange = async (req, res) => {
   try {
+    // La table info_taux_change n'existe plus. 
+    // Requête simplifiée pour ne pas faire crasher l'application si la route est appelée.
     const comptes = await prisma.compte.findMany({
-      where: {
-        devise: {
-          info_taux_change: {
-            some: {
-              date_fin: null,
-            },
-          },
-        },
-      },
       select: {
         id_cpt: true,
         designation_cpt: true,
         dev_code: true,
+        taux_change_actuel: true,
         devise: {
           select: {
-            info_taux_change: {
-              select: {
-                taux_change: {
-                  select: {
-                    taux: true,
-                  },
-                },
-              },
-            },
+            symbole_dev: true,
           },
         },
       },
