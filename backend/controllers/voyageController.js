@@ -192,12 +192,10 @@ export const deleteVoyage = async (req, res) => {
 
     if (!voyage) return res.status(404).json({ message: "Voyage introuvable" });
     if (voyage._count.depenses > 0 || voyage._count.transactions > 0) {
-      return res
-        .status(403)
-        .json({
-          message:
-            "Impossible de supprimer ce voyage car il contient des dépenses ou des transactions.",
-        });
+      return res.status(403).json({
+        message:
+          "Impossible de supprimer ce voyage car il contient des dépenses ou des transactions.",
+      });
     }
 
     await prisma.voyage.delete({ where: { id_voyage: parseInt(id) } });
@@ -213,7 +211,7 @@ export const deleteVoyage = async (req, res) => {
 
 export const changerStatutVoyage = async (req, res) => {
   const { id } = req.params;
-  const { statut, tauxChange } = req.body; // tauxChange venant de React
+  const { statut, tauxChange } = req.body;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -254,6 +252,13 @@ export const changerStatutVoyage = async (req, res) => {
           totalMarchandisesDZD +=
             parseFloat(t.montant_total) * parseFloat(t.taux_transaction);
         });
+
+        // SÉCURITÉ : Éviter la division par zéro si un voyage a des transactions mais un total de 0
+        if (totalMarchandisesDZD === 0) {
+          throw new Error(
+            "Le total des marchandises est de 0 DZD. Impossible de calculer le coefficient d'approche.",
+          );
+        }
 
         const coeffApproche =
           (totalMarchandisesDZD + totalFraisDZD) / totalMarchandisesDZD;
@@ -356,6 +361,10 @@ export const addTransactionVoyage = [
           throw new Error("Le voyage doit être EN_COURS.");
         }
 
+        // CORRECTION LOGIQUE : Calcul automatique de la date de stock (Date de retour + 1 jour)
+        const dateStockPrevue = new Date(voyage.date_retour);
+        dateStockPrevue.setDate(dateStockPrevue.getDate() + 1);
+
         const idTransaction = await getMaxValue(
           "transaction_voyage",
           "id_transaction",
@@ -411,8 +420,8 @@ export const addTransactionVoyage = [
               prd_id: prd_id,
               cpt_id: parseInt(cptPaiementId),
               mnt_tot_dev: mnt_tot_carte,
-              date_achat: null,
-              date_stock: null,
+              // Suppression définitive de date_achat pour les voyages
+              date_stock: dateStockPrevue, // Utilisation de notre nouvelle logique (retour + 1j)
               qte_achat: qte,
               mnt_tot_dzd: mnt_tot_dzd,
               pu_dev: pu_carte,
