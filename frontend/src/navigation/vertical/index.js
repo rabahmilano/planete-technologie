@@ -75,6 +75,22 @@ const navigation = () => {
       ]
     },
     {
+      title: 'Voyages',
+      icon: 'tabler:plane-departure',
+      children: [
+        {
+          title: 'Liste des voyages',
+          path: '/voyages/liste',
+          icon: 'tabler:list-details'
+        },
+        {
+          title: 'Nouveau voyage',
+          path: '/voyages/ajouter',
+          icon: 'tabler:file-plus'
+        }
+      ]
+    },
+    {
       title: 'Paramètres',
       icon: 'tabler:settings',
       children: [
