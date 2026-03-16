@@ -24,7 +24,7 @@ import CustomTextField from 'src/@core/components/mui/text-field'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 // Context
-import { CompteContext } from 'src/context/CompteContext'
+import { useCompte } from 'src/context/CompteContext'
 
 const defaultValues = {
   nature: '',
@@ -35,7 +35,7 @@ const defaultValues = {
 }
 
 const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
-  const { comptes } = useContext(CompteContext)
+  const { comptes } = useCompte()
 
   const [natures, setNatures] = useState([])
   const [openConfirm, setOpenConfirm] = useState(false)

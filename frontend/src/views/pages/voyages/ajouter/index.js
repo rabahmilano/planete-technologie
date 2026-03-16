@@ -24,7 +24,7 @@ import { useForm, Controller } from 'react-hook-form'
 import axios from 'axios'
 
 // Contexts
-import { CompteContext } from 'src/context/CompteContext'
+import { useCompte } from 'src/context/CompteContext'
 import { VoyageContext } from 'src/context/VoyageContext'
 
 // Composant générique
@@ -44,7 +44,7 @@ const AjouterVoyage = () => {
   const [formDataToSubmit, setFormDataToSubmit] = useState(null)
 
   // Utilisation des contextes selon ton architecture
-  const { comptes } = useContext(CompteContext)
+  const { comptes } = useCompte()
   const { fetchVoyages } = useContext(VoyageContext)
 
   const {

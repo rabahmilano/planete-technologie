@@ -21,7 +21,7 @@ import CustomTextField from 'src/@core/components/mui/text-field'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 // Contexts
-import { CompteContext } from 'src/context/CompteContext'
+import { useCompte } from 'src/context/CompteContext'
 import { VoyageContext } from 'src/context/VoyageContext'
 
 const defaultValues = {
@@ -35,7 +35,7 @@ const defaultValues = {
 }
 
 const AddTransactionModal = ({ open, handleClose, voyageId, deviseDest, onSuccess }) => {
-  const { comptes } = useContext(CompteContext)
+  const { comptes } = useCompte()
   const { addTransactionVoyage } = useContext(VoyageContext)
 
   const [categories, setCategories] = useState([])
