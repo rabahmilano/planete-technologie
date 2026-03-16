@@ -420,8 +420,7 @@ export const addTransactionVoyage = [
               prd_id: prd_id,
               cpt_id: parseInt(cptPaiementId),
               mnt_tot_dev: mnt_tot_carte,
-              // Suppression définitive de date_achat pour les voyages
-              date_stock: dateStockPrevue, // Utilisation de notre nouvelle logique (retour + 1j)
+              date_stock: dateStockPrevue, // Utilisation de la logique (retour + 1j)
               qte_achat: qte,
               mnt_tot_dzd: mnt_tot_dzd,
               pu_dev: pu_carte,
