@@ -50,21 +50,19 @@ model colis_classique {
   id_colis_class       Int       @id
   date_achat           DateTime  @db.Date()
   droits_timbre        Boolean?
-  frais_bancaires      Decimal?  @db.Decimal(10, 4) 
+  mnt_comm_bancaire    Decimal?  @db.Decimal(10, 4) 
 
   colis                colis     @relation(fields: [id_colis_class], references: [id_colis])
 }
 
 model colis_voyage {
-  id_colis_voy          Int      @id
-  transaction_id        Int
-  pu_devise_dest        Decimal  @db.Decimal(10, 2) // Prix d'achat unitaire en devise de destination (ex: CNY)
-  mnt_tot_dev_dest      Decimal  @db.Decimal(10, 2) // Montant total (ex: CNY)
-  pu_dev_ttc            Decimal  @db.Decimal(10, 4) // Prix unitaire final dans la devise de la carte (ex: EUR)
-  mnt_dev_ttc           Decimal  @db.Decimal(10, 4) // Montant total final dans la devise de la carte (ex: EUR)
+  id_colis_voy    Int      @id
+  trans_id        Int
+  pu_dev_dest     Decimal  @db.Decimal(10, 2) 
+  mnt_tot_dest    Decimal  @db.Decimal(10, 2) 
 
-  colis                 colis              @relation(fields: [id_colis_voy], references: [id_colis])
-  transaction           transaction_voyage @relation(fields: [transaction_id], references: [id_transaction])
+  colis           colis              @relation(fields: [id_colis_voy], references: [id_colis])
+  transaction     transaction_voyage @relation(fields: [trans_id], references: [id_trans])
 }
 
 model produit {
@@ -178,8 +176,8 @@ enum StatutEmprunt {
 
 model emprunt {
   id_emprunt      Int             @id
-  designation     String          @db.VarChar(255)
-  montant_emprunt Decimal         @db.Decimal(10, 2)
+  des_emprunt     String          @db.VarChar(255)
+  mnt_emprunt     Decimal         @db.Decimal(10, 2)
   date_emprunt    DateTime        @db.Date()
   cpt_id          Int       
   statut_emprunt  StatutEmprunt   @default(EN_COURS)
@@ -191,7 +189,7 @@ model emprunt {
 
 model remboursement {
   id_remb       Int       @id
-  montant_remb  Decimal   @db.Decimal(10, 2)
+  mnt_remb      Decimal   @db.Decimal(10, 2)
   date_remb     DateTime  @db.Date()
   emprunt_id    Int
   cpt_remb      Int
@@ -201,24 +199,22 @@ model remboursement {
 }
 
 model voyage {
-  id_voyage            Int                  @id
-  designation          String
-  destination          String?
-  date_depart          DateTime             @db.Date()
-  date_retour          DateTime             @db.Date()
-  statut               StatutVoyage         @default(EN_PREPARATION)
+  id_voyage       Int           @id
+  des_voyage      String        @db.VarChar(255)
+  dest_voyage     String?       @db.VarChar(255)
+  date_dep        DateTime      @db.Date()
+  date_ret        DateTime      @db.Date()
+  statut_voy      StatutVoyage  @default(EN_PREPARATION)
+  
+  dev_dest        String        @default("CNY") @db.VarChar(4)
+  taux_change     Decimal?      @db.Decimal(10, 2) 
+  coeff_approche  Decimal?      @db.Decimal(10, 4)
 
-  devise_destination   String               @default("CNY")
-  taux_change_devise   Decimal?             @db.Decimal(10, 2) // Rempli avant de passer EN_COURS
-  coefficient_approche Decimal?             @db.Decimal(10, 4) // Rempli à la clôture
+  cpt_defaut_id   Int?          // Le compte utilisé par défaut pour ce voyage (UX)
 
-  // Le compte utilisé par défaut pour ce voyage (UX)
-  compte_defaut_id     Int?
-
-  transactions         transaction_voyage[]
-  depenses             depense[]
-
-  compte_defaut        compte?              @relation(fields: [compte_defaut_id], references: [id_cpt])
+  transactions    transaction_voyage[]
+  depenses        depense[]
+  compte_defaut   compte?       @relation(fields: [cpt_defaut_id], references: [id_cpt])
 }
 
 enum StatutVoyage {
@@ -228,18 +224,17 @@ enum StatutVoyage {
 }
 
 model transaction_voyage {
-  id_transaction       Int            @id
-  voyage_id            Int
-  compte_id            Int            
-  fournisseur          String?
-  devise_transaction   String         @default("CNY") // Permet l'exception (ex: paiement USD)
-  taux_transaction     Decimal        @db.Decimal(10, 2) // Taux DZD figé pour cette facture
-  montant_total        Decimal        @db.Decimal(10, 4) // Total de contrôle de la facture
-  commission_banque    Decimal        @default(0) @db.Decimal(5, 2) // Pourcentage (ex: 2.00)
-  commission_paiement  Decimal        @default(0) @db.Decimal(10, 4) // Montant réel prélevé (ex: Alipay)
+  id_trans        Int      @id
+  voyage_id       Int
+  cpt_id          Int            
+  fournisseur     String?  @db.VarChar(255)
+  dev_trans       String   @default("CNY") @db.VarChar(4)
+  taux_trans      Decimal  @db.Decimal(10, 2) 
+  mnt_tot_fact    Decimal  @db.Decimal(10, 4) // La somme des colis en dev_trans
+  mnt_comm_paie   Decimal? @default(0) @db.Decimal(10, 4) // Calculer par rapport à la commission du compte de paiement
+  mnt_comm_banque Decimal? @default(0) @db.Decimal(10, 4)
 
-  colis_voyage         colis_voyage[]
-
-  compte               compte         @relation(fields: [compte_id], references: [id_cpt])
-  voyage               voyage         @relation(fields: [voyage_id], references: [id_voyage])
+  colis_voyage    colis_voyage[]
+  compte          compte   @relation(fields: [cpt_id], references: [id_cpt])
+  voyage          voyage   @relation(fields: [voyage_id], references: [id_voyage])
 }
