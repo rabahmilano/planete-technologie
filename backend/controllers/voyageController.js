@@ -17,7 +17,7 @@ export const getAllVoyages = async (req, res) => {
           select: { depenses: true, transactions: true },
         },
       },
-      orderBy: { date_depart: "desc" },
+      orderBy: { date_dep: "desc" },
     });
 
     res.status(200).json(voyages);
@@ -44,7 +44,7 @@ export const getVoyageById = async (req, res) => {
             compte: true,
             _count: { select: { colis_voyage: true } },
           },
-          orderBy: { id_transaction: "desc" },
+          orderBy: { id_trans: "desc" },
         },
       },
     });
@@ -57,8 +57,7 @@ export const getVoyageById = async (req, res) => {
       .reduce((sum, d) => sum + parseFloat(d.mnt_dep_dzd), 0);
 
     const totalAchatsDZD = voyage.transactions.reduce(
-      (sum, t) =>
-        sum + parseFloat(t.montant_total) * parseFloat(t.taux_transaction),
+      (sum, t) => sum + parseFloat(t.mnt_tot_fact) * parseFloat(t.taux_trans),
       0,
     );
 
@@ -117,13 +116,13 @@ export const addVoyage = [
       const nouveauVoyage = await prisma.voyage.create({
         data: {
           id_voyage: idVoyage,
-          designation: desVoyage,
-          destination: destination || null,
-          date_depart: new Date(dateDepart),
-          date_retour: new Date(dateRetour),
-          devise_destination: deviseDest || "CNY",
-          compte_defaut_id: cptDefautId ? parseInt(cptDefautId) : null,
-          statut: "EN_PREPARATION",
+          des_voyage: desVoyage,
+          dest_voyage: destination || null,
+          date_dep: new Date(dateDepart),
+          date_ret: new Date(dateRetour),
+          dev_dest: deviseDest || "CNY",
+          cpt_defaut_id: cptDefautId ? parseInt(cptDefautId) : null,
+          statut_voy: "EN_PREPARATION",
         },
       });
 
@@ -159,7 +158,7 @@ export const updateVoyage = [
       });
       if (!voyage)
         return res.status(404).json({ message: "Voyage introuvable" });
-      if (voyage.statut === "CLOTURE")
+      if (voyage.statut_voy === "CLOTURE")
         return res
           .status(403)
           .json({ message: "Impossible de modifier un voyage clôturé" });
@@ -167,11 +166,11 @@ export const updateVoyage = [
       await prisma.voyage.update({
         where: { id_voyage: parseInt(id) },
         data: {
-          designation: desVoyage,
-          destination: destination || null,
-          date_depart: new Date(dateDepart),
-          date_retour: new Date(dateRetour),
-          compte_defaut_id: cptDefautId ? parseInt(cptDefautId) : null,
+          des_voyage: desVoyage,
+          dest_voyage: destination || null,
+          date_dep: new Date(dateDepart),
+          date_ret: new Date(dateRetour),
+          cpt_defaut_id: cptDefautId ? parseInt(cptDefautId) : null,
         },
       });
 
@@ -234,8 +233,8 @@ export const changerStatutVoyage = async (req, res) => {
         await tx.voyage.update({
           where: { id_voyage: parseInt(id) },
           data: {
-            statut: "EN_COURS",
-            taux_change_devise: parseFloat(tauxChange),
+            statut_voy: "EN_COURS",
+            taux_change: parseFloat(tauChange),
           },
         });
       } else if (statut === "CLOTURE") {
@@ -250,7 +249,7 @@ export const changerStatutVoyage = async (req, res) => {
 
         voyage.transactions.forEach((t) => {
           totalMarchandisesDZD +=
-            parseFloat(t.montant_total) * parseFloat(t.taux_transaction);
+            parseFloat(t.mnt_tot_fact) * parseFloat(t.taux_trans);
         });
 
         // SÉCURITÉ : Éviter la division par zéro si un voyage a des transactions mais un total de 0
@@ -265,7 +264,7 @@ export const changerStatutVoyage = async (req, res) => {
 
         await tx.voyage.update({
           where: { id_voyage: parseInt(id) },
-          data: { statut: "CLOTURE", coefficient_approche: coeffApproche },
+          data: { statut_voy: "CLOTURE", coeff_approche: coeffApproche },
         });
 
         for (const transaction of voyage.transactions) {
@@ -357,30 +356,30 @@ export const addTransactionVoyage = [
         const voyage = await tx.voyage.findUnique({
           where: { id_voyage: parseInt(idVoyage) },
         });
-        if (!voyage || voyage.statut !== "EN_COURS") {
+        if (!voyage || voyage.statut_voy !== "EN_COURS") {
           throw new Error("Le voyage doit être EN_COURS.");
         }
 
         // CORRECTION LOGIQUE : Calcul automatique de la date de stock (Date de retour + 1 jour)
-        const dateStockPrevue = new Date(voyage.date_retour);
+        const dateStockPrevue = new Date(voyage.date_ret);
         dateStockPrevue.setDate(dateStockPrevue.getDate() + 1);
 
         const idTransaction = await getMaxValue(
           "transaction_voyage",
-          "id_transaction",
+          "id_trans",
           null,
         );
         const transaction = await tx.transaction_voyage.create({
           data: {
-            id_transaction: idTransaction,
+            id_trans: idTransaction,
             voyage_id: parseInt(idVoyage),
-            compte_id: parseInt(cptPaiementId),
+            cpt_id: parseInt(cptPaiementId),
             fournisseur: fournisseur || null,
-            devise_transaction: deviseFacture,
-            taux_transaction: parseFloat(tauxDzd),
-            montant_total: parseFloat(montantFacture),
-            commission_banque: parseFloat(commBanque),
-            commission_paiement: parseFloat(commPaiement),
+            dev_trans: deviseFacture,
+            taux_trans: parseFloat(tauxDzd),
+            mnt_tot_fact: parseFloat(montantFacture),
+            mnt_comm_banque: parseFloat(commBanque),
+            mnt_comm_paie: parseFloat(commPaiement),
           },
         });
 
@@ -428,11 +427,9 @@ export const addTransactionVoyage = [
               pu_dzd_ttc: pu_dzd,
               colis_voyage: {
                 create: {
-                  transaction_id: idTransaction,
-                  pu_devise_dest: pu_dest,
-                  mnt_tot_dev_dest: mnt_tot_dest,
-                  pu_dev_ttc: pu_carte,
-                  mnt_dev_ttc: mnt_tot_carte,
+                  trans_id: idTransaction,
+                  pu_dev_dest: pu_dest,
+                  mnt_tot_dest: mnt_tot_dest,
                 },
               },
             },

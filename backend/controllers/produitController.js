@@ -88,17 +88,27 @@ export const getNomSearch = async (req, res) => {
     res.status(200).json(produits);
   } catch (error) {
     throw new Error(
-      "Erreur lors de la récupération des produits: " + error.message
+      "Erreur lors de la récupération des produits: " + error.message,
     );
   }
 };
 
 export const addColis = [
-  body("cat").isNumeric().notEmpty().withMessage("La catégorie est obligatoire"),
+  body("cat")
+    .isNumeric()
+    .notEmpty()
+    .withMessage("La catégorie est obligatoire"),
   body("cpt").isNumeric().notEmpty().withMessage("Le compte est obligatoire"),
   body("dateAchat").notEmpty().withMessage("La date d'achat est obligatoire"),
-  body("desPrd").isString().trim().notEmpty().withMessage("Le nom du produit est obligatoire"),
-  body("mntTotDev").isDecimal().notEmpty().withMessage("Le montant total est obligatoire"),
+  body("desPrd")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Le nom du produit est obligatoire"),
+  body("mntTotDev")
+    .isDecimal()
+    .notEmpty()
+    .withMessage("Le montant total est obligatoire"),
   body("qte").isNumeric().notEmpty().withMessage("La quantité est obligatoire"),
 
   async (req, res) => {
@@ -113,16 +123,25 @@ export const addColis = [
       const newColis = await prisma.$transaction(async (tx) => {
         const infoCpt = await tx.compte.findUnique({
           where: { id_cpt: cpt },
-          select: { solde_actuel: true, taux_change_actuel: true },
+          select: {
+            solde_actuel: true,
+            taux_change_actuel: true,
+            commission_pct: true,
+          },
         });
 
         if (infoCpt.solde_actuel >= mntTotDev) {
           let id_colis, prd_id;
           const tauxActuel = infoCpt.taux_change_actuel;
+          const commPct = parseFloat(infoCpt.commission_pct || 0);
 
           const mnt_tot_dzd = (mntTotDev * tauxActuel).toFixed(4);
           const pu_dev = (mntTotDev / qte).toFixed(2);
           const pu_dzd = (mnt_tot_dzd / qte).toFixed(4);
+
+          const montantCommission = parseFloat(
+            (mntTotDev * (commPct / 100)).toFixed(4),
+          );
 
           const produitExist = await tx.produit.findFirst({
             where: { designation_prd: { equals: desPrd } },
@@ -152,10 +171,12 @@ export const addColis = [
               prd_id,
               cpt_id: cpt,
               pu_dzd_ttc: pu_dzd,
-              // ADAPTATION BDD: Inscription automatique du colis comme "Classique"
               colis_classique: {
-                create: { droits_timbre: false } 
-              }
+                create: {
+                  droits_timbre: false,
+                  mnt_comm_bancaire: montantCommission,
+                },
+              },
             },
           });
 
@@ -172,7 +193,9 @@ export const addColis = [
 
       res.status(201).json(newColis);
     } catch (error) {
-      res.status(500).json({ error: { code: error.code, message: error.message } });
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
     }
   },
 ];
@@ -197,7 +220,9 @@ export const getMarchandiseDisponible = async (req, res) => {
 
     res.status(200).json(marchandises);
   } catch (error) {
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -211,14 +236,22 @@ export const getAllProduitDisponible = async (req, res) => {
 
     res.status(200).json(produits);
   } catch (error) {
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
 export const updateColisEnRoute = [
-  body("prd_id").isNumeric().notEmpty().withMessage("Il y'a une erreur avec vos données"),
+  body("prd_id")
+    .isNumeric()
+    .notEmpty()
+    .withMessage("Il y'a une erreur avec vos données"),
   body("date_stock").notEmpty().withMessage("La date est obligatoire"),
-  body("droits_timbre").isBoolean().notEmpty().withMessage("Une erreur avec les droits de timbres"),
+  body("droits_timbre")
+    .isBoolean()
+    .notEmpty()
+    .withMessage("Une erreur avec les droits de timbres"),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -244,10 +277,10 @@ export const updateColisEnRoute = [
         };
 
         if (droits_timbre) {
-          updatedData.pu_dzd_ttc = parseFloat(colis.pu_dzd_ttc) + 130 / colis.qte_achat;
+          updatedData.pu_dzd_ttc =
+            parseFloat(colis.pu_dzd_ttc) + 130 / colis.qte_achat;
         }
 
-        // ADAPTATION BDD : On met à jour la table mère (colis) et la table fille (colis_classique)
         await tx.colis.update({
           where: { id_colis: idColis },
           data: {
@@ -255,9 +288,9 @@ export const updateColisEnRoute = [
             colis_classique: {
               upsert: {
                 create: { droits_timbre },
-                update: { droits_timbre }
-              }
-            }
+                update: { droits_timbre },
+              },
+            },
           },
         });
 
@@ -271,7 +304,9 @@ export const updateColisEnRoute = [
 
       res.status(200).json({ message: "Opération effectuée avec succés" });
     } catch (error) {
-      res.status(500).json({ error: { code: error.code, message: error.message } });
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
     }
   },
 ];
@@ -295,7 +330,9 @@ export const getColisEnRoute = async (req, res) => {
 
     res.status(200).json(colis);
   } catch (error) {
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -313,7 +350,9 @@ export const getColisEnRouteStats = async (req, res) => {
       totalProduits: stats._sum.qte_achat || 0,
     });
   } catch (error) {
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -340,10 +379,16 @@ export const cancelColis = async (req, res) => {
 
       if (!compte) throw new Error("Compte associé non trouvé.");
 
-      const valeurActuelleDZD = parseFloat(compte.solde_actuel) * parseFloat(compte.taux_change_actuel);
-      const nouveauSoldeDevise = parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev);
-      const nouvelleValeurTotaleDZD = valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd);
-      const nouveauTauxChange = nouveauSoldeDevise > 0 ? nouvelleValeurTotaleDZD / nouveauSoldeDevise : 0;
+      const valeurActuelleDZD =
+        parseFloat(compte.solde_actuel) * parseFloat(compte.taux_change_actuel);
+      const nouveauSoldeDevise =
+        parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev);
+      const nouvelleValeurTotaleDZD =
+        valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd);
+      const nouveauTauxChange =
+        nouveauSoldeDevise > 0
+          ? nouvelleValeurTotaleDZD / nouveauSoldeDevise
+          : 0;
 
       await tx.compte.update({
         where: { id_cpt: colis.cpt_id },
@@ -353,22 +398,29 @@ export const cancelColis = async (req, res) => {
         },
       });
 
-      // ADAPTATION BDD: Nettoyage sécurisé pour éviter le blocage "ON DELETE RESTRICT"
-      await tx.colis_classique.deleteMany({ where: { id_colis_class: idColis } });
+      await tx.colis_classique.deleteMany({
+        where: { id_colis_class: idColis },
+      });
       await tx.colis_voyage.deleteMany({ where: { id_colis_voy: idColis } });
-      
+
       await tx.colis.delete({
         where: { id_colis: idColis },
       });
     });
 
-    res.status(200).json({ message: "Colis annulé, compte remboursé et taux de change mis à jour." });
+    res
+      .status(200)
+      .json({
+        message: "Colis annulé, compte remboursé et taux de change mis à jour.",
+      });
   } catch (error) {
     if (error.message.includes("non trouvé")) {
       return res.status(404).json({ message: error.message });
     }
     console.error("Erreur lors de l'annulation du colis:", error);
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -379,14 +431,24 @@ export const getAllComptes = async (req, res) => {
     });
     res.status(200).json(comptes);
   } catch (error) {
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
 export const getAllColis = async (req, res) => {
   const {
-    page = 1, limit = 25, search = "", sortBy = "date_achat", sortOrder = "desc",
-    statut, categorieId, compteId, dateDebut, dateFin,
+    page = 1,
+    limit = 25,
+    search = "",
+    sortBy = "date_achat",
+    sortOrder = "desc",
+    statut,
+    categorieId,
+    compteId,
+    dateDebut,
+    dateFin,
   } = req.query;
 
   const pageNum = parseInt(page, 10);
@@ -403,11 +465,13 @@ export const getAllColis = async (req, res) => {
   if (categorieId) whereClause.cat_id = parseInt(categorieId, 10);
   if (compteId) whereClause.cpt_id = parseInt(compteId, 10);
 
-  // ADAPTATION BDD: Prise en charge de la date d'achat nulle (Voyages)
   if (dateDebut && dateFin) {
     whereClause.OR = [
       { date_achat: { gte: new Date(dateDebut), lte: new Date(dateFin) } },
-      { date_achat: null, date_stock: { gte: new Date(dateDebut), lte: new Date(dateFin) } }
+      {
+        date_achat: null,
+        date_stock: { gte: new Date(dateDebut), lte: new Date(dateFin) },
+      },
     ];
   }
 
@@ -439,29 +503,40 @@ export const getAllColis = async (req, res) => {
         skip: skip,
         take: limitNum,
       }),
-      prisma.colis.count({ where: whereClause })
+      prisma.colis.count({ where: whereClause }),
     ]);
 
     res.status(200).json({ colis, total });
   } catch (error) {
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
 export const getAllColisStats = async (req, res) => {
-  const { search = "", statut, categorieId, compteId, dateDebut, dateFin } = req.query;
+  const {
+    search = "",
+    statut,
+    categorieId,
+    compteId,
+    dateDebut,
+    dateFin,
+  } = req.query;
   const whereClause = { produit: { designation_prd: { contains: search } } };
-  
+
   if (statut === "en_stock") whereClause.date_stock = { not: null };
   else if (statut === "en_route") whereClause.date_stock = null;
   if (categorieId) whereClause.cat_id = parseInt(categorieId, 10);
   if (compteId) whereClause.cpt_id = parseInt(compteId, 10);
-  
-  // ADAPTATION BDD
+
   if (dateDebut && dateFin) {
     whereClause.OR = [
       { date_achat: { gte: new Date(dateDebut), lte: new Date(dateFin) } },
-      { date_achat: null, date_stock: { gte: new Date(dateDebut), lte: new Date(dateFin) } }
+      {
+        date_achat: null,
+        date_stock: { gte: new Date(dateDebut), lte: new Date(dateFin) },
+      },
     ];
   }
 
@@ -478,7 +553,9 @@ export const getAllColisStats = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -492,10 +569,18 @@ export const getChartDataByCategory = async (req, res) => {
     const categories = await prisma.categorie.findMany({
       where: { id_cat: { in: data.map((i) => i.cat_id) } },
     });
-    const map = categories.reduce((acc, cat) => ({ ...acc, [cat.id_cat]: cat.designation_cat }), {});
-    res.status(200).json(
-      data.map((i) => ({ name: map[i.cat_id] || "Inconnu", value: i._count.id_colis }))
+    const map = categories.reduce(
+      (acc, cat) => ({ ...acc, [cat.id_cat]: cat.designation_cat }),
+      {},
     );
+    res
+      .status(200)
+      .json(
+        data.map((i) => ({
+          name: map[i.cat_id] || "Inconnu",
+          value: i._count.id_colis,
+        })),
+      );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -503,16 +588,20 @@ export const getChartDataByCategory = async (req, res) => {
 
 export const getChartDataByYear = async (req, res) => {
   try {
-    // ADAPTATION BDD: COALESCE pour prendre date_stock si date_achat est NULL (Voyages)
     const result = await prisma.$queryRaw`
       SELECT YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) as year, sum(qte_achat) as value 
       FROM colis 
       GROUP BY YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) 
       ORDER BY year DESC
     `;
-    res.status(200).json(
-      result.map((i) => ({ year: i.year.toString(), value: Number(i.value) }))
-    );
+    res
+      .status(200)
+      .json(
+        result.map((i) => ({
+          year: i.year.toString(),
+          value: Number(i.value),
+        })),
+      );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -528,10 +617,18 @@ export const getChartDataByAccount = async (req, res) => {
     const comptes = await prisma.compte.findMany({
       where: { id_cpt: { in: data.map((i) => i.cpt_id) } },
     });
-    const map = comptes.reduce((acc, cpt) => ({ ...acc, [cpt.id_cpt]: cpt.designation_cpt }), {});
-    res.status(200).json(
-      data.map((i) => ({ name: map[i.cpt_id] || "Inconnu", value: i._count.id_colis }))
+    const map = comptes.reduce(
+      (acc, cpt) => ({ ...acc, [cpt.id_cpt]: cpt.designation_cpt }),
+      {},
     );
+    res
+      .status(200)
+      .json(
+        data.map((i) => ({
+          name: map[i.cpt_id] || "Inconnu",
+          value: i._count.id_colis,
+        })),
+      );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -549,10 +646,18 @@ export const getChartDataTopProducts = async (req, res) => {
     const products = await prisma.produit.findMany({
       where: { id_prd: { in: prdIds } },
     });
-    const map = products.reduce((acc, prd) => ({ ...acc, [prd.id_prd]: prd.designation_prd }), {});
-    res.status(200).json(
-      data.map((i) => ({ name: map[i.prd_id] || "Inconnu", value: i._sum.qte_achat }))
+    const map = products.reduce(
+      (acc, prd) => ({ ...acc, [prd.id_prd]: prd.designation_prd }),
+      {},
     );
+    res
+      .status(200)
+      .json(
+        data.map((i) => ({
+          name: map[i.prd_id] || "Inconnu",
+          value: i._sum.qte_achat,
+        })),
+      );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -570,37 +675,59 @@ export const updateColisDetails = async (req, res) => {
     if (new_price !== undefined) {
       const newPriceDev = parseFloat(new_price);
       if (isNaN(newPriceDev) || newPriceDev <= 0) {
-        return res.status(400).json({ message: "Le nouveau prix est invalide." });
+        return res
+          .status(400)
+          .json({ message: "Le nouveau prix est invalide." });
       }
 
       await prisma.$transaction(async (tx) => {
-        const colis = await tx.colis.findUnique({ where: { id_colis: idColis } });
+        const colis = await tx.colis.findUnique({
+          where: { id_colis: idColis },
+        });
         if (!colis) throw new Error("Colis non trouvé.");
 
-        const compte = await tx.compte.findUnique({ where: { id_cpt: colis.cpt_id } });
+        const compte = await tx.compte.findUnique({
+          where: { id_cpt: colis.cpt_id },
+        });
         if (!compte) throw new Error("Compte associé non trouvé.");
 
-        const valeurActuelleDZD = parseFloat(compte.solde_actuel) * parseFloat(compte.taux_change_actuel);
-        const soldeDeviseApresRemboursement = parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev);
-        const valeurDZDApresRemboursement = valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd);
+        const valeurActuelleDZD =
+          parseFloat(compte.solde_actuel) *
+          parseFloat(compte.taux_change_actuel);
+        const soldeDeviseApresRemboursement =
+          parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev);
+        const valeurDZDApresRemboursement =
+          valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd);
 
         if (soldeDeviseApresRemboursement < newPriceDev) {
-          throw new Error("Solde insuffisant pour couvrir le nouveau prix après ajustement.");
+          throw new Error(
+            "Solde insuffisant pour couvrir le nouveau prix après ajustement.",
+          );
         }
 
-        const tauxAchatOriginal = parseFloat(colis.mnt_tot_dzd) / parseFloat(colis.mnt_tot_dev);
+        const tauxAchatOriginal =
+          parseFloat(colis.mnt_tot_dzd) / parseFloat(colis.mnt_tot_dev);
         const newMntTotDZD = newPriceDev * tauxAchatOriginal;
 
-        const nouveauSoldeDeviseFinal = soldeDeviseApresRemboursement - newPriceDev;
-        const nouvelleValeurDZDfinal = valeurDZDApresRemboursement - newMntTotDZD;
-        const nouveauTauxChangeFinal = nouveauSoldeDeviseFinal > 0 ? nouvelleValeurDZDfinal / nouveauSoldeDeviseFinal : 0;
+        const nouveauSoldeDeviseFinal =
+          soldeDeviseApresRemboursement - newPriceDev;
+        const nouvelleValeurDZDfinal =
+          valeurDZDApresRemboursement - newMntTotDZD;
+        const nouveauTauxChangeFinal =
+          nouveauSoldeDeviseFinal > 0
+            ? nouvelleValeurDZDfinal / nouveauSoldeDeviseFinal
+            : 0;
 
         await tx.compte.update({
           where: { id_cpt: compte.id_cpt },
-          data: { solde_actuel: nouveauSoldeDeviseFinal, taux_change_actuel: nouveauTauxChangeFinal },
+          data: {
+            solde_actuel: nouveauSoldeDeviseFinal,
+            taux_change_actuel: nouveauTauxChangeFinal,
+          },
         });
 
-        const newPuDzdTtc = colis.pu_dzd_ttc - colis.pu_dzd + newMntTotDZD / colis.qte_achat;
+        const newPuDzdTtc =
+          colis.pu_dzd_ttc - colis.pu_dzd + newMntTotDZD / colis.qte_achat;
         await tx.colis.update({
           where: { id_colis: idColis },
           data: {
@@ -619,7 +746,9 @@ export const updateColisDetails = async (req, res) => {
       if (date_stock) dataToUpdate.date_stock = new Date(date_stock);
 
       if (Object.keys(dataToUpdate).length === 0) {
-        return res.status(400).json({ message: "Aucune donnée à mettre à jour fournie." });
+        return res
+          .status(400)
+          .json({ message: "Aucune donnée à mettre à jour fournie." });
       }
 
       await prisma.colis.update({
@@ -631,12 +760,20 @@ export const updateColisDetails = async (req, res) => {
     res.status(200).json({ message: "Colis mis à jour avec succès." });
   } catch (error) {
     console.error("Erreur lors de la mise à jour du colis:", error);
-    res.status(500).json({ message: error.message || "Erreur interne du serveur." });
+    res
+      .status(500)
+      .json({ message: error.message || "Erreur interne du serveur." });
   }
 };
 
 export const getProduitsForTable = async (req, res) => {
-  const { page = 1, limit = 24, search = "", sortBy = "designation_prd", sortOrder = "asc" } = req.query;
+  const {
+    page = 1,
+    limit = 24,
+    search = "",
+    sortBy = "designation_prd",
+    sortOrder = "asc",
+  } = req.query;
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
   const offset = (pageNum - 1) * limitNum;
@@ -676,7 +813,8 @@ export const getProduitsForTable = async (req, res) => {
 
 export const getProduitsPageStats = async (req, res) => {
   try {
-    const [totalProduits, produitsEnStock, totalQteAchetee] = await prisma.$transaction([
+    const [totalProduits, produitsEnStock, totalQteAchetee] =
+      await prisma.$transaction([
         prisma.produit.count(),
         prisma.produit.count({ where: { qte_dispo: { gt: 0 } } }),
         prisma.colis.aggregate({ _sum: { qte_achat: true } }),
@@ -699,7 +837,8 @@ export const getProduitDetails = async (req, res) => {
   }
 
   try {
-    const [produit, statsAchat, lignesDeCommande, colisVendus] = await Promise.all([
+    const [produit, statsAchat, lignesDeCommande, colisVendus] =
+      await Promise.all([
         prisma.produit.findUnique({ where: { id_prd: idProduit } }),
         prisma.colis.aggregate({
           where: { prd_id: idProduit },
@@ -715,31 +854,46 @@ export const getProduitDetails = async (req, res) => {
         }),
       ]);
 
-    if (!produit) return res.status(404).json({ message: "Produit non trouvé." });
+    if (!produit)
+      return res.status(404).json({ message: "Produit non trouvé." });
 
-    const totalVenteDZD = lignesDeCommande.reduce((sum, ligne) => sum + parseFloat(ligne.pu_vente) * ligne.qte_cde, 0);
-    const totalCoutDZDdesVentes = colisVendus.reduce((sum, l) => sum + parseFloat(l.colis.pu_dzd_ttc) * l.qte, 0);
+    const totalVenteDZD = lignesDeCommande.reduce(
+      (sum, ligne) => sum + parseFloat(ligne.pu_vente) * ligne.qte_cde,
+      0,
+    );
+    const totalCoutDZDdesVentes = colisVendus.reduce(
+      (sum, l) => sum + parseFloat(l.colis.pu_dzd_ttc) * l.qte,
+      0,
+    );
     const totalBeneficeDZD = totalVenteDZD - totalCoutDZDdesVentes;
 
-    const kpisVente = lignesDeCommande.length > 0
+    const kpisVente =
+      lignesDeCommande.length > 0
         ? {
-            minDa: Math.min(...lignesDeCommande.map((l) => parseFloat(l.pu_vente))),
-            maxDa: Math.max(...lignesDeCommande.map((l) => parseFloat(l.pu_vente))),
-            avgDa: totalVenteDZD / lignesDeCommande.reduce((sum, l) => sum + l.qte_cde, 0),
+            minDa: Math.min(
+              ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
+            ),
+            maxDa: Math.max(
+              ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
+            ),
+            avgDa:
+              totalVenteDZD /
+              lignesDeCommande.reduce((sum, l) => sum + l.qte_cde, 0),
           }
         : { minDa: 0, maxDa: 0, avgDa: 0 };
 
-    // ADAPTATION BDD: COALESCE sur date_achat pour sécuriser le GROUP BY
     const qteParAnneeRaw = await prisma.$queryRaw`
       SELECT YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) as year, SUM(qte_achat) as value 
       FROM colis 
       WHERE prd_id = ${idProduit}
       GROUP BY YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) ORDER BY year DESC LIMIT 5`;
 
-    const qteParAnnee = qteParAnneeRaw.map((item) => ({
-      year: item.year.toString(),
-      value: Number(item.value),
-    })).reverse();
+    const qteParAnnee = qteParAnneeRaw
+      .map((item) => ({
+        year: item.year.toString(),
+        value: Number(item.value),
+      }))
+      .reverse();
 
     res.status(200).json({
       produitInfo: {
@@ -759,7 +913,10 @@ export const getProduitDetails = async (req, res) => {
       chartData: {
         financials: [
           { name: "Coût d'Achat (Ventes)", value: totalCoutDZDdesVentes },
-          { name: "Bénéfice Brut", value: totalBeneficeDZD > 0 ? totalBeneficeDZD : 0 },
+          {
+            name: "Bénéfice Brut",
+            value: totalBeneficeDZD > 0 ? totalBeneficeDZD : 0,
+          },
         ],
         qteParAnnee: qteParAnnee,
       },
@@ -775,17 +932,20 @@ export const getColisForProduit = async (req, res) => {
   const { page = 1, limit = 5 } = req.query;
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  if (isNaN(idProduit)) return res.status(400).json({ message: "ID du produit invalide." });
+  if (isNaN(idProduit))
+    return res.status(400).json({ message: "ID du produit invalide." });
 
   try {
     const colis = await prisma.colis.findMany({
       where: { prd_id: idProduit },
       include: {
         categorie: true,
-        lignes: { include: { ligne_commande: { include: { commande: true } } } },
+        lignes: {
+          include: { ligne_commande: { include: { commande: true } } },
+        },
         compte: { select: { devise: { select: { symbole_dev: true } } } },
       },
-      orderBy: [{ date_achat: "desc" }, {qte_stock : "desc"}],
+      orderBy: [{ date_achat: "desc" }, { qte_stock: "desc" }],
       skip: skip,
       take: parseInt(limit),
     });
@@ -796,7 +956,8 @@ export const getColisForProduit = async (req, res) => {
       let statut = "En Route";
       if (c.date_stock) statut = "En Stock";
       if (c.qte_stock === 0 && c.date_stock) statut = "Vendu (Totalement)";
-      else if (c.qte_stock < c.qte_achat && c.date_stock) statut = "Vendu (Partiel)";
+      else if (c.qte_stock < c.qte_achat && c.date_stock)
+        statut = "Vendu (Partiel)";
 
       const ventesList = c.lignes.map((vente) => {
         const pu_vente = parseFloat(vente.ligne_commande.pu_vente);
@@ -830,15 +991,17 @@ export const getColisForProduit = async (req, res) => {
 
 export const getTransactionsChartData = async (req, res) => {
   try {
-    const twelveMonthsAgo = dayjs().subtract(12, "month").startOf("month").toDate();
+    const twelveMonthsAgo = dayjs()
+      .subtract(12, "month")
+      .startOf("month")
+      .toDate();
 
-    // ADAPTATION BDD: Prise en charge des colis sans date_achat (Voyages)
     const achats = await prisma.colis.findMany({
       where: {
         OR: [
           { date_achat: { gte: twelveMonthsAgo } },
-          { date_achat: null, date_stock: { gte: twelveMonthsAgo } }
-        ]
+          { date_achat: null, date_stock: { gte: twelveMonthsAgo } },
+        ],
       },
       select: { date_achat: true, date_stock: true },
     });
@@ -855,7 +1018,6 @@ export const getTransactionsChartData = async (req, res) => {
     }
 
     achats.forEach((item) => {
-      // On utilise date_achat, et si null, on bascule sur date_stock
       const referenceDate = item.date_achat || item.date_stock;
       const monthKey = dayjs(referenceDate).format("YYYY-MM");
       if (monthlyData[monthKey]) monthlyData[monthKey].colis += 1;
@@ -866,7 +1028,9 @@ export const getTransactionsChartData = async (req, res) => {
       if (monthlyData[monthKey]) monthlyData[monthKey].commandes += 1;
     });
 
-    const sortedChartData = Object.keys(monthlyData).sort().map((monthKey) => ({
+    const sortedChartData = Object.keys(monthlyData)
+      .sort()
+      .map((monthKey) => ({
         month: dayjs(monthKey).format("MMM YY"),
         colis: monthlyData[monthKey].colis,
         commandes: monthlyData[monthKey].commandes,
@@ -883,15 +1047,17 @@ export const getTransactionsChartData = async (req, res) => {
 
 export const getProduitsChartData = async (req, res) => {
   try {
-    const twelveMonthsAgo = dayjs().subtract(12, "month").startOf("month").toDate();
+    const twelveMonthsAgo = dayjs()
+      .subtract(12, "month")
+      .startOf("month")
+      .toDate();
 
-    // ADAPTATION BDD
     const achats = await prisma.colis.findMany({
       where: {
         OR: [
           { date_achat: { gte: twelveMonthsAgo } },
-          { date_achat: null, date_stock: { gte: twelveMonthsAgo } }
-        ]
+          { date_achat: null, date_stock: { gte: twelveMonthsAgo } },
+        ],
       },
       select: { date_achat: true, date_stock: true, qte_achat: true },
     });
@@ -910,18 +1076,24 @@ export const getProduitsChartData = async (req, res) => {
     achats.forEach((colis) => {
       const referenceDate = colis.date_achat || colis.date_stock;
       const monthKey = dayjs(referenceDate).format("YYYY-MM");
-      if (monthlyData[monthKey]) monthlyData[monthKey].produitsAchetes += colis.qte_achat || 0;
+      if (monthlyData[monthKey])
+        monthlyData[monthKey].produitsAchetes += colis.qte_achat || 0;
     });
 
     ventes.forEach((commande) => {
       const monthKey = dayjs(commande.date_cde).format("YYYY-MM");
       if (monthlyData[monthKey]) {
-        const totalProduitsCommande = commande.ligne_commande.reduce((sum, ligne) => sum + ligne.qte_cde, 0);
+        const totalProduitsCommande = commande.ligne_commande.reduce(
+          (sum, ligne) => sum + ligne.qte_cde,
+          0,
+        );
         monthlyData[monthKey].produitsVendus += totalProduitsCommande;
       }
     });
 
-    const sortedChartData = Object.keys(monthlyData).sort().map((monthKey) => ({
+    const sortedChartData = Object.keys(monthlyData)
+      .sort()
+      .map((monthKey) => ({
         month: dayjs(monthKey).format("MMM YY"),
         produitsAchetes: monthlyData[monthKey].produitsAchetes,
         produitsVendus: monthlyData[monthKey].produitsVendus,
@@ -938,24 +1110,26 @@ export const getProduitsChartData = async (req, res) => {
 
 export const searchProduits = async (req, res) => {
   const q = req.query.q?.trim();
-  
+
   if (!q || q.length < 2) {
     return res.status(200).json([]);
   }
 
   try {
-    const words = q.split(' ').filter(word => word.length > 0);
-    const conditions = words.map(word => ({
-      designation_prd: { contains: word }
+    const words = q.split(" ").filter((word) => word.length > 0);
+    const conditions = words.map((word) => ({
+      designation_prd: { contains: word },
     }));
 
     const produits = await prisma.produit.findMany({
       where: { AND: conditions },
-      take: 30
+      take: 30,
     });
-    
+
     res.status(200).json(produits);
   } catch (error) {
-    res.status(500).json({ error: { message: "Erreur lors de la recherche des produits" } });
+    res
+      .status(500)
+      .json({ error: { message: "Erreur lors de la recherche des produits" } });
   }
 };

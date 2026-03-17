@@ -14,7 +14,7 @@ export const VoyageProvider = ({ children }) => {
   const [error, setError] = useState(null)
 
   // URL de base de notre nouvelle API
-  const API_URL = 'http://localhost:5000/api/voyages' // Adapte le port si nécessaire
+  const API_URL = `${process.env.NEXT_PUBLIC_BASE_URL}voyages` // Adapte le port si nécessaire
 
   // ==========================================
   // FONCTIONS DE LECTURE (GET)

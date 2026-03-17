@@ -10,16 +10,18 @@ export const getAllEmprunts = async (req, res) => {
     const emprunts = await prisma.emprunt.findMany({
       include: {
         compte: {
-          select: { designation_cpt: true, dev_code: true }
+          select: { designation_cpt: true, dev_code: true },
         },
-        remboursements: true
+        remboursements: true,
       },
-      orderBy: { date_emprunt: 'desc' }
+      orderBy: { date_emprunt: "desc" },
     });
-    
+
     res.status(200).json(emprunts);
   } catch (error) {
-    res.status(500).json({ error: { code: error.code, message: error.message } });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -37,13 +39,8 @@ export const addEmprunt = [
     .isDecimal()
     .notEmpty()
     .withMessage("Le montant est obligatoire"),
-  body("cpt")
-    .isNumeric()
-    .notEmpty()
-    .withMessage("Le compte est obligatoire"),
-  body("dateEmprunt")
-    .notEmpty()
-    .withMessage("La date est obligatoire"),
+  body("cpt").isNumeric().notEmpty().withMessage("Le compte est obligatoire"),
+  body("dateEmprunt").notEmpty().withMessage("La date est obligatoire"),
 
   // 2. Contrôleur
   async (req, res) => {
@@ -59,7 +56,7 @@ export const addEmprunt = [
         // A. Vérification simple du compte (plus besoin du taux_change_actuel)
         const infoCompte = await tx.compte.findUnique({
           where: { id_cpt: parseInt(cpt) },
-          select: { id_cpt: true }
+          select: { id_cpt: true },
         });
 
         if (!infoCompte) {
@@ -75,19 +72,19 @@ export const addEmprunt = [
         const empruntCree = await tx.emprunt.create({
           data: {
             id_emprunt: idEmprunt,
-            designation: desEmprunt,
-            montant_emprunt: montantOperation,
+            des_emprunt: desEmprunt,
+            mnt_emprunt: montantOperation,
             date_emprunt: dateOperation,
-            cpt_id: parseInt(cpt)
-          }
+            cpt_id: parseInt(cpt),
+          },
         });
 
         // D. Mise à jour du compte (incrémentation directe du solde)
         await tx.compte.update({
           where: { id_cpt: parseInt(cpt) },
           data: {
-            solde_actuel: { increment: montantOperation }
-          }
+            solde_actuel: { increment: montantOperation },
+          },
         });
 
         return empruntCree;
@@ -95,10 +92,13 @@ export const addEmprunt = [
 
       res.status(201).json(newEmprunt);
     } catch (error) {
-      res.status(error.message === "Compte introuvable." ? 404 : 500)
-         .json({ error: { code: error.code || "CUSTOM", message: error.message } });
+      res
+        .status(error.message === "Compte introuvable." ? 404 : 500)
+        .json({
+          error: { code: error.code || "CUSTOM", message: error.message },
+        });
     }
-  }
+  },
 ];
 
 // ==========================================
@@ -118,9 +118,7 @@ export const addRemboursement = [
     .isNumeric()
     .notEmpty()
     .withMessage("Le compte de prélèvement est obligatoire"),
-  body("dateRembourse")
-    .notEmpty()
-    .withMessage("La date est obligatoire"),
+  body("dateRembourse").notEmpty().withMessage("La date est obligatoire"),
 
   // 2. Contrôleur Transactionnel
   async (req, res) => {
@@ -136,7 +134,7 @@ export const addRemboursement = [
         // A. Récupérer l'emprunt parent et l'historique de ses paiements
         const empruntActuel = await tx.emprunt.findUnique({
           where: { id_emprunt: parseInt(idEmpruntCible) },
-          include: { remboursements: true }
+          include: { remboursements: true },
         });
 
         if (!empruntActuel) {
@@ -149,23 +147,25 @@ export const addRemboursement = [
 
         // B. Calcul strict du reste à payer
         const totalDejaRembourse = empruntActuel.remboursements.reduce(
-          (sum, remb) => sum + parseFloat(remb.montant_remb), 
-          0
+          (sum, remb) => sum + parseFloat(remb.mnt_remb),
+          0,
         );
-        
-        const montantInitial = parseFloat(empruntActuel.montant_emprunt);
+
+        const montantInitial = parseFloat(empruntActuel.mnt_emprunt);
         const resteAPayer = arrondir(montantInitial - totalDejaRembourse);
         const montantSaisi = arrondir(parseFloat(mntRembourse));
 
         // C. RÈGLE MÉTIER 1 : Bloquer le sur-paiement
         if (montantSaisi > resteAPayer) {
-          throw new Error(`Le montant saisi dépasse le reste à payer (${resteAPayer} DZD).`);
+          throw new Error(
+            `Le montant saisi dépasse le reste à payer (${resteAPayer} DZD).`,
+          );
         }
 
         // D. RÈGLE MÉTIER 2 : Vérifier les fonds du compte de prélèvement
         const infoCompte = await tx.compte.findUnique({
           where: { id_cpt: parseInt(cptCible) },
-          select: { solde_actuel: true }
+          select: { solde_actuel: true },
         });
 
         if (!infoCompte) {
@@ -177,49 +177,66 @@ export const addRemboursement = [
         }
 
         // E. Générer l'ID pour la table remboursement
-        const idRemboursement = await getMaxValue("remboursement", "id_remb", null);
+        const idRemboursement = await getMaxValue(
+          "remboursement",
+          "id_remb",
+          null,
+        );
         const dateOperation = new Date(dateRembourse);
 
         // F. Enregistrer le remboursement SANS passer par 'crediter'
         const nouveauRemboursement = await tx.remboursement.create({
           data: {
             id_remb: idRemboursement,
-            montant_remb: montantSaisi,
+            mnt_remb: montantSaisi,
             date_remb: dateOperation,
             emprunt_id: parseInt(idEmpruntCible),
-            cpt_remb: parseInt(cptCible) 
-          }
+            cpt_remb: parseInt(cptCible),
+          },
         });
 
         // G. Décrémenter l'argent du compte sélectionné
         await tx.compte.update({
           where: { id_cpt: parseInt(cptCible) },
           data: {
-            solde_actuel: { decrement: montantSaisi }
-          }
+            solde_actuel: { decrement: montantSaisi },
+          },
         });
 
         // H. Clôturer automatiquement l'emprunt si le reste est payé
         if (montantSaisi === resteAPayer) {
           await tx.emprunt.update({
             where: { id_emprunt: parseInt(idEmpruntCible) },
-            data: { statut_emprunt: "SOLDE" }
+            data: { statut_emprunt: "SOLDE" },
           });
         }
 
         return nouveauRemboursement;
       });
 
-      res.status(201).json({ message: "Remboursement ajouté avec succès", data: result });
-
+      res
+        .status(201)
+        .json({ message: "Remboursement ajouté avec succès", data: result });
     } catch (error) {
       let statusCode = 500;
       if (error.message.includes("introuvable")) statusCode = 404;
-      if (error.message.includes("dépasse") || error.message.includes("insuffisants") || error.message.includes("soldé")) statusCode = 403;
+      if (
+        error.message.includes("dépasse") ||
+        error.message.includes("insuffisants") ||
+        error.message.includes("soldé")
+      )
+        statusCode = 403;
 
-      res.status(statusCode).json({ error: { code: error.code || "BUSINESS_RULE", message: error.message } });
+      res
+        .status(statusCode)
+        .json({
+          error: {
+            code: error.code || "BUSINESS_RULE",
+            message: error.message,
+          },
+        });
     }
-  }
+  },
 ];
 
 // ==========================================
@@ -227,8 +244,10 @@ export const addRemboursement = [
 // ==========================================
 export const deleteEmprunt = [
   // 1. Validation stricte de l'ID passé dans l'URL
-  param("id").isInt().withMessage("L'ID de l'emprunt doit être un entier valide"),
-  
+  param("id")
+    .isInt()
+    .withMessage("L'ID de l'emprunt doit être un entier valide"),
+
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -236,14 +255,14 @@ export const deleteEmprunt = [
     }
 
     const { id } = req.params;
-    
+
     try {
       await prisma.$transaction(async (tx) => {
         const emprunt = await tx.emprunt.findUnique({
           where: { id_emprunt: parseInt(id) },
-          include: { remboursements: true }
+          include: { remboursements: true },
         });
-        
+
         if (!emprunt) throw new Error("NOT_FOUND");
 
         // Règle métier : Blocage strict si des paiements existent
@@ -254,22 +273,35 @@ export const deleteEmprunt = [
         // 1. Décrémenter le solde du compte (Retirer l'argent de l'emprunt) avec parseFloat de sécurité
         await tx.compte.update({
           where: { id_cpt: emprunt.cpt_id },
-          data: { solde_actuel: { decrement: parseFloat(emprunt.montant_emprunt) } }
+          data: {
+            solde_actuel: { decrement: parseFloat(emprunt.mnt_emprunt) },
+          },
         });
 
         // 2. Supprimer l'emprunt
-        await tx.emprunt.delete({ 
-          where: { id_emprunt: parseInt(id) } 
+        await tx.emprunt.delete({
+          where: { id_emprunt: parseInt(id) },
         });
       });
-      
+
       res.status(200).json({ message: "Emprunt supprimé avec succès." });
     } catch (error) {
-      if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Emprunt introuvable." } });
-      if (error.message === "HAS_CHILDREN") return res.status(403).json({ error: { message: "Suppression impossible : des remboursements sont liés à cet emprunt." } });
+      if (error.message === "NOT_FOUND")
+        return res
+          .status(404)
+          .json({ error: { message: "Emprunt introuvable." } });
+      if (error.message === "HAS_CHILDREN")
+        return res
+          .status(403)
+          .json({
+            error: {
+              message:
+                "Suppression impossible : des remboursements sont liés à cet emprunt.",
+            },
+          });
       res.status(500).json({ error: { message: error.message } });
     }
-  }
+  },
 ];
 
 // ==========================================
@@ -277,8 +309,10 @@ export const deleteEmprunt = [
 // ==========================================
 export const deleteRemboursement = [
   // 1. Validation stricte de l'ID
-  param("id").isInt().withMessage("L'ID du remboursement doit être un entier valide"),
-  
+  param("id")
+    .isInt()
+    .withMessage("L'ID du remboursement doit être un entier valide"),
+
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -286,42 +320,45 @@ export const deleteRemboursement = [
     }
 
     const { id } = req.params;
-    
+
     try {
       await prisma.$transaction(async (tx) => {
         const remb = await tx.remboursement.findUnique({
           where: { id_remb: parseInt(id) },
-          include: { emprunt: true }
+          include: { emprunt: true },
         });
-        
+
         if (!remb) throw new Error("NOT_FOUND");
 
         // 1. Restituer l'argent au VRAI compte source du prélèvement (avec parseFloat de sécurité)
         await tx.compte.update({
           where: { id_cpt: remb.cpt_remb },
-          data: { solde_actuel: { increment: parseFloat(remb.montant_remb) } }
+          data: { solde_actuel: { increment: parseFloat(remb.mnt_remb) } },
         });
 
         // 2. Repasser l'emprunt en "EN_COURS" obligatoirement s'il avait été clôturé
         if (remb.emprunt.statut_emprunt === "SOLDE") {
           await tx.emprunt.update({
             where: { id_emprunt: remb.emprunt_id },
-            data: { statut_emprunt: "EN_COURS" }
+            data: { statut_emprunt: "EN_COURS" },
           });
         }
 
         // 3. Supprimer le remboursement
-        await tx.remboursement.delete({ 
-          where: { id_remb: parseInt(id) } 
+        await tx.remboursement.delete({
+          where: { id_remb: parseInt(id) },
         });
       });
-      
+
       res.status(200).json({ message: "Remboursement annulé avec succès." });
     } catch (error) {
-      if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Remboursement introuvable." } });
+      if (error.message === "NOT_FOUND")
+        return res
+          .status(404)
+          .json({ error: { message: "Remboursement introuvable." } });
       res.status(500).json({ error: { message: error.message } });
     }
-  }
+  },
 ];
 
 // ==========================================
@@ -332,10 +369,11 @@ export const updateEmprunt = [
   body("montant").isDecimal().notEmpty(),
   body("cpt").isNumeric().notEmpty(),
   body("dateEmprunt").notEmpty(),
-  
+
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
 
     const { id } = req.params;
     const { desEmprunt, montant, cpt, dateEmprunt } = req.body;
@@ -344,51 +382,73 @@ export const updateEmprunt = [
       await prisma.$transaction(async (tx) => {
         const oldEmprunt = await tx.emprunt.findUnique({
           where: { id_emprunt: parseInt(id) },
-          include: { remboursements: true }
+          include: { remboursements: true },
         });
-        
+
         if (!oldEmprunt) throw new Error("NOT_FOUND");
 
-        const totalRembourse = oldEmprunt.remboursements.reduce((sum, r) => sum + parseFloat(r.montant_remb), 0);
+        const totalRembourse = oldEmprunt.remboursements.reduce(
+          (sum, r) => sum + parseFloat(r.mnt_remb),
+          0,
+        );
         const newMontant = parseFloat(montant);
 
         // Sécurité : Impossible de baisser le montant de l'emprunt sous ce qui a déjà été payé
         if (newMontant < totalRembourse) {
-          throw new Error(`Le montant ne peut pas être inférieur au total déjà remboursé (${totalRembourse} DZD).`);
+          throw new Error(
+            `Le montant ne peut pas être inférieur au total déjà remboursé (${totalRembourse} DZD).`,
+          );
         }
 
         // 1. Ajustement des soldes de compte avec parseFloat systématique
         if (oldEmprunt.cpt_id !== parseInt(cpt)) {
           // Changement de compte : on retire l'argent de l'ancien, on l'ajoute au nouveau
-          await tx.compte.update({ where: { id_cpt: oldEmprunt.cpt_id }, data: { solde_actuel: { decrement: parseFloat(oldEmprunt.montant_emprunt) } } });
-          await tx.compte.update({ where: { id_cpt: parseInt(cpt) }, data: { solde_actuel: { increment: newMontant } } });
-        } else if (newMontant !== parseFloat(oldEmprunt.montant_emprunt)) {
+          await tx.compte.update({
+            where: { id_cpt: oldEmprunt.cpt_id },
+            data: {
+              solde_actuel: { decrement: parseFloat(oldEmprunt.mnt_emprunt) },
+            },
+          });
+          await tx.compte.update({
+            where: { id_cpt: parseInt(cpt) },
+            data: { solde_actuel: { increment: newMontant } },
+          });
+        } else if (newMontant !== parseFloat(oldEmprunt.mnt_emprunt)) {
           // Même compte mais montant différent : on applique la différence
-          const diff = newMontant - parseFloat(oldEmprunt.montant_emprunt);
-          await tx.compte.update({ where: { id_cpt: oldEmprunt.cpt_id }, data: { solde_actuel: { increment: diff } } });
+          const diff = newMontant - parseFloat(oldEmprunt.mnt_emprunt);
+          await tx.compte.update({
+            where: { id_cpt: oldEmprunt.cpt_id },
+            data: { solde_actuel: { increment: diff } },
+          });
         }
 
         // 2. Mise à jour de l'emprunt (Aucun appel à `crediter`)
-        const nouveauStatut = (newMontant === totalRembourse && newMontant > 0) ? "SOLDE" : "EN_COURS";
-        
+        const nouveauStatut =
+          newMontant === totalRembourse && newMontant > 0
+            ? "SOLDE"
+            : "EN_COURS";
+
         await tx.emprunt.update({
           where: { id_emprunt: parseInt(id) },
-          data: { 
-            designation: desEmprunt, 
-            montant_emprunt: newMontant, 
-            cpt_id: parseInt(cpt), 
-            date_emprunt: new Date(dateEmprunt), 
-            statut_emprunt: nouveauStatut 
-          }
+          data: {
+            des_emprunt: desEmprunt,
+            mnt_emprunt: newMontant,
+            cpt_id: parseInt(cpt),
+            date_emprunt: new Date(dateEmprunt),
+            statut_emprunt: nouveauStatut,
+          },
         });
       });
-      
+
       res.status(200).json({ message: "Emprunt mis à jour avec succès." });
     } catch (error) {
-      if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Emprunt introuvable." } });
+      if (error.message === "NOT_FOUND")
+        return res
+          .status(404)
+          .json({ error: { message: "Emprunt introuvable." } });
       res.status(400).json({ error: { message: error.message } });
     }
-  }
+  },
 ];
 
 // ==========================================
@@ -398,10 +458,11 @@ export const updateRemboursement = [
   body("mntRembourse").isDecimal().notEmpty(),
   body("cptCible").isNumeric().notEmpty(),
   body("dateRembourse").notEmpty(),
-  
+
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
 
     const { id } = req.params;
     const { mntRembourse, cptCible, dateRembourse } = req.body;
@@ -410,60 +471,94 @@ export const updateRemboursement = [
       await prisma.$transaction(async (tx) => {
         const oldRemb = await tx.remboursement.findUnique({
           where: { id_remb: parseInt(id) },
-          include: { emprunt: { include: { remboursements: true } } }
+          include: { emprunt: { include: { remboursements: true } } },
         });
-        
+
         if (!oldRemb) throw new Error("NOT_FOUND");
 
         const emprunt = oldRemb.emprunt;
         const newMontantSaisi = parseFloat(mntRembourse);
         const newCompteId = parseInt(cptCible);
-        
+
         // Calcul du total remboursé SANS ce paiement précis
-        const autresRemboursements = emprunt.remboursements.filter(r => r.id_remb !== parseInt(id));
-        const totalAutres = autresRemboursements.reduce((sum, r) => sum + parseFloat(r.montant_remb), 0);
-        const maxAutorise = parseFloat(emprunt.montant_emprunt) - totalAutres;
+        const autresRemboursements = emprunt.remboursements.filter(
+          (r) => r.id_remb !== parseInt(id),
+        );
+        const totalAutres = autresRemboursements.reduce(
+          (sum, r) => sum + parseFloat(r.mnt_remb),
+          0,
+        );
+        const maxAutorise = parseFloat(emprunt.mnt_emprunt) - totalAutres;
 
         if (newMontantSaisi > maxAutorise) {
-          throw new Error(`Le montant corrigé dépasse le reste à payer (${arrondir(maxAutorise)} DZD).`);
+          throw new Error(
+            `Le montant corrigé dépasse le reste à payer (${arrondir(maxAutorise)} DZD).`,
+          );
         }
 
         // 1. Ajuster les comptes selon la nouvelle architecture DCL
         if (oldRemb.cpt_remb !== newCompteId) {
           // L'utilisateur a changé le compte source : on restitue à l'ancien, on prélève sur le nouveau
-          await tx.compte.update({ where: { id_cpt: oldRemb.cpt_remb }, data: { solde_actuel: { increment: parseFloat(oldRemb.montant_remb) } } });
-          
+          await tx.compte.update({
+            where: { id_cpt: oldRemb.cpt_remb },
+            data: { solde_actuel: { increment: parseFloat(oldRemb.mnt_remb) } },
+          });
+
           // Vérifier les fonds du nouveau compte
-          const infoNouveauCompte = await tx.compte.findUnique({ where: { id_cpt: newCompteId }, select: { solde_actuel: true } });
-          if (!infoNouveauCompte || parseFloat(infoNouveauCompte.solde_actuel) < newMontantSaisi) {
-             throw new Error("Fonds insuffisants sur le nouveau compte sélectionné.");
+          const infoNouveauCompte = await tx.compte.findUnique({
+            where: { id_cpt: newCompteId },
+            select: { solde_actuel: true },
+          });
+          if (
+            !infoNouveauCompte ||
+            parseFloat(infoNouveauCompte.solde_actuel) < newMontantSaisi
+          ) {
+            throw new Error(
+              "Fonds insuffisants sur le nouveau compte sélectionné.",
+            );
           }
-          await tx.compte.update({ where: { id_cpt: newCompteId }, data: { solde_actuel: { decrement: newMontantSaisi } } });
-        } else if (newMontantSaisi !== parseFloat(oldRemb.montant_remb)) {
+          await tx.compte.update({
+            where: { id_cpt: newCompteId },
+            data: { solde_actuel: { decrement: newMontantSaisi } },
+          });
+        } else if (newMontantSaisi !== parseFloat(oldRemb.mnt_remb)) {
           // Même compte, mais montant modifié
-          const diff = newMontantSaisi - parseFloat(oldRemb.montant_remb);
-          await tx.compte.update({ where: { id_cpt: oldRemb.cpt_remb }, data: { solde_actuel: { decrement: diff } } });
+          const diff = newMontantSaisi - parseFloat(oldRemb.mnt_remb);
+          await tx.compte.update({
+            where: { id_cpt: oldRemb.cpt_remb },
+            data: { solde_actuel: { decrement: diff } },
+          });
         }
 
         // 2. Mettre à jour le remboursement
         await tx.remboursement.update({
           where: { id_remb: parseInt(id) },
-          data: { montant_remb: newMontantSaisi, cpt_remb: newCompteId, date_remb: new Date(dateRembourse) }
+          data: {
+            mnt_remb: newMontantSaisi,
+            cpt_remb: newCompteId,
+            date_remb: new Date(dateRembourse),
+          },
         });
 
         // 3. Recalculer le statut de l'emprunt
         const nouveauTotal = totalAutres + newMontantSaisi;
-        const nouveauStatut = (nouveauTotal === parseFloat(emprunt.montant_emprunt)) ? "SOLDE" : "EN_COURS";
+        const nouveauStatut =
+          nouveauTotal === parseFloat(emprunt.mnt_emprunt)
+            ? "SOLDE"
+            : "EN_COURS";
         await tx.emprunt.update({
           where: { id_emprunt: emprunt.id_emprunt },
-          data: { statut_emprunt: nouveauStatut }
+          data: { statut_emprunt: nouveauStatut },
         });
       });
-      
+
       res.status(200).json({ message: "Remboursement corrigé avec succès." });
     } catch (error) {
-      if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Remboursement introuvable." } });
+      if (error.message === "NOT_FOUND")
+        return res
+          .status(404)
+          .json({ error: { message: "Remboursement introuvable." } });
       res.status(400).json({ error: { message: error.message } });
     }
-  }
+  },
 ];
