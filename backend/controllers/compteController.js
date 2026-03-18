@@ -21,18 +21,19 @@ export const crediterCompte = [
     const { cpt, mnt, taux, dateOp } = req.body;
 
     try {
-      const updatedCompte = await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx) => {
         const id_op = await getMaxValue("crediter", "id_op_crd", null);
+        const cptIdInt = parseInt(cpt, 10);
 
         await tx.crediter.create({
           data: {
             id_op_crd: id_op,
-            date_op: dateOp,
+            date_op: new Date(dateOp),
             montant_op: mnt,
             taux_change: taux,
             compte: {
               connect: {
-                id_cpt: cpt,
+                id_cpt: cptIdInt,
               },
             },
           },
@@ -40,32 +41,32 @@ export const crediterCompte = [
 
         const infoCompte = await tx.compte.findUnique({
           where: {
-            id_cpt: cpt,
+            id_cpt: cptIdInt,
           },
           select: {
             solde_actuel: true,
             taux_change_actuel: true,
+            designation_cpt: true,
+            type_cpt: true,
           },
         });
 
-        // Conversion stricte des variables Prisma Decimal pour éviter les erreurs NaN
         const soldeAncien = parseFloat(infoCompte.solde_actuel || 0);
         const tauxAncien = parseFloat(infoCompte.taux_change_actuel || 0);
         const montantAjout = parseFloat(mnt);
         const tauxAjout = parseFloat(taux);
 
-        // Formule de moyenne pondérée intacte
         const newTauxChange =
           Math.round(
             ((soldeAncien * tauxAncien + montantAjout * tauxAjout) /
               (soldeAncien + montantAjout) +
               Number.EPSILON) *
-              100
+              100,
           ) / 100;
 
-        const compte = await tx.compte.update({
+        await tx.compte.update({
           where: {
-            id_cpt: cpt,
+            id_cpt: cptIdInt,
           },
           data: {
             solde_actuel: {
@@ -75,7 +76,11 @@ export const crediterCompte = [
           },
         });
 
-        if (compte.designation_cpt === "Wise") {
+        // Déduction de la Caisse DZD pour tout crédit d'un compte COMMUN
+        if (
+          infoCompte.type_cpt === "COMMUN" &&
+          infoCompte.designation_cpt !== "Caisse"
+        ) {
           const caisse = await tx.compte.findFirst({
             where: {
               designation_cpt: "Caisse",
@@ -89,7 +94,7 @@ export const crediterCompte = [
           const montantADeduire = montantAjout * tauxAjout;
 
           if (parseFloat(caisse.solde_actuel) < montantADeduire) {
-            throw new Error("Le solde de la CAISSE est insuffisant");
+            throw new Error("INSUFFICIENT_FUNDS");
           }
 
           await tx.compte.update({
@@ -105,8 +110,15 @@ export const crediterCompte = [
 
       res
         .status(200)
-        .json({ message: "Votre compte a ete met a jour avec succès!" });
+        .json({ message: "Votre compte a été mis à jour avec succès!" });
     } catch (error) {
+      if (error.message === "INSUFFICIENT_FUNDS") {
+        return res.status(400).json({
+          message:
+            "Le solde de la CAISSE est insuffisant pour créditer ce compte.",
+        });
+      }
+
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -119,7 +131,7 @@ export const addCompte = [
     .isString()
     .trim()
     .notEmpty()
-    .withMessage("Le type du compte est obligatorie"),
+    .withMessage("Le type du compte est obligatoire"),
   body("desCpt")
     .isString()
     .trim()
@@ -130,6 +142,10 @@ export const addCompte = [
     .trim()
     .notEmpty()
     .withMessage("La devise du compte est obligatoire"),
+  body("commissionPct")
+    .optional({ nullable: true, checkFalsy: true })
+    .isNumeric()
+    .withMessage("La commission doit être un nombre"),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -144,11 +160,12 @@ export const addCompte = [
         .replace(/(?:^|\s)\S/g, (a) => a.toUpperCase());
     };
 
-    const { typeCpt, desCpt, devise } = req.body;
+    const { typeCpt, desCpt, devise, commissionPct } = req.body;
 
     const cleanedType = typeCpt.toUpperCase();
     const cleanedDes = normalizeString(desCpt);
     const cleanedDevise = devise.trim();
+    const cleanedCommission = commissionPct ? parseFloat(commissionPct) : 0.0;
 
     try {
       const isExist = await prisma.compte.findFirst({
@@ -160,25 +177,30 @@ export const addCompte = [
       });
 
       if (isExist) {
-        return res.status(403).json({ message: "Compte déjà existant" });
+        return res.status(403).json({ message: "Ce compte existe déjà" });
       }
 
       const idCpt = await getMaxValue("compte", "id_cpt", null);
+
       const newCompte = await prisma.compte.create({
         data: {
           id_cpt: idCpt,
           dev_code: cleanedDevise,
           type_cpt: cleanedType,
           designation_cpt: cleanedDes,
+          commission_pct: cleanedCommission,
         },
       });
 
       return res.status(201).json(newCompte);
     } catch (error) {
       if (error.code === "P2002") {
-        return res
-          .status(409)
-          .json({ error: { code: "P2002", message: "Devise already exists" } });
+        return res.status(409).json({
+          error: {
+            code: "P2002",
+            message: "Erreur d'unicité : identifiant déjà utilisé.",
+          },
+        });
       }
 
       return res
@@ -187,32 +209,6 @@ export const addCompte = [
     }
   },
 ];
-
-export const getComptesWithTauxChange = async (req, res) => {
-  try {
-    // La table info_taux_change n'existe plus. 
-    // Requête simplifiée pour ne pas faire crasher l'application si la route est appelée.
-    const comptes = await prisma.compte.findMany({
-      select: {
-        id_cpt: true,
-        designation_cpt: true,
-        dev_code: true,
-        taux_change_actuel: true,
-        devise: {
-          select: {
-            symbole_dev: true,
-          },
-        },
-      },
-    });
-
-    res.status(200).json(comptes);
-  } catch (error) {
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
-  }
-};
 
 export const getAllComptes = async (req, res) => {
   try {
