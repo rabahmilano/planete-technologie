@@ -68,26 +68,24 @@ const VoyageDetails = () => {
       <Grid item xs={12} md={7}>
         <TransactionsTable
           transactions={voyage.transactions}
-          statut={voyage.statut}
+          statut={voyage.statut_voy}
           onAddFacture={() => setOpenTransactionModal(true)}
         />
       </Grid>
 
       <Grid item xs={12} md={5}>
-        <Grid item xs={12} md={5}>
-          <DepensesTable
-            depenses={voyage.depenses}
-            statut={voyage.statut}
-            onAddFrais={() => setOpenDepenseModal(true)}
-          />
-        </Grid>
+        <DepensesTable
+          depenses={voyage.depenses}
+          statut={voyage.statut_voy}
+          onAddFrais={() => setOpenDepenseModal(true)}
+        />
       </Grid>
 
       <AddTransactionModal
         open={openTransactionModal}
         handleClose={() => setOpenTransactionModal(false)}
         voyageId={id}
-        deviseDest={voyage.devise_destination}
+        deviseDest={voyage.dev_dest}
         onSuccess={fetchDetails}
       />
 

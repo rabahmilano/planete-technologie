@@ -26,21 +26,21 @@ const VoyageHeaderKpis = ({ voyage }) => {
           <Grid item xs={12} md={6}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 2 }}>
               <Icon icon='tabler:plane' fontSize='2.5rem' color='#primary.main' />
-              <Typography variant='h4'>{voyage.designation}</Typography>
+              <Typography variant='h4'>{voyage.des_voyage}</Typography>
               <Chip
-                label={voyage.statut.replace('_', ' ')}
-                color={getStatusColor(voyage.statut)}
+                label={voyage.statut_voy.replace('_', ' ')}
+                color={getStatusColor(voyage.statut_voy)}
                 size='small'
                 sx={{ fontWeight: 'bold' }}
               />
             </Box>
             <Typography variant='body1' color='textSecondary' sx={{ mb: 1 }}>
               <Icon icon='tabler:map-pin' fontSize='1.1rem' style={{ verticalAlign: 'sub', marginRight: 4 }} />
-              {voyage.destination || 'Destination non précisée'}
+              {voyage.dest_voyage || 'Destination non précisée'}
             </Typography>
             <Typography variant='body2' color='textSecondary'>
               <Icon icon='tabler:calendar-event' fontSize='1.1rem' style={{ verticalAlign: 'sub', marginRight: 4 }} />
-              Du {dayjs(voyage.date_depart).format('DD/MM/YYYY')} au {dayjs(voyage.date_retour).format('DD/MM/YYYY')}
+              Du {dayjs(voyage.date_dep).format('DD/MM/YYYY')} au {dayjs(voyage.date_ret).format('DD/MM/YYYY')}
             </Typography>
           </Grid>
 
@@ -98,10 +98,10 @@ const VoyageHeaderKpis = ({ voyage }) => {
                 </Box>
               </Grid>
             </Grid>
-            {voyage.statut === 'CLOTURE' && (
+            {voyage.statut_voy === 'CLOTURE' && (
               <Box sx={{ mt: 3, textAlign: 'right' }}>
                 <Typography variant='body2' color='textSecondary'>
-                  Coefficient d'approche calculé : <strong>{parseFloat(voyage.coefficient_approche).toFixed(4)}</strong>
+                  Coefficient d'approche calculé : <strong>{parseFloat(voyage.coeff_approche).toFixed(4)}</strong>
                 </Typography>
               </Box>
             )}

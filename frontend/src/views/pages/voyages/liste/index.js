@@ -59,13 +59,11 @@ const VoyagesList = () => {
     if (!selectedVoyage) return
 
     if (statut === 'EN_COURS') {
-      // On ouvre la modale pour demander le taux
       setOpenTauxModal(true)
-      handleDropdownClose()
+      setAnchorEl(null) // On ferme juste le petit menu, on GARDE selectedVoyage
     } else if (statut === 'CLOTURE') {
-      // Clôture directe (le backend fera les calculs)
       await changerStatutVoyage(selectedVoyage.id_voyage, 'CLOTURE')
-      handleDropdownClose()
+      handleDropdownClose() // Ici c'est fini, on peut tout effacer
     }
   }
 
@@ -74,6 +72,7 @@ const VoyagesList = () => {
     await changerStatutVoyage(selectedVoyage.id_voyage, 'EN_COURS', parseFloat(tauxSaisi))
     setOpenTauxModal(false)
     setTauxSaisi('')
+    setSelectedVoyage(null)
   }
 
   const getStatusColor = statut => {
@@ -158,15 +157,15 @@ const VoyagesList = () => {
                   <TableRow hover key={voyage.id_voyage}>
                     <TableCell>
                       <Typography variant='subtitle2' sx={{ fontWeight: 600 }}>
-                        {voyage.designation}
+                        {voyage.des_voyage}
                       </Typography>
                       <Typography variant='caption' color='textSecondary'>
-                        Devise : {voyage.devise_destination}
+                        Devise : {voyage.dev_dest}
                       </Typography>
                     </TableCell>
 
                     <TableCell>
-                      <Typography variant='body2'>{voyage.destination || '--'}</Typography>
+                      <Typography variant='body2'>{voyage.dest_voyage || '--'}</Typography>
                     </TableCell>
 
                     <TableCell>
@@ -174,13 +173,13 @@ const VoyagesList = () => {
                         <Box component='span' sx={{ fontWeight: 600 }}>
                           Départ :
                         </Box>{' '}
-                        {dayjs(voyage.date_depart).format('DD/MM/YYYY')}
+                        {dayjs(voyage.date_dep).format('DD/MM/YYYY')}
                       </Typography>
                       <Typography variant='body2'>
                         <Box component='span' sx={{ fontWeight: 600 }}>
                           Retour :
                         </Box>{' '}
-                        {dayjs(voyage.date_retour).format('DD/MM/YYYY')}
+                        {dayjs(voyage.date_ret).format('DD/MM/YYYY')}
                       </Typography>
                     </TableCell>
 
@@ -205,8 +204,8 @@ const VoyagesList = () => {
 
                     <TableCell>
                       <Chip
-                        label={getStatusLabel(voyage.statut)}
-                        color={getStatusColor(voyage.statut)}
+                        label={getStatusLabel(voyage.statut_voy)}
+                        color={getStatusColor(voyage.statut_voy)}
                         size='small'
                         sx={{ fontWeight: 600 }}
                       />
@@ -230,17 +229,17 @@ const VoyagesList = () => {
 
         {/* Menu des actions */}
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleDropdownClose}>
-          {selectedVoyage?.statut === 'EN_PREPARATION' && (
+          {selectedVoyage?.statut_voy === 'EN_PREPARATION' && (
             <MenuItem onClick={() => actionChangerStatut('EN_COURS')}>
               <Icon icon='tabler:plane-inflight' style={{ marginRight: 8 }} /> Démarrer le voyage
             </MenuItem>
           )}
-          {selectedVoyage?.statut === 'EN_COURS' && (
+          {selectedVoyage?.statut_voy === 'EN_COURS' && (
             <MenuItem onClick={() => actionChangerStatut('CLOTURE')} sx={{ color: 'success.main' }}>
               <Icon icon='tabler:calculator' style={{ marginRight: 8 }} /> Clôturer & Calculer TTC
             </MenuItem>
           )}
-          {selectedVoyage?.statut === 'CLOTURE' && (
+          {selectedVoyage?.statut_voy === 'CLOTURE' && (
             <MenuItem disabled>
               <Typography variant='body2'>Aucune action (Voyage verrouillé)</Typography>
             </MenuItem>
@@ -249,23 +248,35 @@ const VoyagesList = () => {
       </Card>
 
       {/* Modale pour le Taux de change au démarrage du voyage */}
-      <Dialog open={openTauxModal} onClose={() => setOpenTauxModal(false)}>
+      <Dialog
+        open={openTauxModal}
+        onClose={() => {
+          setOpenTauxModal(false)
+          setSelectedVoyage(null)
+        }}
+      >
         <DialogTitle>Démarrer le voyage</DialogTitle>
         <DialogContent sx={{ minWidth: 400 }}>
           <Typography variant='body2' sx={{ mb: 4 }}>
             Pour passer ce voyage "En Cours", veuillez saisir le taux de change prévisionnel de la devise de destination
-            ({selectedVoyage?.devise_destination}).
+            ({selectedVoyage?.dev_dest}). {console.log(selectedVoyage?.dev_dest)}
           </Typography>
           <CustomTextField
             fullWidth
             type='number'
-            label={`Taux de change (1 ${selectedVoyage?.devise_destination} = ? DZD)`}
+            label={`Taux de change (1 ${selectedVoyage?.dev_dest} = ? DZD)`}
             value={tauxSaisi}
             onChange={e => setTauxSaisi(e.target.value)}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenTauxModal(false)} color='secondary'>
+          <Button
+            onClick={() => {
+              setOpenTauxModal(false)
+              setSelectedVoyage(null)
+            }}
+            color='secondary'
+          >
             Annuler
           </Button>
           <Button onClick={validerPassageEnCours} variant='contained' disabled={!tauxSaisi}>
