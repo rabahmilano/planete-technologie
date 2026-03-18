@@ -88,3 +88,14 @@ export const formatCVC = (value, cardNumber, Payment) => {
 
   return clearValue.slice(0, maxLength)
 }
+
+export const formatMontant = value => {
+  if (value === null || value === undefined) return '0.00'
+
+  return Number(value)
+    .toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+    .replace(/,/g, ' ') // Remplace la virgule des milliers par un espace
+}
