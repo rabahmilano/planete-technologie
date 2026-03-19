@@ -41,7 +41,17 @@ const ListeComptes = () => {
           <Table sx={{ minWidth: 900 }}>
             <TableHead>
               <TableRow>
-                <TableCell>Compte</TableCell>
+                <TableCell
+                  sx={{
+                    position: 'sticky',
+                    left: 0,
+                    background: theme => theme.palette.background.paper,
+                    zIndex: 2,
+                    borderRight: '1px solid rgba(0, 0, 0, 0.12)' // Petite ligne pour séparer visuellement
+                  }}
+                >
+                  Compte
+                </TableCell>
                 <TableCell>Type</TableCell>
                 <TableCell align='right'>Solde</TableCell>
                 <TableCell align='right'>Commission</TableCell>
@@ -52,7 +62,18 @@ const ListeComptes = () => {
             <TableBody>
               {comptes?.map(compte => (
                 <TableRow key={compte.id_cpt} hover>
-                  <TableCell sx={{ fontWeight: 500 }}>{compte.designation_cpt}</TableCell>
+                  <TableCell
+                    sx={{
+                      fontWeight: 500,
+                      position: 'sticky',
+                      left: 0,
+                      background: theme => theme.palette.background.paper,
+                      zIndex: 1,
+                      borderRight: '1px solid rgba(0, 0, 0, 0.12)'
+                    }}
+                  >
+                    {compte.designation_cpt}
+                  </TableCell>
                   <TableCell>
                     <Chip
                       label={compte.type_cpt}
