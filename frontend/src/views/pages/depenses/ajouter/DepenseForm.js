@@ -35,7 +35,7 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
     }
   }
 
-  const submitForm = (data) => {
+  const submitForm = data => {
     // On passe la fonction 'reset' et 'setSymboleDev' au parent pour qu'il puisse vider le formulaire après succès
     onSubmit(data, reset, setSymboleDev)
   }
@@ -43,7 +43,6 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
   return (
     <form onSubmit={handleSubmit(submitForm)}>
       <Grid container spacing={5}>
-        
         {/* 1. DATE */}
         <Grid item xs={12} sm={6} md={3}>
           <Controller
@@ -61,7 +60,7 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
                       fullWidth: true,
                       variant: 'outlined',
                       error: !!error,
-                      helperText: error && 'Ce champ est obligatoire',
+                      helperText: error && 'Ce champ est obligatoire'
                     }
                   }}
                 />
@@ -170,8 +169,8 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
           <Controller
             name='observation'
             control={control}
-            rules={{ 
-              maxLength: { value: 255, message: 'L\'observation ne peut pas dépasser 255 caractères' } 
+            rules={{
+              maxLength: { value: 255, message: "L'observation ne peut pas dépasser 255 caractères" }
             }}
             render={({ field: { value, onChange }, fieldState: { error } }) => (
               <CustomTextField
@@ -197,9 +196,9 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
         {/* BOUTON DE SOUMISSION */}
         <Grid item xs={12}>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4 }}>
-            <Button 
-              type='submit' 
-              variant='contained' 
+            <Button
+              type='submit'
+              variant='contained'
               color='success'
               size='large'
               startIcon={<Icon icon='tabler:check' />}
@@ -209,7 +208,6 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
             </Button>
           </Box>
         </Grid>
-
       </Grid>
     </form>
   )
