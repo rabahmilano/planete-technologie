@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import 'dayjs/locale/fr'
 import Icon from 'src/@core/components/icon'
 import CustomTextField from 'src/@core/components/mui/text-field'
+import CleaveInput from 'src/components/CleaveInput'
 
 dayjs.locale('fr')
 
@@ -31,19 +32,17 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
   const handleCompteChange = newCompte => {
     const selectedCompte = listCompte.find(compte => compte.id_cpt === newCompte)
     if (selectedCompte) {
-      setSymboleDev(selectedCompte.devise.symbole_dev)
+      setSymboleDev(selectedCompte.devise?.symbole_dev || '')
     }
   }
 
   const submitForm = data => {
-    // On passe la fonction 'reset' et 'setSymboleDev' au parent pour qu'il puisse vider le formulaire après succès
     onSubmit(data, reset, setSymboleDev)
   }
 
   return (
     <form onSubmit={handleSubmit(submitForm)}>
       <Grid container spacing={5}>
-        {/* 1. DATE */}
         <Grid item xs={12} sm={6} md={3}>
           <Controller
             name='dateDepense'
@@ -69,7 +68,6 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
           />
         </Grid>
 
-        {/* 2. NATURE DE DÉPENSE */}
         <Grid item xs={12} sm={6} md={3}>
           <Controller
             name='nature'
@@ -87,12 +85,7 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position='start' sx={{ ml: '-10px', mr: 2 }}>
-                      <IconButton
-                        edge='end'
-                        onMouseDown={e => e.preventDefault()}
-                        onClick={onOpenDrawer} // Appel direct au parent
-                        color='info'
-                      >
+                      <IconButton edge='end' onMouseDown={e => e.preventDefault()} onClick={onOpenDrawer} color='info'>
                         <Icon fontSize='1.25rem' icon='tabler:circle-plus' />
                       </IconButton>
                     </InputAdornment>
@@ -109,7 +102,6 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
           />
         </Grid>
 
-        {/* 3. COMPTE DE PAIEMENT */}
         <Grid item xs={12} sm={6} md={3}>
           <Controller
             name='cpt'
@@ -141,30 +133,29 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
           />
         </Grid>
 
-        {/* 4. MONTANT */}
         <Grid item xs={12} sm={6} md={3}>
           <Controller
             name='montant'
             control={control}
-            rules={{ required: true, min: 0 }}
+            rules={{ required: true }}
             render={({ field: { value, onChange } }) => (
               <CustomTextField
                 fullWidth
-                type='number'
                 value={value}
                 onChange={onChange}
                 label='Montant'
                 autoComplete='off'
                 error={Boolean(errors.montant)}
-                {...(errors.montant && { helperText: 'Ce champ doit être supérieur à 0 ' })}
-                inputProps={{ min: 0 }}
-                InputProps={{ endAdornment: <InputAdornment position='end'>{symboleDev}</InputAdornment> }}
+                {...(errors.montant && { helperText: 'Ce champ est obligatoire' })}
+                InputProps={{
+                  inputComponent: CleaveInput,
+                  endAdornment: <InputAdornment position='end'>{symboleDev}</InputAdornment>
+                }}
               />
             )}
           />
         </Grid>
 
-        {/* 5. NOUVEAU CHAMP : OBSERVATION (Avec compteur 255) */}
         <Grid item xs={12}>
           <Controller
             name='observation'
@@ -193,7 +184,6 @@ const DepenseForm = ({ listNature, listCompte, onSubmit, onOpenDrawer }) => {
           />
         </Grid>
 
-        {/* BOUTON DE SOUMISSION */}
         <Grid item xs={12}>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4 }}>
             <Button

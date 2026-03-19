@@ -11,12 +11,9 @@ import Icon from 'src/@core/components/icon'
 import toast from 'react-hot-toast'
 
 import { useDepense } from 'src/context/DepenseContext'
-import axios from 'axios'
 
-// ** Third Party Imports
 import { useForm, Controller } from 'react-hook-form'
 
-// ** Custom Component Import
 import CustomTextField from 'src/@core/components/mui/text-field'
 
 const defaultValues = {
@@ -26,7 +23,7 @@ const defaultValues = {
 const AjouterTypeDepense = ({ onClose }) => {
   const theme = useTheme()
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'))
-  const { fetchListNature } = useDepense()
+  const { ajouterNatureDepense } = useDepense()
 
   const {
     control,
@@ -40,34 +37,14 @@ const AjouterTypeDepense = ({ onClose }) => {
     const data = getValues()
     if (!data.natDep.trim()) {
       toast.error("Il y'a une erreur avec la désignation")
+      return
     }
 
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL}depenses/addNatDepense`
+    const isSuccess = await ajouterNatureDepense(data)
 
-    try {
-      const reponse = await axios.post(url, data)
-      if (reponse.status === 201) {
-        toast.success('Le nouveau type est ajouté')
-        fetchListNature()
-        reset()
-        onClose()
-      }
-    } catch (error) {
-      if (error.response) {
-        if (error.response.status === 400) {
-          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
-        } else if (error.response.status === 403) {
-          toast.error(error.response.data.message)
-        } else {
-          toast.error('Erreur du serveur: ' + error.response.data.message)
-        }
-      } else if (error.request) {
-        // La requête a été faite mais aucune réponse n'a été reçue
-        toast.error('Pas de réponse du serveur')
-      } else {
-        // Une erreur s'est produite lors de la configuration de la requête
-        toast.error('Erreur: ' + error.message)
-      }
+    if (isSuccess) {
+      reset()
+      onClose()
     }
   }
 

@@ -54,12 +54,96 @@ export const DepenseProvider = ({ children }) => {
     }
   }, [])
 
+  const handleApiError = error => {
+    if (error.response) {
+      if (error.response.status === 400) {
+        toast.error('Erreur de validation: ' + error.response.data.errors?.map(err => err.msg).join(', '))
+      } else if (error.response.status === 403 || error.response.status === 404) {
+        toast.error(error.response.data.message || error.response.data.error?.message)
+      } else {
+        toast.error('Erreur du serveur: ' + (error.response.data.message || error.response.data.error?.message || ''))
+      }
+    } else if (error.request) {
+      toast.error('Pas de réponse du serveur')
+    } else {
+      toast.error('Erreur: ' + error.message)
+    }
+  }
+
+  const ajouterNatureDepense = async data => {
+    try {
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/addNatDepense`, data)
+      if (response.status === 201) {
+        toast.success('Le nouveau type est ajouté')
+        fetchListNature()
+        return true
+      }
+    } catch (error) {
+      handleApiError(error)
+      return false
+    }
+  }
+
+  const ajouterDepense = async data => {
+    try {
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/addDepense`, data)
+      if (response.status === 201) {
+        toast.success('Dépense enregistrée avec succès')
+        fetchGlobalStats()
+        return true
+      }
+    } catch (error) {
+      handleApiError(error)
+      return false
+    }
+  }
+
+  const modifierDepense = async (id, data) => {
+    try {
+      const response = await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/${id}`, data)
+      if (response.status === 200) {
+        toast.success('Dépense mise à jour avec succès')
+        fetchGlobalStats()
+        return true
+      }
+    } catch (error) {
+      handleApiError(error)
+      return false
+    }
+  }
+
+  const annulerDepense = async id => {
+    try {
+      const response = await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/${id}`)
+      if (response.status === 200) {
+        toast.success("Dépense annulée avec succès. L'argent a été restitué.")
+        fetchGlobalStats()
+        return true
+      }
+    } catch (error) {
+      handleApiError(error)
+      return false
+    }
+  }
+
   useEffect(() => {
     fetchListNature()
     fetchGlobalStats()
   }, [fetchListNature, fetchGlobalStats])
 
-  const value = { listNature, depenses, totalDepenses, loading, fetchData, globalStats, setGlobalStats }
+  const value = {
+    listNature,
+    depenses,
+    totalDepenses,
+    loading,
+    globalStats,
+    fetchData,
+    fetchGlobalStats,
+    ajouterNatureDepense,
+    ajouterDepense,
+    modifierDepense,
+    annulerDepense
+  }
 
   return <DepenseContext.Provider value={value}>{children}</DepenseContext.Provider>
 }
