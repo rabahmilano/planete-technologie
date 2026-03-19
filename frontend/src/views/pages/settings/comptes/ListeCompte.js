@@ -6,6 +6,7 @@ import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import TableContainer from '@mui/material/TableContainer'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -36,46 +37,48 @@ const ListeComptes = () => {
         }
       />
       <CardContent>
-        <Table sx={{ minWidth: 900 }}>
-          <TableHead>
-            <TableRow>
-              <TableCell>Compte</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell align='right'>Solde</TableCell>
-              <TableCell align='right'>Commission</TableCell>
-              <TableCell align='center'>Devise</TableCell>
-              <TableCell align='right'>Taux de change actuel</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {comptes?.map(compte => (
-              <TableRow key={compte.id_cpt} hover>
-                <TableCell sx={{ fontWeight: 500 }}>{compte.designation_cpt}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={compte.type_cpt}
-                    color={getChipColor(compte.type_cpt)}
-                    size='small'
-                    sx={{ textTransform: 'capitalize', fontWeight: 600 }}
-                  />
-                </TableCell>
-                <TableCell align='right' sx={{ fontWeight: 600 }}>
-                  {formatMontant(compte.solde_actuel)} {compte.devise?.symbole_dev || ''}
-                </TableCell>
-                <TableCell align='right'>{formatMontant(compte.commission_pct)} %</TableCell>
-                <TableCell align='center'>{compte.dev_code}</TableCell>
-                <TableCell align='right'>{formatMontant(compte.taux_change_actuel)} DZD</TableCell>
-              </TableRow>
-            ))}
-            {(!comptes || comptes.length === 0) && (
+        <TableContainer>
+          <Table sx={{ minWidth: 900 }}>
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={6} align='center'>
-                  Aucun compte trouvé.
-                </TableCell>
+                <TableCell>Compte</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell align='right'>Solde</TableCell>
+                <TableCell align='right'>Commission</TableCell>
+                <TableCell align='center'>Devise</TableCell>
+                <TableCell align='right'>Taux de change actuel</TableCell>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {comptes?.map(compte => (
+                <TableRow key={compte.id_cpt} hover>
+                  <TableCell sx={{ fontWeight: 500 }}>{compte.designation_cpt}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={compte.type_cpt}
+                      color={getChipColor(compte.type_cpt)}
+                      size='small'
+                      sx={{ textTransform: 'capitalize', fontWeight: 600 }}
+                    />
+                  </TableCell>
+                  <TableCell align='right' sx={{ fontWeight: 600 }}>
+                    {formatMontant(compte.solde_actuel)} {compte.devise?.symbole_dev || ''}
+                  </TableCell>
+                  <TableCell align='right'>{formatMontant(compte.commission_pct)} %</TableCell>
+                  <TableCell align='center'>{compte.dev_code}</TableCell>
+                  <TableCell align='right'>{formatMontant(compte.taux_change_actuel)} DZD</TableCell>
+                </TableRow>
+              ))}
+              {(!comptes || comptes.length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={6} align='center'>
+                    Aucun compte trouvé.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
       </CardContent>
     </Card>
   )
