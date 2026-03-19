@@ -1,97 +1,59 @@
-// ** React Imports
-import { forwardRef, useState, useEffect } from 'react'
-
-// ** MUI Imports
 import Card from '@mui/material/Card'
 import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
 import MenuItem from '@mui/material/MenuItem'
 import CardHeader from '@mui/material/CardHeader'
 import CardContent from '@mui/material/CardContent'
+import Box from '@mui/material/Box'
+import InputAdornment from '@mui/material/InputAdornment'
+import Typography from '@mui/material/Typography'
 
-// ** Custom Component Import
 import CustomTextField from 'src/@core/components/mui/text-field'
-
-// ** Third Party Imports
-import toast from 'react-hot-toast'
+import Icon from 'src/@core/components/icon'
 import { useForm, Controller } from 'react-hook-form'
-import axios from 'axios'
 
 import { useCompte } from 'src/context/CompteContext'
+import { useDevises } from 'src/context/DeviseContext'
 
 const defaultValues = {
   typeCpt: '',
   desCpt: '',
-  devise: ''
+  devise: '',
+  commissionPct: ''
 }
 
-const CustomInput = forwardRef(({ ...props }, ref) => {
-  return <CustomTextField fullWidth inputRef={ref} {...props} sx={{ width: '100%' }} />
-})
-
 const CreerCompte = () => {
-  const [devisesList, setDevisesList] = useState([])
-  const { fetchComptes } = useCompte()
+  const { ajouterCompte } = useCompte()
+  const { devises } = useDevises()
 
-  // ** Hooks
   const {
     control,
     handleSubmit,
     formState: { errors },
-    getValues,
     reset
   } = useForm({ defaultValues })
 
-  useEffect(() => {
-    const fetchDevises = async () => {
-      try {
-        const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}devises/allDevises`)
-        setDevisesList(reponse.data)
-      } catch (error) {
-        console.error('Erreur lors de la récupération des devises:', error)
-      }
-    }
-    fetchDevises()
-  }, [])
-
-  const onSubmit = async () => {
-    const data = getValues()
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL}comptes/addCompte`
-
-    try {
-      const reponse = await axios.post(url, data)
-      if (reponse.status === 201) {
-        toast.success('Compte créer avec succès')
-        fetchComptes() // Mettre à jour la liste des devises
-        // fetchDevisesDetails()
-        reset() // Réinitialiser les champs après un succès
-      }
-    } catch (error) {
-      if (error.response) {
-        if (error.response.status === 400) {
-          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
-        } else if (error.response.status === 403) {
-          toast.error('Le compte existe déjà')
-        } else {
-          toast.error('Erreur du serveur: ' + error.response.data.message)
-        }
-      } else if (error.request) {
-        // La requête a été faite mais aucune réponse n'a été reçue
-        toast.error('Pas de réponse du serveur')
-      } else {
-        // Une erreur s'est produite lors de la configuration de la requête
-        toast.error('Erreur: ' + error.message)
-      }
+  const onSubmit = async data => {
+    const isSuccess = await ajouterCompte(data)
+    if (isSuccess) {
+      reset()
     }
   }
 
   return (
-    <Card>
-      <CardHeader title='Ajouter un compte' />
+    <Card sx={{ boxShadow: 3, borderRadius: 2 }}>
+      <CardHeader
+        title={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Icon icon='tabler:building-bank' fontSize='1.75rem' color='primary' />
+            <Typography variant='h6'>Ouvrir un nouveau compte</Typography>
+          </Box>
+        }
+      />
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)}>
-          <Grid container spacing={5}>
-            <Grid item xs={12} sm={4}>
+          <Grid container spacing={5} alignItems='flex-end'>
+            <Grid item xs={12} sm={6} md={3}>
               <Controller
                 name='typeCpt'
                 control={control}
@@ -100,14 +62,11 @@ const CreerCompte = () => {
                   <CustomTextField
                     select
                     fullWidth
-                    defaultValue=''
                     label='Type du compte'
-                    SelectProps={{
-                      value: value,
-                      onChange: e => onChange(e)
-                    }}
+                    value={value}
+                    onChange={onChange}
                     error={Boolean(errors.typeCpt)}
-                    {...(errors.typeCpt && { helperText: 'Ce champ est obligatoire' })}
+                    {...(errors.typeCpt && { helperText: 'Obligatoire' })}
                   >
                     <MenuItem value='commun'>Commun</MenuItem>
                     <MenuItem value='personnel'>Personnel</MenuItem>
@@ -116,7 +75,7 @@ const CreerCompte = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <Controller
                 name='desCpt'
                 control={control}
@@ -124,19 +83,19 @@ const CreerCompte = () => {
                 render={({ field: { value, onChange } }) => (
                   <CustomTextField
                     fullWidth
+                    label='Désignation'
                     value={value}
-                    label='Désignation du compte'
                     onChange={onChange}
-                    placeholder='WISE'
+                    placeholder='Ex: BEA Euro'
                     autoComplete='off'
                     error={Boolean(errors.desCpt)}
-                    {...(errors.desCpt && { helperText: 'Ce champ est obligatoire' })}
+                    {...(errors.desCpt && { helperText: 'Obligatoire' })}
                   />
                 )}
               />
             </Grid>
 
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={6} md={3}>
               <Controller
                 name='devise'
                 control={control}
@@ -145,16 +104,13 @@ const CreerCompte = () => {
                   <CustomTextField
                     select
                     fullWidth
-                    defaultValue=''
                     label='Devise'
-                    SelectProps={{
-                      value: value,
-                      onChange: e => onChange(e)
-                    }}
+                    value={value}
+                    onChange={onChange}
                     error={Boolean(errors.devise)}
-                    {...(errors.devise && { helperText: 'Ce champ est obligatoire' })}
+                    {...(errors.devise && { helperText: 'Obligatoire' })}
                   >
-                    {devisesList.map(devise => (
+                    {devises?.map(devise => (
                       <MenuItem key={devise.code_dev} value={devise.code_dev}>
                         {devise.code_dev}
                       </MenuItem>
@@ -164,9 +120,29 @@ const CreerCompte = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
-              <Button type='submit' variant='contained'>
-                Créer
+            <Grid item xs={12} sm={6} md={3}>
+              <Controller
+                name='commissionPct'
+                control={control}
+                render={({ field: { value, onChange } }) => (
+                  <CustomTextField
+                    fullWidth
+                    type='number'
+                    label='Commission'
+                    value={value}
+                    onChange={onChange}
+                    placeholder='0.00'
+                    InputProps={{
+                      endAdornment: <InputAdornment position='end'>%</InputAdornment>
+                    }}
+                  />
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Button type='submit' variant='contained' startIcon={<Icon icon='tabler:device-floppy' />}>
+                Enregistrer
               </Button>
             </Grid>
           </Grid>
