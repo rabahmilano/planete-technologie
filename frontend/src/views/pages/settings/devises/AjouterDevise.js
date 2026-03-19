@@ -1,20 +1,15 @@
-// ** React Imports
-// import { forwardRef } from 'react'
-
-// ** MUI Imports
 import Card from '@mui/material/Card'
 import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
 import CardHeader from '@mui/material/CardHeader'
 import CardContent from '@mui/material/CardContent'
+import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
 
-// ** Custom Component Import
 import CustomTextField from 'src/@core/components/mui/text-field'
-
-// ** Third Party Imports
-import toast from 'react-hot-toast'
+import Icon from 'src/@core/components/icon'
 import { useForm, Controller } from 'react-hook-form'
-import axios from 'axios'
+
 import { useDevises } from 'src/context/DeviseContext'
 
 const defaultValues = {
@@ -23,58 +18,37 @@ const defaultValues = {
   symboleDevise: ''
 }
 
-// const CustomInput = forwardRef(({ ...props }, ref) => {
-//   return <CustomTextField fullWidth inputRef={ref} {...props} sx={{ width: '100%' }} />
-// })
-
 const AjouterDevise = () => {
-  const { fetchDevises } = useDevises()
-  // ** Hooks
+  const { ajouterDevise } = useDevises()
+
   const {
     control,
     handleSubmit,
     formState: { errors },
-    getValues,
     reset
   } = useForm({ defaultValues })
 
-  const onSubmit = async () => {
-    const data = getValues()
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL}devises/addDevise`
-
-    try {
-      const response = await axios.post(url, data)
-      if (response.status === 201) {
-        toast.success('Devise ajoutée avec succès')
-        fetchDevises() // Mettre à jour la liste des devises
-        reset() // Réinitialiser les champs après un succès
-      }
-    } catch (error) {
-      if (error.response) {
-        if (error.response.status === 400) {
-          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
-        } else if (error.response.status === 409) {
-          toast.error('La devise existe déjà')
-        } else {
-          toast.error('Erreur du serveur: ' + error.response.data.message)
-        }
-      } else if (error.request) {
-        // La requête a été faite mais aucune réponse n'a été reçue
-        toast.error('Pas de réponse du serveur')
-      } else {
-        // Une erreur s'est produite lors de la configuration de la requête
-        toast.error('Erreur: ' + error.message)
-      }
+  const onSubmit = async data => {
+    const isSuccess = await ajouterDevise(data)
+    if (isSuccess) {
+      reset(defaultValues)
     }
   }
 
   return (
-    <Card>
-      <CardHeader title='Ajouter une devise' />
+    <Card sx={{ boxShadow: 3, borderRadius: 2 }}>
+      <CardHeader
+        title={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Icon icon='tabler:coin' fontSize='1.75rem' color='primary' />
+            <Typography variant='h6'>Ajouter une devise</Typography>
+          </Box>
+        }
+      />
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)}>
-          <Grid container spacing={5}>
-            <Grid item xs={12} sm={6}>
+          <Grid container spacing={5} alignItems='flex-end'>
+            <Grid item xs={12} sm={4}>
               <Controller
                 name='nomDevise'
                 control={control}
@@ -83,9 +57,9 @@ const AjouterDevise = () => {
                   <CustomTextField
                     fullWidth
                     value={value}
-                    label='Nom devise'
+                    label='Nom de la devise'
                     onChange={onChange}
-                    placeholder='Dollar américain'
+                    placeholder='Ex: Dollar américain'
                     autoComplete='off'
                     error={Boolean(errors.nomDevise)}
                     {...(errors.nomDevise && { helperText: 'Ce champ est obligatoire' })}
@@ -94,7 +68,7 @@ const AjouterDevise = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
               <Controller
                 name='codeDevise'
                 control={control}
@@ -111,7 +85,7 @@ const AjouterDevise = () => {
                     value={value}
                     label='Code Devise'
                     onChange={onChange}
-                    placeholder='USD'
+                    placeholder='Ex: USD'
                     autoComplete='off'
                     error={Boolean(errors.codeDevise)}
                     {...(errors.codeDevise && { helperText: errors.codeDevise.message })}
@@ -120,7 +94,7 @@ const AjouterDevise = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
               <Controller
                 name='symboleDevise'
                 control={control}
@@ -131,7 +105,7 @@ const AjouterDevise = () => {
                     value={value}
                     label='Symbole'
                     onChange={onChange}
-                    placeholder='$'
+                    placeholder='Ex: $'
                     autoComplete='off'
                     error={Boolean(errors.symboleDevise)}
                     {...(errors.symboleDevise && { helperText: 'Ce champ est obligatoire' })}
@@ -140,8 +114,8 @@ const AjouterDevise = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
-              <Button type='submit' variant='contained'>
+            <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Button type='submit' variant='contained' startIcon={<Icon icon='tabler:device-floppy' />}>
                 Ajouter
               </Button>
             </Grid>

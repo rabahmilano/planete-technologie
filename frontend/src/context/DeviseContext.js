@@ -1,6 +1,6 @@
-// src/context/DeviseContext.js
 import { createContext, useState, useContext, useEffect } from 'react'
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const DeviseContext = createContext()
 
@@ -8,7 +8,6 @@ export const useDevises = () => useContext(DeviseContext)
 
 export const DeviseProvider = ({ children }) => {
   const [devises, setDevises] = useState([])
-  // const [devisesDetails, setDevisesDetails] = useState([])
 
   const fetchDevises = async () => {
     try {
@@ -19,18 +18,35 @@ export const DeviseProvider = ({ children }) => {
     }
   }
 
-  // const fetchDevisesDetails = async () => {
-  //   try {
-  //     const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}devises/allDevisesDetails`)
-  //     setDevisesDetails(reponse.data)
-  //   } catch (error) {
-  //     console.error('Erreur lors de la récupération les détails des devises:', error)
-  //   }
-  // }
+  const ajouterDevise = async data => {
+    try {
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}devises/addDevise`, data)
+      if (response.status === 201) {
+        toast.success('Devise ajoutée avec succès')
+        fetchDevises()
+        return true
+      }
+    } catch (error) {
+      if (error.response) {
+        if (error.response.status === 400) {
+          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
+        } else if (error.response.status === 409) {
+          toast.error('La devise existe déjà')
+        } else {
+          toast.error('Erreur du serveur: ' + (error.response.data.message || error.response.data.error?.message || ''))
+        }
+      } else if (error.request) {
+        toast.error('Pas de réponse du serveur')
+      } else {
+        toast.error('Erreur: ' + error.message)
+      }
+      return false
+    }
+  }
 
   useEffect(() => {
     fetchDevises()
   }, [])
 
-  return <DeviseContext.Provider value={{ devises, fetchDevises }}>{children}</DeviseContext.Provider>
+  return <DeviseContext.Provider value={{ devises, fetchDevises, ajouterDevise }}>{children}</DeviseContext.Provider>
 }
