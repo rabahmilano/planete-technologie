@@ -11,7 +11,8 @@ const CleaveInput = forwardRef((props, ref) => {
       options={{
         numeral: true,
         numeralThousandsGroupStyle: 'thousand',
-        delimiter: ' ' // Espace pour séparer les milliers
+        delimiter: ' ',
+        numeralPositiveOnly: true
       }}
       onChange={e => {
         onChange({
