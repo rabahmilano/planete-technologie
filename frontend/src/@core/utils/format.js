@@ -90,12 +90,10 @@ export const formatCVC = (value, cardNumber, Payment) => {
 }
 
 export const formatMontant = value => {
-  if (value === null || value === undefined) return '0.00'
+  if (value === null || value === undefined) return '0,00'
 
-  return Number(value)
-    .toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-    .replace(/,/g, ' ') // Remplace la virgule des milliers par un espace
+  return Number(value).toLocaleString('fr-FR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
 }
