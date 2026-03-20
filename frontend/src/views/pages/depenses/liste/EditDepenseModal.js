@@ -1,23 +1,34 @@
 import { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Grid, TextField, MenuItem, Box, CircularProgress, Typography } from '@mui/material'
-import axios from 'axios'
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Grid,
+  TextField,
+  MenuItem,
+  Box,
+  CircularProgress,
+  Typography
+} from '@mui/material'
 import toast from 'react-hot-toast'
+import { useDepense } from 'src/context/DepenseContext'
+import { formatMontant } from 'src/@core/utils/format'
 
 const EditDepenseModal = ({ open, handleClose, depense, naturesList, refreshData }) => {
   const [loading, setLoading] = useState(false)
+  const { modifierDepense } = useDepense()
 
-  // On ne gère QUE la nature et l'observation (respect strict des normes comptables)
   const [formData, setFormData] = useState({
     nature: '',
     observation: ''
   })
 
-  // Initialisation des données à l'ouverture de la modale
   useEffect(() => {
     if (depense && open) {
-      // Trouver l'ID de la nature en fonction du nom pour pré-sélectionner le Select
       const natureObj = naturesList.find(n => n.designation_nat_dep === depense.nature)
-      
+
       setFormData({
         nature: natureObj ? natureObj.id_nat_dep : '',
         observation: depense.observation || ''
@@ -32,35 +43,34 @@ const EditDepenseModal = ({ open, handleClose, depense, naturesList, refreshData
     }
 
     setLoading(true)
-    try {
-      // Appel PATCH comme on l'a défini côté Backend
-      await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/${depense.id.replace('d-', '')}`, formData)
-      toast.success('Dépense reclassée avec succès')
-      
-      // Rafraîchir le tableau principal
+
+    const idStr = depense.id.replace('d-', '')
+    const isSuccess = await modifierDepense(idStr, formData)
+
+    if (isSuccess) {
       if (refreshData) refreshData()
-      
       handleClose()
-    } catch (error) {
-      toast.error(error.response?.data?.error?.message || 'Erreur lors de la modification')
-    } finally {
-      setLoading(false)
     }
+
+    setLoading(false)
   }
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth='sm'>
       <DialogTitle sx={{ borderBottom: '1px solid #eee', mb: 4 }}>Modifier la dépense</DialogTitle>
-      
+
       <DialogContent>
         {depense && (
           <Box sx={{ mb: 6, p: 3, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 1 }}>
-            <Typography variant="body2" color="textSecondary">Montant (Non modifiable) :</Typography>
-            <Typography variant="subtitle1" fontWeight="bold" sx={{ color: 'error.main' }}>
-               {parseFloat(depense.montant).toLocaleString('fr-DZ')} DZD
+            <Typography variant='body2' color='textSecondary'>
+              Montant (Non modifiable) :
             </Typography>
-            <Typography variant="caption" color="textSecondary">
-              Pour des raisons de sécurité comptable, le montant et la date ne peuvent pas être modifiés. En cas d'erreur de saisie, veuillez annuler la dépense.
+            <Typography variant='subtitle1' fontWeight='bold' sx={{ color: 'error.main' }}>
+              {formatMontant(depense.montant)} DZD
+            </Typography>
+            <Typography variant='caption' color='textSecondary'>
+              Pour des raisons de sécurité comptable, le montant et la date ne peuvent pas être modifiés. En cas
+              d'erreur de saisie, veuillez annuler la dépense.
             </Typography>
           </Box>
         )}
@@ -96,13 +106,13 @@ const EditDepenseModal = ({ open, handleClose, depense, naturesList, refreshData
           </Grid>
         </Box>
       </DialogContent>
-      
+
       <DialogActions sx={{ p: 4 }}>
         <Button onClick={handleClose} color='secondary' variant='outlined' disabled={loading}>
           Fermer
         </Button>
         <Button onClick={handleSubmit} variant='contained' disabled={loading}>
-          {loading ? <CircularProgress size={24} color="inherit" /> : 'Enregistrer'}
+          {loading ? <CircularProgress size={24} color='inherit' /> : 'Enregistrer'}
         </Button>
       </DialogActions>
     </Dialog>

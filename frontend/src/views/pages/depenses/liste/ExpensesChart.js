@@ -1,13 +1,14 @@
 import { Card, CardContent, CardHeader, Box, Typography } from '@mui/material'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { stringToColor } from 'src/@core/utils/colorUtils'
+import { formatMontant } from 'src/@core/utils/format'
 
 const ExpensesChart = ({ title, data }) => {
   return (
     <Card>
       <CardHeader title={title} />
       <CardContent>
-        {data.length > 0 ? (
+        {data && data.length > 0 ? (
           <ResponsiveContainer width='100%' height={350}>
             <PieChart>
               <Pie
@@ -25,7 +26,7 @@ const ExpensesChart = ({ title, data }) => {
                   <Cell key={`cell-${entry.name}`} fill={stringToColor(entry.name)} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value, name) => [`${value.toLocaleString('fr-DZ')} DZD`, name]} />
+              <Tooltip formatter={(value, name) => [`${formatMontant(value)} DZD`, name]} />
             </PieChart>
           </ResponsiveContainer>
         ) : (

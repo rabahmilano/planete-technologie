@@ -9,12 +9,11 @@ import FinancialDashboard from './FinancialDashboard'
 import ExpensesChart from './ExpensesChart'
 import ExpensesTable from './ExpensesTable'
 
-
 dayjs.locale('fr')
 
 const ListeDepensesView = () => {
-  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats, setGlobalStats } = useDepense()
-  const { globalChartData } = globalStats;
+  const { depenses, listNature, loading, totalDepenses, fetchData, globalStats, fetchGlobalStats } = useDepense()
+  const { globalChartData } = globalStats
 
   const [natureFiltre, setNatureFiltre] = useState('')
   const [periodeFiltre, setPeriodeFiltre] = useState('all')
@@ -23,6 +22,7 @@ const ListeDepensesView = () => {
   const [optionsAnnee, setOptionsAnnee] = useState([])
 
   const isInitialMount = React.useRef(true)
+
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false
@@ -55,7 +55,6 @@ const ListeDepensesView = () => {
     return operationalNatures
   }, [listNature])
 
-  // ** LA CORRECTION EST DANS CE BLOC useMemo **
   const { totalDepensesFiltrees, totalCoffreFortFiltre, chartData } = useMemo(() => {
     const depensesOperationnelles = depenses.filter(d => d.nature !== 'COFFRE FORT')
     const epargneCoffreFort = depenses.filter(d => d.nature === 'COFFRE FORT')
@@ -71,12 +70,10 @@ const ListeDepensesView = () => {
       }, {})
     ).sort((a, b) => b.value - a.value)
 
-    // 2. On retourne l'objet en assignant correctement la variable
-    // L'erreur était : `chartData` au lieu de `chartData: dataForChart`
     return {
       totalDepensesFiltrees: totalDep,
       totalCoffreFortFiltre: totalCf,
-      chartData: dataForChart // <<< LIGNE CORRIGÉE
+      chartData: dataForChart
     }
   }, [depenses])
 
@@ -90,10 +87,10 @@ const ListeDepensesView = () => {
   const handleRefreshData = async () => {
     // 1. Rafraîchit le tableau principal
     await fetchData(page, rowsPerPage, { nature: natureFiltre, periode: periodeFiltre })
-    
+
     // 2. Force le recalcul des KPIs en haut de la page (Coffre-fort, Total, etc.)
     if (fetchGlobalStats) {
-      await setGlobalStats() 
+      await fetchGlobalStats()
     }
   }
 

@@ -21,6 +21,7 @@ import axios from 'axios'
 import EditDepenseModal from '../liste/EditDepenseModal'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import { useDepense } from 'src/context/DepenseContext'
+import { formatMontant } from 'src/@core/utils/format'
 
 const DerniersDepenses = ({ refreshTrigger }) => {
   const [depenses, setDepenses] = useState([])
@@ -148,7 +149,7 @@ const DerniersDepenses = ({ refreshTrigger }) => {
                       color={depense.isAnnule ? 'text.disabled' : 'error.main'}
                       sx={{ textDecoration: depense.isAnnule ? 'line-through' : 'none' }}
                     >
-                      - {parseFloat(depense.montant || 0).toLocaleString('fr-DZ')} DZD
+                      - {formatMontant(depense.montant)} DZD
                     </Typography>
 
                     {depense.devise !== 'DZD' && (
@@ -157,7 +158,7 @@ const DerniersDepenses = ({ refreshTrigger }) => {
                         color='textSecondary'
                         sx={{ display: 'block', fontStyle: 'italic' }}
                       >
-                        ({parseFloat(depense.montantDevise || 0).toLocaleString('fr-FR')} {depense.devise})
+                        ({formatMontant(depense.montantDevise)} {depense.devise})
                       </Typography>
                     )}
                   </TableCell>

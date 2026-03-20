@@ -1,5 +1,6 @@
 import { Grid, Card, CardContent, Typography, Box } from '@mui/material'
 import Icon from 'src/@core/components/icon'
+import { formatMontant } from 'src/@core/utils/format'
 
 const StatCard = ({ title, value, icon, color }) => (
   <Card>
@@ -11,7 +12,7 @@ const StatCard = ({ title, value, icon, color }) => (
         <Box>
           <Typography variant='body2'>{title}</Typography>
           <Typography variant='h5' sx={{ fontWeight: 'bold' }}>
-            {parseFloat(value || 0).toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
+            {formatMontant(value)} DZD
           </Typography>
         </Box>
       </Box>
@@ -20,7 +21,6 @@ const StatCard = ({ title, value, icon, color }) => (
 )
 
 const GlobalStats = ({ stats }) => (
-  // MISE À JOUR: La grille affiche maintenant 3 cartes
   <Grid container spacing={6}>
     <Grid item xs={12} md={4}>
       <StatCard

@@ -1,5 +1,6 @@
 import { Grid, Paper, Typography, MenuItem, Card, CardContent, CardHeader, Button } from '@mui/material'
 import CustomTextField from 'src/@core/components/mui/text-field'
+import { formatMontant } from 'src/@core/utils/format'
 
 const FinancialDashboard = ({
   natureFiltre,
@@ -17,7 +18,6 @@ const FinancialDashboard = ({
     <CardContent>
       <Grid container spacing={4} alignItems='center'>
         <Grid item xs={12} md={3}>
-          {/* CORRECTION: La valeur du MenuItem est maintenant l'ID */}
           <CustomTextField
             select
             fullWidth
@@ -61,7 +61,7 @@ const FinancialDashboard = ({
           <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'error.lightest' }}>
             <Typography variant='body2'>Dépenses (Période)</Typography>
             <Typography variant='h6' sx={{ fontWeight: 'bold', color: 'error.dark' }}>
-              {totalDepensesFiltrees.toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
+              {formatMontant(totalDepensesFiltrees)} DZD
             </Typography>
           </Paper>
         </Grid>
@@ -69,7 +69,7 @@ const FinancialDashboard = ({
           <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'success.lightest' }}>
             <Typography variant='body2'>Épargne (Période)</Typography>
             <Typography variant='h6' sx={{ fontWeight: 'bold', color: 'success.dark' }}>
-              {totalCoffreFortFiltre.toLocaleString('fr-DZ', { style: 'currency', currency: 'DZD' })}
+              {formatMontant(totalCoffreFortFiltre)} DZD
             </Typography>
           </Paper>
         </Grid>
