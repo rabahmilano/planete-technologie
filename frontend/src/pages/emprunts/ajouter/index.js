@@ -1,11 +1,9 @@
 import { Grid } from '@mui/material'
 
-// Import des Vues
 import AjouterEmprunt from 'src/views/pages/emprunts/ajouter'
 import KpiEmprunts from 'src/views/pages/emprunts/ajouter/KpiEmprunts'
 import DerniersEmprunts from 'src/views/pages/emprunts/ajouter/DerniersEmprunts'
 
-// Import des Providers
 import { EmpruntProvider } from 'src/context/EmpruntContext'
 import { CompteProvider } from 'src/context/CompteContext'
 
@@ -25,7 +23,6 @@ const AjouterEmpruntContent = () => {
   )
 }
 
-// Injection des contextes pour que les KPIs et le formulaire communiquent
 const AjouterEmpruntPage = () => {
   return (
     <CompteProvider>
