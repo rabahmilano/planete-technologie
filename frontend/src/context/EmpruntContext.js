@@ -34,6 +34,18 @@ export const EmpruntProvider = ({ children }) => {
     }
   }
 
+  const modifierEmprunt = async (id, data) => {
+    try {
+      await axios.put(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/updateEmprunt/${id}`, data)
+      toast.success('Emprunt mis à jour avec succès.')
+      await fetchEmprunts()
+      return true
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || "Erreur lors de la mise à jour de l'emprunt.")
+      return false
+    }
+  }
+
   const supprimerEmprunt = async id => {
     try {
       await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/${id}`)
@@ -42,6 +54,30 @@ export const EmpruntProvider = ({ children }) => {
       return true
     } catch (error) {
       toast.error(error.response?.data?.error?.message || "Erreur lors de la suppression de l'emprunt.")
+      return false
+    }
+  }
+
+  const modifierRemboursement = async (id, data) => {
+    try {
+      await axios.put(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/remboursement/${id}`, data)
+      toast.success('Remboursement corrigé avec succès.')
+      await fetchEmprunts()
+      return true
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || 'Erreur lors de la correction du remboursement.')
+      return false
+    }
+  }
+
+  const supprimerRemboursement = async id => {
+    try {
+      await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/remboursement/${id}`)
+      toast.success('Remboursement annulé, fonds restitués.')
+      await fetchEmprunts()
+      return true
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || 'Erreur lors de l’annulation du remboursement.')
       return false
     }
   }
@@ -55,7 +91,10 @@ export const EmpruntProvider = ({ children }) => {
     loading,
     fetchEmprunts,
     ajouterEmprunt,
-    supprimerEmprunt
+    modifierEmprunt,
+    supprimerEmprunt,
+    modifierRemboursement,
+    supprimerRemboursement
   }
 
   return <EmpruntContext.Provider value={value}>{children}</EmpruntContext.Provider>

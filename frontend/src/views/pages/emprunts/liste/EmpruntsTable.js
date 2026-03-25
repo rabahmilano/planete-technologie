@@ -12,14 +12,16 @@ import {
   LinearProgress
 } from '@mui/material'
 
+import { useEmprunt } from 'src/context/EmpruntContext'
 import EmpruntRow from './EmpruntRow'
 
-const EmpruntsTable = ({ loading, emprunts }) => {
+const EmpruntsTable = () => {
+  const { emprunts, loading } = useEmprunt()
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
 
   const handleChangePage = (event, newPage) => setPage(newPage)
-  const handleChangeRowsPerPage = (event) => {
+  const handleChangeRowsPerPage = event => {
     setRowsPerPage(parseInt(event.target.value, 10))
     setPage(0)
   }
@@ -37,10 +39,18 @@ const EmpruntsTable = ({ loading, emprunts }) => {
               <TableCell sx={{ color: 'white' }}>Désignation</TableCell>
               <TableCell sx={{ color: 'white' }}>Compte</TableCell>
               <TableCell sx={{ color: 'white' }}>Date</TableCell>
-              <TableCell sx={{ color: 'white' }} align='right'>Montant Initial</TableCell>
-              <TableCell sx={{ color: 'white' }} align='right'>Reste à Payer</TableCell>
-              <TableCell sx={{ color: 'white' }} align='center'>Statut</TableCell>
-              <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell> {/* <-- NOUVELLE COLONNE */}
+              <TableCell sx={{ color: 'white' }} align='right'>
+                Montant Initial
+              </TableCell>
+              <TableCell sx={{ color: 'white' }} align='right'>
+                Reste à Payer
+              </TableCell>
+              <TableCell sx={{ color: 'white' }} align='center'>
+                Statut
+              </TableCell>
+              <TableCell sx={{ color: 'white' }} align='center'>
+                Actions
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -51,9 +61,7 @@ const EmpruntsTable = ({ loading, emprunts }) => {
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedEmprunts.map((emprunt) => (
-                <EmpruntRow key={emprunt.id_emprunt} emprunt={emprunt} />
-              ))
+              paginatedEmprunts.map(emprunt => <EmpruntRow key={emprunt.id_emprunt} emprunt={emprunt} />)
             )}
           </TableBody>
         </Table>

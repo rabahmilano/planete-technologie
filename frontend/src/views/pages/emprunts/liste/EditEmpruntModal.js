@@ -1,19 +1,29 @@
 import { useState, useEffect } from 'react'
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Grid, TextField, MenuItem, Box, CircularProgress } from '@mui/material'
-import axios from 'axios'
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Grid,
+  TextField,
+  MenuItem,
+  Box,
+  CircularProgress
+} from '@mui/material'
 import toast from 'react-hot-toast'
 import dayjs from 'dayjs'
 
 import { useCompte } from 'src/context/CompteContext'
 import { useEmprunt } from 'src/context/EmpruntContext'
+import CleaveInput from 'src/components/CleaveInput'
 
 const EditEmpruntModal = ({ open, handleClose, emprunt }) => {
   const { comptes, fetchComptes } = useCompte()
-  const { fetchEmprunts } = useEmprunt()
+  const { modifierEmprunt } = useEmprunt()
 
   const [loading, setLoading] = useState(false)
 
-  // États du formulaire
   const [formData, setFormData] = useState({
     desEmprunt: '',
     montant: '',
@@ -21,47 +31,45 @@ const EditEmpruntModal = ({ open, handleClose, emprunt }) => {
     dateEmprunt: ''
   })
 
-  // Charger les données quand l'emprunt change ou quand la modale s'ouvre
   useEffect(() => {
     if (emprunt && open) {
       setFormData({
-        desEmprunt: emprunt.designation || '',
-        montant: emprunt.montant_emprunt || '',
+        desEmprunt: emprunt.des_emprunt || '',
+        montant: emprunt.mnt_emprunt || '',
         cpt: emprunt.cpt_id || '',
-        // On formate proprement la date pour l'input type="date"
         dateEmprunt: emprunt.date_emprunt ? dayjs(emprunt.date_emprunt).format('YYYY-MM-DD') : ''
       })
     }
   }, [emprunt, open])
 
   const handleSubmit = async () => {
-    // Mini validation front-end
     if (!formData.desEmprunt || !formData.montant || !formData.cpt || !formData.dateEmprunt) {
       toast.error('Veuillez remplir tous les champs obligatoires')
       return
     }
 
     setLoading(true)
-    try {
-      await axios.put(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/${emprunt.id_emprunt}`, formData)
-      toast.success('Emprunt mis à jour avec succès')
-      
-      // Rafraîchissement global
-      await fetchEmprunts()
-      await fetchComptes()
-      
-      handleClose()
-    } catch (error) {
-      toast.error(error.response?.data?.error?.message || 'Erreur lors de la mise à jour')
-    } finally {
-      setLoading(false)
+
+    const cleanMontant = parseFloat(formData.montant.toString().replace(/\s/g, ''))
+    const dataToSend = {
+      ...formData,
+      montant: cleanMontant
     }
+
+    const isSuccess = await modifierEmprunt(emprunt.id_emprunt, dataToSend)
+
+    if (isSuccess) {
+      await fetchComptes()
+      handleClose()
+    }
+
+    setLoading(false)
   }
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth='sm'>
       <DialogTitle sx={{ borderBottom: '1px solid #eee', mb: 4 }}>Modifier l'emprunt</DialogTitle>
-      
+
       <DialogContent>
         <Box sx={{ mt: 2 }}>
           <Grid container spacing={4}>
@@ -76,10 +84,12 @@ const EditEmpruntModal = ({ open, handleClose, emprunt }) => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                type='number'
-                label='Montant (DZD)'
+                label='Montant'
                 value={formData.montant}
                 onChange={e => setFormData({ ...formData, montant: e.target.value })}
+                InputProps={{
+                  inputComponent: CleaveInput
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -87,7 +97,7 @@ const EditEmpruntModal = ({ open, handleClose, emprunt }) => {
                 fullWidth
                 select
                 label='Compte ciblé'
-                value={formData.cpt || ''} // Fallback de sécurité
+                value={formData.cpt || ''}
                 onChange={e => setFormData({ ...formData, cpt: e.target.value })}
               >
                 {comptes.map(c => (
@@ -110,13 +120,13 @@ const EditEmpruntModal = ({ open, handleClose, emprunt }) => {
           </Grid>
         </Box>
       </DialogContent>
-      
+
       <DialogActions sx={{ p: 4 }}>
         <Button onClick={handleClose} color='secondary' variant='outlined' disabled={loading}>
           Annuler
         </Button>
         <Button onClick={handleSubmit} variant='contained' disabled={loading}>
-          {loading ? <CircularProgress size={24} color="inherit" /> : 'Enregistrer'}
+          {loading ? <CircularProgress size={24} color='inherit' /> : 'Enregistrer'}
         </Button>
       </DialogActions>
     </Dialog>
