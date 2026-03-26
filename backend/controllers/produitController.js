@@ -396,15 +396,28 @@ export const cancelColis = async (req, res) => {
 
       if (!compte) throw new Error("Compte associé non trouvé.");
 
-      const valeurActuelleDZD =
-        parseFloat(compte.solde_actuel) * parseFloat(compte.taux_change_actuel);
-      const nouveauSoldeDevise =
-        parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev);
-      const nouvelleValeurTotaleDZD =
-        valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd);
+      const valeurActuelleDZD = parseFloat(
+        (
+          parseFloat(compte.solde_actuel) *
+          parseFloat(compte.taux_change_actuel)
+        ).toFixed(4),
+      );
+
+      const nouveauSoldeDevise = parseFloat(
+        (
+          parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev)
+        ).toFixed(4),
+      );
+
+      const nouvelleValeurTotaleDZD = parseFloat(
+        (valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd)).toFixed(4),
+      );
+
       const nouveauTauxChange =
         nouveauSoldeDevise > 0
-          ? nouvelleValeurTotaleDZD / nouveauSoldeDevise
+          ? parseFloat(
+              (nouvelleValeurTotaleDZD / nouveauSoldeDevise).toFixed(4),
+            )
           : 0;
 
       await tx.compte.update({
@@ -432,20 +445,6 @@ export const cancelColis = async (req, res) => {
     if (error.message.includes("non trouvé")) {
       return res.status(404).json({ message: error.message });
     }
-    console.error("Erreur lors de l'annulation du colis:", error);
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
-  }
-};
-
-export const getAllComptes = async (req, res) => {
-  try {
-    const comptes = await prisma.compte.findMany({
-      orderBy: { designation_cpt: "asc" },
-    });
-    res.status(200).json(comptes);
-  } catch (error) {
     res
       .status(500)
       .json({ error: { code: error.code, message: error.message } });
@@ -466,26 +465,40 @@ export const getAllColis = async (req, res) => {
     dateFin,
   } = req.query;
 
-  const pageNum = parseInt(page, 10);
-  const limitNum = parseInt(limit, 10);
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 25;
   const skip = (pageNum - 1) * limitNum;
 
   const whereClause = {
-    produit: { designation_prd: { contains: search } },
+    produit: {
+      designation_prd: {
+        contains: search,
+        mode: "insensitive",
+      },
+    },
   };
 
   if (statut === "en_stock") whereClause.date_stock = { not: null };
   else if (statut === "en_route") whereClause.date_stock = null;
 
-  if (categorieId) whereClause.cat_id = parseInt(categorieId, 10);
-  if (compteId) whereClause.cpt_id = parseInt(compteId, 10);
+  if (categorieId && !isNaN(parseInt(categorieId, 10))) {
+    whereClause.cat_id = parseInt(categorieId, 10);
+  }
+
+  if (compteId && !isNaN(parseInt(compteId, 10))) {
+    whereClause.cpt_id = parseInt(compteId, 10);
+  }
 
   if (dateDebut && dateFin) {
+    const start = new Date(dateDebut);
+    const end = new Date(dateFin);
+    end.setHours(23, 59, 59, 999);
+
     whereClause.OR = [
-      { date_achat: { gte: new Date(dateDebut), lte: new Date(dateFin) } },
+      { date_achat: { gte: start, lte: end } },
       {
         date_achat: null,
-        date_stock: { gte: new Date(dateDebut), lte: new Date(dateFin) },
+        date_stock: { gte: start, lte: end },
       },
     ];
   }
@@ -538,19 +551,37 @@ export const getAllColisStats = async (req, res) => {
     dateDebut,
     dateFin,
   } = req.query;
-  const whereClause = { produit: { designation_prd: { contains: search } } };
+
+  const whereClause = {
+    produit: {
+      designation_prd: {
+        contains: search,
+        mode: "insensitive",
+      },
+    },
+  };
 
   if (statut === "en_stock") whereClause.date_stock = { not: null };
   else if (statut === "en_route") whereClause.date_stock = null;
-  if (categorieId) whereClause.cat_id = parseInt(categorieId, 10);
-  if (compteId) whereClause.cpt_id = parseInt(compteId, 10);
+
+  if (categorieId && !isNaN(parseInt(categorieId, 10))) {
+    whereClause.cat_id = parseInt(categorieId, 10);
+  }
+
+  if (compteId && !isNaN(parseInt(compteId, 10))) {
+    whereClause.cpt_id = parseInt(compteId, 10);
+  }
 
   if (dateDebut && dateFin) {
+    const start = new Date(dateDebut);
+    const end = new Date(dateFin);
+    end.setHours(23, 59, 59, 999);
+
     whereClause.OR = [
-      { date_achat: { gte: new Date(dateDebut), lte: new Date(dateFin) } },
+      { date_achat: { gte: start, lte: end } },
       {
         date_achat: null,
-        date_stock: { gte: new Date(dateDebut), lte: new Date(dateFin) },
+        date_stock: { gte: start, lte: end },
       },
     ];
   }
@@ -561,13 +592,13 @@ export const getAllColisStats = async (req, res) => {
       _sum: { mnt_tot_dzd: true, qte_achat: true },
       where: whereClause,
     });
+
     res.status(200).json({
       totalCount: stats._count.id_colis || 0,
       totalValueDZD: stats._sum.mnt_tot_dzd || 0,
       totalProduits: stats._sum.qte_achat || 0,
     });
   } catch (error) {
-    console.log(error);
     res
       .status(500)
       .json({ error: { code: error.code, message: error.message } });
@@ -581,13 +612,16 @@ export const getChartDataByCategory = async (req, res) => {
       _count: { id_colis: true },
       orderBy: { _count: { id_colis: "desc" } },
     });
+
     const categories = await prisma.categorie.findMany({
       where: { id_cat: { in: data.map((i) => i.cat_id) } },
     });
+
     const map = categories.reduce(
       (acc, cat) => ({ ...acc, [cat.id_cat]: cat.designation_cat }),
       {},
     );
+
     res.status(200).json(
       data.map((i) => ({
         name: map[i.cat_id] || "Inconnu",
@@ -595,7 +629,9 @@ export const getChartDataByCategory = async (req, res) => {
       })),
     );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -607,6 +643,7 @@ export const getChartDataByYear = async (req, res) => {
       GROUP BY YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) 
       ORDER BY year DESC
     `;
+
     res.status(200).json(
       result.map((i) => ({
         year: i.year.toString(),
@@ -614,7 +651,9 @@ export const getChartDataByYear = async (req, res) => {
       })),
     );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -634,12 +673,14 @@ export const getChartDataByAccount = async (req, res) => {
     );
     res.status(200).json(
       data.map((i) => ({
-        name: map[i.cpt_id] || "Inconnu",
+        name: map[cpt_id] || "Inconnu",
         value: i._count.id_colis,
       })),
     );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -661,12 +702,14 @@ export const getChartDataTopProducts = async (req, res) => {
     );
     res.status(200).json(
       data.map((i) => ({
-        name: map[i.prd_id] || "Inconnu",
+        name: map[prd_id] || "Inconnu",
         value: i._sum.qte_achat,
       })),
     );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -691,38 +734,52 @@ export const updateColisDetails = async (req, res) => {
         const colis = await tx.colis.findUnique({
           where: { id_colis: idColis },
         });
-        if (!colis) throw new Error("Colis non trouvé.");
+        if (!colis) throw new Error("COLIS_NOT_FOUND");
 
         const compte = await tx.compte.findUnique({
           where: { id_cpt: colis.cpt_id },
         });
-        if (!compte) throw new Error("Compte associé non trouvé.");
+        if (!compte) throw new Error("COMPTE_NOT_FOUND");
 
-        const valeurActuelleDZD =
-          parseFloat(compte.solde_actuel) *
-          parseFloat(compte.taux_change_actuel);
-        const soldeDeviseApresRemboursement =
-          parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev);
-        const valeurDZDApresRemboursement =
-          valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd);
+        const valeurActuelleDZD = parseFloat(
+          (
+            parseFloat(compte.solde_actuel) *
+            parseFloat(compte.taux_change_actuel)
+          ).toFixed(4),
+        );
+        const soldeDeviseApresRemboursement = parseFloat(
+          (
+            parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev)
+          ).toFixed(4),
+        );
+        const valeurDZDApresRemboursement = parseFloat(
+          (valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd)).toFixed(4),
+        );
 
         if (soldeDeviseApresRemboursement < newPriceDev) {
-          throw new Error(
-            "Solde insuffisant pour couvrir le nouveau prix après ajustement.",
-          );
+          throw new Error("INSUFFICIENT_FUNDS");
         }
 
-        const tauxAchatOriginal =
-          parseFloat(colis.mnt_tot_dzd) / parseFloat(colis.mnt_tot_dev);
-        const newMntTotDZD = newPriceDev * tauxAchatOriginal;
+        const tauxAchatOriginal = parseFloat(
+          (
+            parseFloat(colis.mnt_tot_dzd) / parseFloat(colis.mnt_tot_dev)
+          ).toFixed(4),
+        );
+        const newMntTotDZD = parseFloat(
+          (newPriceDev * tauxAchatOriginal).toFixed(4),
+        );
 
-        const nouveauSoldeDeviseFinal =
-          soldeDeviseApresRemboursement - newPriceDev;
-        const nouvelleValeurDZDfinal =
-          valeurDZDApresRemboursement - newMntTotDZD;
+        const nouveauSoldeDeviseFinal = parseFloat(
+          (soldeDeviseApresRemboursement - newPriceDev).toFixed(4),
+        );
+        const nouvelleValeurDZDfinal = parseFloat(
+          (valeurDZDApresRemboursement - newMntTotDZD).toFixed(4),
+        );
         const nouveauTauxChangeFinal =
           nouveauSoldeDeviseFinal > 0
-            ? nouvelleValeurDZDfinal / nouveauSoldeDeviseFinal
+            ? parseFloat(
+                (nouvelleValeurDZDfinal / nouveauSoldeDeviseFinal).toFixed(4),
+              )
             : 0;
 
         await tx.compte.update({
@@ -733,15 +790,21 @@ export const updateColisDetails = async (req, res) => {
           },
         });
 
-        const newPuDzdTtc =
-          colis.pu_dzd_ttc - colis.pu_dzd + newMntTotDZD / colis.qte_achat;
+        const newPuDzdTtc = parseFloat(
+          (
+            parseFloat(colis.pu_dzd_ttc) -
+            parseFloat(colis.pu_dzd) +
+            newMntTotDZD / colis.qte_achat
+          ).toFixed(4),
+        );
+
         await tx.colis.update({
           where: { id_colis: idColis },
           data: {
             mnt_tot_dev: newPriceDev,
             mnt_tot_dzd: newMntTotDZD,
-            pu_dev: newPriceDev / colis.qte_achat,
-            pu_dzd: newMntTotDZD / colis.qte_achat,
+            pu_dev: parseFloat((newPriceDev / colis.qte_achat).toFixed(2)),
+            pu_dzd: parseFloat((newMntTotDZD / colis.qte_achat).toFixed(4)),
             pu_dzd_ttc: newPuDzdTtc,
           },
         });
@@ -766,10 +829,21 @@ export const updateColisDetails = async (req, res) => {
 
     res.status(200).json({ message: "Colis mis à jour avec succès." });
   } catch (error) {
-    console.error("Erreur lors de la mise à jour du colis:", error);
+    if (error.message === "COLIS_NOT_FOUND")
+      return res.status(404).json({ message: "Colis non trouvé." });
+    if (error.message === "COMPTE_NOT_FOUND")
+      return res.status(404).json({ message: "Compte associé non trouvé." });
+    if (error.message === "INSUFFICIENT_FUNDS")
+      return res
+        .status(400)
+        .json({
+          message:
+            "Solde insuffisant pour couvrir le nouveau prix après ajustement.",
+        });
+
     res
       .status(500)
-      .json({ message: error.message || "Erreur interne du serveur." });
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -808,13 +882,19 @@ export const getProduitsForTable = async (req, res) => {
     `;
 
     const totalResult = await prisma.produit.count({
-      where: { designation_prd: { contains: search } },
+      where: {
+        designation_prd: {
+          contains: search,
+          mode: "insensitive",
+        },
+      },
     });
 
     res.status(200).json({ produits, total: totalResult });
   } catch (error) {
-    console.error("Erreur dans getProduitsForTable:", error);
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -833,7 +913,9 @@ export const getProduitsPageStats = async (req, res) => {
       totalQteAchetee: totalQteAchetee._sum.qte_achat || 0,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -864,15 +946,23 @@ export const getProduitDetails = async (req, res) => {
     if (!produit)
       return res.status(404).json({ message: "Produit non trouvé." });
 
-    const totalVenteDZD = lignesDeCommande.reduce(
+    const rawTotalVenteDZD = lignesDeCommande.reduce(
       (sum, ligne) => sum + parseFloat(ligne.pu_vente) * ligne.qte_cde,
       0,
     );
-    const totalCoutDZDdesVentes = colisVendus.reduce(
+    const totalVenteDZD = parseFloat(rawTotalVenteDZD.toFixed(4));
+
+    const rawTotalCoutDZD = colisVendus.reduce(
       (sum, l) => sum + parseFloat(l.colis.pu_dzd_ttc) * l.qte,
       0,
     );
-    const totalBeneficeDZD = totalVenteDZD - totalCoutDZDdesVentes;
+    const totalCoutDZDdesVentes = parseFloat(rawTotalCoutDZD.toFixed(4));
+
+    const totalBeneficeDZD = parseFloat(
+      (totalVenteDZD - totalCoutDZDdesVentes).toFixed(4),
+    );
+
+    const totalQteCde = lignesDeCommande.reduce((sum, l) => sum + l.qte_cde, 0);
 
     const kpisVente =
       lignesDeCommande.length > 0
@@ -884,8 +974,9 @@ export const getProduitDetails = async (req, res) => {
               ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
             ),
             avgDa:
-              totalVenteDZD /
-              lignesDeCommande.reduce((sum, l) => sum + l.qte_cde, 0),
+              totalQteCde > 0
+                ? parseFloat((totalVenteDZD / totalQteCde).toFixed(4))
+                : 0,
           }
         : { minDa: 0, maxDa: 0, avgDa: 0 };
 
@@ -929,18 +1020,23 @@ export const getProduitDetails = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Erreur dans getProduitDetails:", error);
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
 export const getColisForProduit = async (req, res) => {
-  const idProduit = parseInt(req.params.id);
+  const idProduit = parseInt(req.params.id, 10);
   const { page = 1, limit = 5 } = req.query;
-  const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  if (isNaN(idProduit))
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 5;
+  const skip = (pageNum - 1) * limitNum;
+
+  if (isNaN(idProduit)) {
     return res.status(400).json({ message: "ID du produit invalide." });
+  }
 
   try {
     const colis = await prisma.colis.findMany({
@@ -954,7 +1050,7 @@ export const getColisForProduit = async (req, res) => {
       },
       orderBy: [{ date_achat: "desc" }, { qte_stock: "desc" }],
       skip: skip,
-      take: parseInt(limit),
+      take: limitNum,
     });
 
     const total = await prisma.colis.count({ where: { prd_id: idProduit } });
@@ -972,7 +1068,9 @@ export const getColisForProduit = async (req, res) => {
           date_vente: vente.ligne_commande.commande.date_cde,
           qte_vendue: vente.qte,
           prix_vente: pu_vente,
-          benefice: pu_vente - parseFloat(c.pu_dzd_ttc),
+          benefice: parseFloat(
+            (pu_vente - parseFloat(c.pu_dzd_ttc)).toFixed(4),
+          ),
         };
       });
 
@@ -991,8 +1089,9 @@ export const getColisForProduit = async (req, res) => {
 
     res.status(200).json({ colis: formattedColis, total });
   } catch (error) {
-    console.error("Erreur dans getColisForProduit:", error);
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -1047,8 +1146,9 @@ export const getTransactionsChartData = async (req, res) => {
 
     res.status(200).json(sortedChartData);
   } catch (error) {
-    console.error("Erreur dans getTransactionsChartData:", error);
-    res.status(500).json({ message: "Erreur serveur interne" });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -1110,8 +1210,9 @@ export const getProduitsChartData = async (req, res) => {
 
     res.status(200).json(sortedChartData);
   } catch (error) {
-    console.error("Erreur dans getProduitsChartData:", error);
-    res.status(500).json({ message: "Erreur serveur interne" });
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
 
@@ -1125,7 +1226,10 @@ export const searchProduits = async (req, res) => {
   try {
     const words = q.split(" ").filter((word) => word.length > 0);
     const conditions = words.map((word) => ({
-      designation_prd: { contains: word },
+      designation_prd: {
+        contains: word,
+        mode: "insensitive",
+      },
     }));
 
     const produits = await prisma.produit.findMany({
@@ -1137,6 +1241,6 @@ export const searchProduits = async (req, res) => {
   } catch (error) {
     res
       .status(500)
-      .json({ error: { message: "Erreur lors de la recherche des produits" } });
+      .json({ error: { code: error.code, message: error.message } });
   }
 };

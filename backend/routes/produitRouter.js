@@ -1,7 +1,6 @@
 import {
   addCatProduit,
   getAllCategorie,
-  getAllComptes,
   getNomSearch,
   addColis,
   getAllProduitDisponible,
@@ -24,7 +23,7 @@ import {
   // getDashboardChartData,
   getTransactionsChartData,
   getProduitsChartData,
-  searchProduits
+  searchProduits,
 } from "../controllers/produitController.js";
 
 import { Router } from "express";
@@ -33,7 +32,6 @@ const router = Router();
 
 router.post("/addCategorie", addCatProduit);
 router.get("/allCategories", getAllCategorie);
-router.get("/allComptes", getAllComptes); // Ajouté pour les filtres
 
 router.get("/search", getNomSearch);
 
