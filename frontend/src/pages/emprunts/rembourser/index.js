@@ -1,7 +1,7 @@
 import { Grid } from '@mui/material'
 
 import RembourserEmprunt from 'src/views/pages/emprunts/rembourser'
-import KpiEmprunts from 'src/views/pages/emprunts/ajouter/KpiEmprunts' // Réutilisation du même fichier !
+import KpiEmprunts from 'src/views/pages/emprunts/ajouter/KpiEmprunts'
 import DerniersRemboursements from 'src/views/pages/emprunts/rembourser/DerniersRemboursements'
 
 import { EmpruntProvider } from 'src/context/EmpruntContext'

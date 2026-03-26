@@ -58,6 +58,18 @@ export const EmpruntProvider = ({ children }) => {
     }
   }
 
+  const ajouterRemboursement = async data => {
+    try {
+      await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/addRemboursement`, data)
+      toast.success('Remboursement enregistré avec succès.')
+      await fetchEmprunts()
+      return true
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || "Erreur lors de l'enregistrement du remboursement.")
+      return false
+    }
+  }
+
   const modifierRemboursement = async (id, data) => {
     try {
       await axios.put(`${process.env.NEXT_PUBLIC_BASE_URL}emprunts/remboursement/${id}`, data)
@@ -93,6 +105,7 @@ export const EmpruntProvider = ({ children }) => {
     ajouterEmprunt,
     modifierEmprunt,
     supprimerEmprunt,
+    ajouterRemboursement,
     modifierRemboursement,
     supprimerRemboursement
   }
