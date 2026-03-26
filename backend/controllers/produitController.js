@@ -87,9 +87,12 @@ export const getNomSearch = async (req, res) => {
 
     res.status(200).json(produits);
   } catch (error) {
-    throw new Error(
-      "Erreur lors de la récupération des produits: " + error.message,
-    );
+    res.status(500).json({
+      error: {
+        message:
+          "Erreur lors de la récupération des produits: " + error.message,
+      },
+    });
   }
 };
 
@@ -117,7 +120,7 @@ export const addColis = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { cat, cpt, dateAchat, desPrd, mntTotDev, qte, taux } = req.body;
+    const { cat, cpt, dateAchat, desPrd, mntTotDev, qte } = req.body;
 
     try {
       const newColis = await prisma.$transaction(async (tx) => {
@@ -130,69 +133,73 @@ export const addColis = [
           },
         });
 
-        if (infoCpt.solde_actuel >= mntTotDev) {
-          let id_colis, prd_id;
-          const tauxActuel = infoCpt.taux_change_actuel;
-          const commPct = parseFloat(infoCpt.commission_pct || 0);
+        if (infoCpt.solde_actuel < mntTotDev) {
+          throw new Error("INSUFFICIENT_FUNDS");
+        }
 
-          const mnt_tot_dzd = (mntTotDev * tauxActuel).toFixed(4);
-          const pu_dev = (mntTotDev / qte).toFixed(2);
-          const pu_dzd = (mnt_tot_dzd / qte).toFixed(4);
+        let id_colis, prd_id;
+        const tauxActuel = infoCpt.taux_change_actuel;
+        const commPct = parseFloat(infoCpt.commission_pct || 0);
 
-          const montantCommission = parseFloat(
-            (mntTotDev * (commPct / 100)).toFixed(4),
-          );
+        const mnt_tot_dzd = parseFloat((mntTotDev * tauxActuel).toFixed(4));
+        const pu_dev = parseFloat((mntTotDev / qte).toFixed(2));
+        const pu_dzd = parseFloat((mnt_tot_dzd / qte).toFixed(4));
 
-          const produitExist = await tx.produit.findFirst({
-            where: { designation_prd: { equals: desPrd } },
+        const montantCommission = parseFloat(
+          (mntTotDev * (commPct / 100)).toFixed(4),
+        );
+
+        const produitExist = await tx.produit.findFirst({
+          where: { designation_prd: { equals: desPrd } },
+        });
+
+        if (!produitExist) {
+          prd_id = await getMaxValue("produit", "id_prd", null);
+          await tx.produit.create({
+            data: { id_prd: prd_id, designation_prd: desPrd },
           });
+        } else {
+          prd_id = produitExist.id_prd;
+        }
 
-          if (!produitExist) {
-            prd_id = await getMaxValue("produit", "id_prd", null);
-            await tx.produit.create({
-              data: { id_prd: prd_id, designation_prd: desPrd },
-            });
-          } else {
-            prd_id = produitExist.id_prd;
-          }
+        id_colis = await getMaxValue("colis", "id_colis", null);
 
-          id_colis = await getMaxValue("colis", "id_colis", null);
-
-          const colis = await tx.colis.create({
-            data: {
-              id_colis,
-              mnt_tot_dev: mntTotDev,
-              date_achat: dateAchat,
-              qte_achat: qte,
-              mnt_tot_dzd,
-              pu_dev,
-              pu_dzd,
-              cat_id: cat,
-              prd_id,
-              cpt_id: cpt,
-              pu_dzd_ttc: pu_dzd,
-              colis_classique: {
-                create: {
-                  droits_timbre: false,
-                  mnt_comm_bancaire: montantCommission,
-                },
+        const colis = await tx.colis.create({
+          data: {
+            id_colis,
+            mnt_tot_dev: mntTotDev,
+            date_achat: dateAchat,
+            qte_achat: qte,
+            mnt_tot_dzd,
+            pu_dev,
+            pu_dzd,
+            cat_id: cat,
+            prd_id,
+            cpt_id: cpt,
+            pu_dzd_ttc: pu_dzd,
+            colis_classique: {
+              create: {
+                droits_timbre: false,
+                mnt_comm_bancaire: montantCommission,
               },
             },
-          });
+          },
+        });
 
-          await tx.compte.update({
-            where: { id_cpt: cpt },
-            data: { solde_actuel: { decrement: mntTotDev } },
-          });
+        await tx.compte.update({
+          where: { id_cpt: cpt },
+          data: { solde_actuel: { decrement: mntTotDev } },
+        });
 
-          return colis;
-        } else {
-          res.status(405).json({ message: "Votre solde est insuffisant" });
-        }
+        return colis;
       });
 
       res.status(201).json(newColis);
     } catch (error) {
+      if (error.message === "INSUFFICIENT_FUNDS") {
+        return res.status(405).json({ message: "Votre solde est insuffisant" });
+      }
+
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -261,6 +268,11 @@ export const updateColisEnRoute = [
 
     try {
       const idColis = parseInt(req.params.id);
+
+      if (isNaN(idColis)) {
+        return res.status(400).json({ message: "Identifiant invalide" });
+      }
+
       const { prd_id, date_stock, droits_timbre } = req.body;
 
       await prisma.$transaction(async (tx) => {
@@ -269,7 +281,7 @@ export const updateColisEnRoute = [
           select: { qte_achat: true, pu_dzd_ttc: true, cat_id: true },
         });
 
-        if (!colis) throw new Error("Achat non trouvé");
+        if (!colis) throw new Error("ACHAT_NON_TROUVE");
 
         const updatedData = {
           date_stock,
@@ -277,8 +289,9 @@ export const updateColisEnRoute = [
         };
 
         if (droits_timbre) {
-          updatedData.pu_dzd_ttc =
-            parseFloat(colis.pu_dzd_ttc) + 130 / colis.qte_achat;
+          updatedData.pu_dzd_ttc = parseFloat(
+            (parseFloat(colis.pu_dzd_ttc) + 130 / colis.qte_achat).toFixed(4),
+          );
         }
 
         await tx.colis.update({
@@ -304,6 +317,10 @@ export const updateColisEnRoute = [
 
       res.status(200).json({ message: "Opération effectuée avec succés" });
     } catch (error) {
+      if (error.message === "ACHAT_NON_TROUVE") {
+        return res.status(404).json({ message: "Achat non trouvé" });
+      }
+
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -408,11 +425,9 @@ export const cancelColis = async (req, res) => {
       });
     });
 
-    res
-      .status(200)
-      .json({
-        message: "Colis annulé, compte remboursé et taux de change mis à jour.",
-      });
+    res.status(200).json({
+      message: "Colis annulé, compte remboursé et taux de change mis à jour.",
+    });
   } catch (error) {
     if (error.message.includes("non trouvé")) {
       return res.status(404).json({ message: error.message });
@@ -573,14 +588,12 @@ export const getChartDataByCategory = async (req, res) => {
       (acc, cat) => ({ ...acc, [cat.id_cat]: cat.designation_cat }),
       {},
     );
-    res
-      .status(200)
-      .json(
-        data.map((i) => ({
-          name: map[i.cat_id] || "Inconnu",
-          value: i._count.id_colis,
-        })),
-      );
+    res.status(200).json(
+      data.map((i) => ({
+        name: map[i.cat_id] || "Inconnu",
+        value: i._count.id_colis,
+      })),
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -594,14 +607,12 @@ export const getChartDataByYear = async (req, res) => {
       GROUP BY YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) 
       ORDER BY year DESC
     `;
-    res
-      .status(200)
-      .json(
-        result.map((i) => ({
-          year: i.year.toString(),
-          value: Number(i.value),
-        })),
-      );
+    res.status(200).json(
+      result.map((i) => ({
+        year: i.year.toString(),
+        value: Number(i.value),
+      })),
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -621,14 +632,12 @@ export const getChartDataByAccount = async (req, res) => {
       (acc, cpt) => ({ ...acc, [cpt.id_cpt]: cpt.designation_cpt }),
       {},
     );
-    res
-      .status(200)
-      .json(
-        data.map((i) => ({
-          name: map[i.cpt_id] || "Inconnu",
-          value: i._count.id_colis,
-        })),
-      );
+    res.status(200).json(
+      data.map((i) => ({
+        name: map[i.cpt_id] || "Inconnu",
+        value: i._count.id_colis,
+      })),
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -650,14 +659,12 @@ export const getChartDataTopProducts = async (req, res) => {
       (acc, prd) => ({ ...acc, [prd.id_prd]: prd.designation_prd }),
       {},
     );
-    res
-      .status(200)
-      .json(
-        data.map((i) => ({
-          name: map[i.prd_id] || "Inconnu",
-          value: i._sum.qte_achat,
-        })),
-      );
+    res.status(200).json(
+      data.map((i) => ({
+        name: map[i.prd_id] || "Inconnu",
+        value: i._sum.qte_achat,
+      })),
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
