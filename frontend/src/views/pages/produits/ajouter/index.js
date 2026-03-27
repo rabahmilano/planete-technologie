@@ -1,237 +1,119 @@
-// ** React Imports
-import { forwardRef, useState, useEffect, useCallback } from 'react'
-
-// ** MUI Imports
-import Grid from '@mui/material/Grid'
-import Button from '@mui/material/Button'
-import Typography from '@mui/material/Typography'
-import Divider from '@mui/material/Divider'
-import CardContent from '@mui/material/CardContent'
-import MenuItem from '@mui/material/MenuItem'
-import IconButton from '@mui/material/IconButton'
-import InputAdornment from '@mui/material/InputAdornment'
-import Drawer from '@mui/material/Drawer'
-
-import CustomTextField from 'src/@core/components/mui/text-field'
-import CustomAutocomplete from 'src/@core/components/mui/autocomplete'
-import { createFilterOptions } from '@mui/material/Autocomplete'
-
-import AjouterCategorie from '../ajouterCategorie'
-
-// ** Third Party Imports
-import toast from 'react-hot-toast'
+// src/views/pages/produits/ajouter/index.js
+import { useState, useCallback } from 'react'
+import {
+  Grid,
+  Button,
+  Typography,
+  Divider,
+  CardContent,
+  MenuItem,
+  IconButton,
+  InputAdornment,
+  Drawer
+} from '@mui/material'
 import { useForm, Controller } from 'react-hook-form'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-
-import { useProduit } from 'src/context/ProduitContext'
-
+import { createFilterOptions } from '@mui/material/Autocomplete'
 import dayjs from 'dayjs'
 import 'dayjs/locale/fr'
 
-import utc from 'dayjs/plugin/utc'
-dayjs.extend(utc)
+import CustomTextField from 'src/@core/components/mui/text-field'
+import CustomAutocomplete from 'src/@core/components/mui/autocomplete'
+import Icon from 'src/@core/components/icon'
+import CleaveInput from 'src/components/CleaveInput'
+import { useProduit } from 'src/context/ProduitContext'
+import { formatMontant } from 'src/@core/utils/format'
+import AjouterCategorie from '../ajouterCategorie'
 
 dayjs.locale('fr')
 
-const defaultValues = {
-  desPrd: '',
-  cat: '',
-  cpt: '',
-  mntTotDev: '',
-  qte: '',
-  dateAchat: dayjs()
-  // dateAchat: dayjs('2025-02-01').utc(true).startOf('day')
-}
+const defaultValues = { desPrd: '', cat: '', cpt: '', mntTotDev: '', qte: '', dateAchat: dayjs() }
 
-function debounce(func, wait) {
+const debounce = (fn, delay) => {
   let timeout
-  return function (...args) {
+  return (...args) => {
     clearTimeout(timeout)
-    timeout = setTimeout(() => func.apply(this, args), wait)
+    timeout = setTimeout(() => fn(...args), delay)
   }
 }
 
-// ** Icon Imports
-import Icon from 'src/@core/components/icon'
-import axios from 'axios'
-
-const CustomInput = forwardRef((props, ref) => {
-  return <CustomTextField fullWidth {...props} inputRef={ref} label='Birth Date' autoComplete='off' />
-})
-
 const AjouterProduit = () => {
-  const { listCategorie } = useProduit()
-  const [listCompte, setListCompte] = useState([])
+  const { listCategorie, listCompte, ajouterProduit, rechercherProduits } = useProduit()
+
   const [drawerOpen, setDrawerOpen] = useState(false)
-
-  const [devise, setDevise] = useState('')
   const [taux, setTaux] = useState(0)
-  const [symboleDev, setSymboleDev] = useState('')
-  const [mntDzd, setMntDzd] = useState(0)
-  const [puDev, setPuDev] = useState(0)
-  const [puDzd, setPuDzd] = useState(0)
-
-  const [inputValue, setInputValue] = useState('')
-  const [autocompleteValue, setAutocompleteValue] = useState(null)
+  const [deviseInfo, setDeviseInfo] = useState({ code: '', symbole: '' })
+  const [calculs, setCalculs] = useState({ mntDzd: 0, puDev: 0, puDzd: 0 })
   const [options, setOptions] = useState([])
 
-  // ** Hooks
   const {
     control,
     handleSubmit,
     formState: { errors },
     getValues,
-    reset,
-    setValue
+    reset
   } = useForm({ defaultValues })
 
-  const handleCompteChange = newCompte => {
-    const selectedCompte = listCompte.find(compte => compte.id_cpt === newCompte)
-    const montant = parseFloat(getValues('mntTotDev'))
-    const quantite = parseFloat(getValues('qte'))
+  // Règle métier : Recalcul prévisionnel pour l'utilisateur
+  const updateFinancePreview = (mnt, q, tx) => {
+    const montant = parseFloat(mnt) || 0
+    const quantite = parseFloat(q) || 0
+    const tauxActuel = tx || taux
 
-    const newDevise = selectedCompte.dev_code
-    setDevise(newDevise)
-
-    const newTaux = selectedCompte.taux_change_actuel
-    setTaux(newTaux)
-
-    const newSymboleDev = selectedCompte.devise.symbole_dev
-    setSymboleDev(newSymboleDev)
-
-    if (selectedCompte && montant && quantite) {
-      const calculatedMntDzd = montant * newTaux
-      const calculatedPuDev = montant / quantite
-      const calculatedPuDzd = calculatedMntDzd / quantite
-
-      setMntDzd(calculatedMntDzd.toFixed(4))
-      setPuDev(calculatedPuDev.toFixed(4))
-      setPuDzd(calculatedPuDzd.toFixed(4))
+    if (montant && quantite && tauxActuel) {
+      setCalculs({
+        mntDzd: montant * tauxActuel,
+        puDev: montant / quantite,
+        puDzd: (montant * tauxActuel) / quantite
+      })
     }
   }
 
-  const handleMontantChange = newMontant => {
-    setValue('mntTotDev', newMontant)
-
-    const quantite = parseFloat(getValues('qte'))
-
-    if (quantite && taux) {
-      const calculatedMntDzd = newMontant * taux
-      const calculatedPuDev = newMontant * quantite
-      const calculatedPuDzd = calculatedMntDzd / quantite
-
-      setMntDzd(calculatedMntDzd.toFixed(4))
-      setPuDev(calculatedPuDev.toFixed(4))
-      setPuDzd(calculatedPuDzd.toFixed(4))
-    }
-  }
-
-  const handleQuantiteChange = newQuatite => {
-    setValue('qte', newQuatite)
-    const montant = parseFloat(getValues('mntTotDev'))
-
-    if (montant) {
-      const calculatedMntDzd = montant * taux
-      const calculatedPuDev = montant / newQuatite
-      const calculatedPuDzd = calculatedMntDzd / newQuatite
-
-      setMntDzd(calculatedMntDzd.toFixed(4))
-      setPuDev(calculatedPuDev.toFixed(4))
-      setPuDzd(calculatedPuDzd.toFixed(4))
-    }
-  }
-
-  const onSubmit = async () => {
-    const data = getValues()
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL}produits/addProduit`
-
-    const formattedData = {
-      ...data,
-      desPrd: data.desPrd.designation_prd,
-      dateAchat: dayjs(data.dateAchat).toISOString(),
-      qte: parseInt(data.qte),
-      mntTotDev: parseFloat(data.mntTotDev)
-    }
-
-    try {
-      const reponse = await axios.post(url, formattedData)
-      if (reponse.status === 201) {
-        toast.success("L'opération d'achat a été bien enregistré")
-        setOptions([])
-        setValue('desPrd', '')
-        reset()
-        setTaux(0)
-        setMntDzd(0)
-        setPuDev(0)
-        setPuDzd(0)
-        setDevise('')
-        setSymboleDev('')
-        setInputValue('')
-        setAutocompleteValue(null)
-      }
-    } catch (error) {
-      if (error.response) {
-        if (error.response.status === 400) {
-          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
-        } else {
-          toast.error('Erreur: ' + error.response.data.message)
-        }
-      } else if (error.request) {
-        // La requête a été faite mais aucune réponse n'a été reçue
-        toast.error('Pas de réponse du serveur')
-      } else {
-        // Une erreur s'est produite lors de la configuration de la requête
-        toast.error('Erreur: ' + error.message)
-      }
-    }
-  }
-
-  const fetchOptions = useCallback(
-    debounce(async newInputValue => {
-      if (newInputValue.length >= 3) {
-        try {
-          const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/search`, {
-            params: { query: newInputValue }
-          })
-          setOptions(response.data)
-        } catch (error) {
-          toast.error('Erreur lors de la récupération des produits')
-        }
-      } else {
-        setOptions([])
-      }
+  const handleSearch = useCallback(
+    debounce(async val => {
+      if (val.length >= 3) {
+        const res = await rechercherProduits(val)
+        setOptions(res)
+      } else setOptions([])
     }, 300),
     []
   )
 
-  const handleInputChange = (event, newInputValue) => {
-    setInputValue(newInputValue)
-    fetchOptions(newInputValue)
+  const handleCompteChange = id => {
+    const cpt = listCompte.find(c => c.id_cpt === id)
+    if (cpt) {
+      setTaux(cpt.taux_change_actuel)
+      setDeviseInfo({ code: cpt.dev_code, symbole: cpt.devise.symbole_dev })
+      updateFinancePreview(getValues('mntTotDev'), getValues('qte'), cpt.taux_change_actuel)
+    }
   }
 
-  useEffect(() => {
-    const fetchComptes = async () => {
-      try {
-        // const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/allComptesTaux`)
-        const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/allComptes`)
-
-        setListCompte(reponse.data)
-      } catch (error) {
-        toast.error('Erreur lors de la récupération des comptes')
-      }
+  const onSubmit = async data => {
+    const formattedData = {
+      ...data,
+      desPrd: typeof data.desPrd === 'string' ? data.desPrd : data.desPrd?.designation_prd,
+      dateAchat: dayjs(data.dateAchat).toISOString(),
+      qte: parseInt(data.qte, 10),
+      mntTotDev: parseFloat(data.mntTotDev)
     }
 
-    fetchComptes()
-  }, [])
+    if (await ajouterProduit(formattedData)) {
+      reset()
+      setCalculs({ mntDzd: 0, puDev: 0, puDzd: 0 })
+      setTaux(0)
+      setDeviseInfo({ code: '', symbole: '' })
+      setOptions([])
+    }
+  }
 
   return (
     <CardContent>
       <form onSubmit={handleSubmit(onSubmit)}>
         <Grid container spacing={5}>
           <Grid item xs={12}>
-            <Typography variant='body2' sx={{ fontWeight: 600 }}>
-              1. Informations sur le produit
+            <Typography variant='subtitle1' sx={{ fontWeight: 600, color: 'primary.main' }}>
+              1. Produit
             </Typography>
           </Grid>
 
@@ -239,50 +121,27 @@ const AjouterProduit = () => {
             <Controller
               name='desPrd'
               control={control}
-              rules={{ required: 'Ce champ est obligatoire' }}
-              render={({ field: { onChange, value }, fieldState: { error } }) => (
+              rules={{ required: 'Obligatoire' }}
+              render={({ field: { onChange, value } }) => (
                 <CustomAutocomplete
+                  freeSolo
                   fullWidth
                   options={options}
-                  inputValue={inputValue}
-                  value={autocompleteValue}
-                  onChange={(event, newValue) => {
-                    setAutocompleteValue(newValue)
-                    // Permettre une nouvelle valeur si elle n'est pas dans les options
-                    if (newValue && typeof newValue === 'string') {
-                      onChange(newValue)
-                    } else if (newValue && newValue.inputValue) {
-                      onChange(newValue.inputValue)
-                    } else {
-                      onChange(newValue)
-                    }
+                  value={value}
+                  onInputChange={(e, val) => {
+                    onChange(val)
+                    handleSearch(val)
                   }}
-                  onInputChange={handleInputChange}
-                  isOptionEqualToValue={(option, value) => {
-                    if (option && value) {
-                      return option.designation_prd === value.designation_prd
-                    }
-                    return false
-                  }}
-                  getOptionLabel={option => option.designation_prd || option.inputValue || ''}
+                  getOptionLabel={opt => opt.designation_prd || opt}
                   renderInput={params => (
                     <CustomTextField
                       {...params}
-                      label='Désignation du produit'
-                      placeholder='SSD XrayDisk 256Go'
-                      error={!!error}
-                      helperText={error ? error.message : ''}
+                      label='Désignation'
+                      placeholder='SSD 256Go'
+                      error={!!errors.desPrd}
+                      helperText={errors.desPrd?.message}
                     />
                   )}
-                  filterOptions={(options, params) => {
-                    const filtered = createFilterOptions()(options, params)
-                    if (params.inputValue !== '') {
-                      filtered.push({
-                        designation_prd: params.inputValue
-                      })
-                    }
-                    return filtered
-                  }}
                 />
               )}
             />
@@ -293,36 +152,26 @@ const AjouterProduit = () => {
               name='cat'
               control={control}
               rules={{ required: true }}
-              render={({ field: { value, onChange } }) => (
+              render={({ field }) => (
                 <CustomTextField
                   select
                   fullWidth
-                  defaultValue=''
                   label='Catégorie'
-                  SelectProps={{
-                    value: value,
-                    onChange: e => onChange(e)
-                  }}
-                  error={Boolean(errors.cat)}
-                  {...(errors.cat && { helperText: 'Ce champ est obligatoire' })}
+                  {...field}
+                  error={!!errors.cat}
                   InputProps={{
                     startAdornment: (
-                      <InputAdornment position='start' sx={{ ml: '-10px', mr: 5 }}>
-                        <IconButton
-                          edge='end'
-                          onMouseDown={e => e.preventDefault()}
-                          onClick={() => setDrawerOpen(true)}
-                          color='info'
-                        >
-                          <Icon fontSize='1.25rem' icon='tabler:circle-plus' />
+                      <InputAdornment position='start'>
+                        <IconButton onClick={() => setDrawerOpen(true)} color='info' size='small'>
+                          <Icon icon='tabler:circle-plus' />
                         </IconButton>
                       </InputAdornment>
                     )
                   }}
                 >
-                  {listCategorie.map(categorie => (
-                    <MenuItem key={categorie.id_cat} value={categorie.id_cat}>
-                      {categorie.designation_cat}
+                  {listCategorie.map(c => (
+                    <MenuItem key={c.id_cat} value={c.id_cat}>
+                      {c.designation_cat}
                     </MenuItem>
                   ))}
                 </CustomTextField>
@@ -331,12 +180,12 @@ const AjouterProduit = () => {
           </Grid>
 
           <Grid item xs={12}>
-            <Divider sx={{ mb: '0 !important' }} />
+            <Divider />
           </Grid>
 
           <Grid item xs={12}>
-            <Typography variant='body2' sx={{ fontWeight: 600 }}>
-              2. Informations sur l'achat
+            <Typography variant='subtitle1' sx={{ fontWeight: 600, color: 'primary.main' }}>
+              2. Achat
             </Typography>
           </Grid>
 
@@ -344,20 +193,13 @@ const AjouterProduit = () => {
             <Controller
               name='dateAchat'
               control={control}
-              rules={{ required: 'Ce champ est obligatoire' }}
-              render={({ field, fieldState: { error } }) => (
+              render={({ field }) => (
                 <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
                   <DatePicker
                     {...field}
+                    label='Date'
                     maxDate={dayjs()}
-                    label="Date d'achat"
-                    slotProps={{
-                      textField: {
-                        variant: 'outlined',
-                        error: !!error,
-                        helperText: error && 'Ce champ est obligatoire'
-                      }
-                    }}
+                    slotProps={{ textField: { fullWidth: true } }}
                   />
                 </LocalizationProvider>
               )}
@@ -369,25 +211,21 @@ const AjouterProduit = () => {
               name='cpt'
               control={control}
               rules={{ required: true }}
-              render={({ field: { value, onChange } }) => (
+              render={({ field }) => (
                 <CustomTextField
                   select
                   fullWidth
-                  defaultValue=''
-                  label='Compte de paiement'
-                  SelectProps={{
-                    value: value,
-                    onChange: e => {
-                      onChange(e)
-                      handleCompteChange(e.target.value)
-                    }
+                  label='Compte'
+                  {...field}
+                  onChange={e => {
+                    field.onChange(e)
+                    handleCompteChange(e.target.value)
                   }}
-                  error={Boolean(errors.cpt)}
-                  {...(errors.cpt && { helperText: 'Ce champ est obligatoire' })}
+                  error={!!errors.cpt}
                 >
-                  {listCompte.map(compte => (
-                    <MenuItem key={compte.id_cpt} value={compte.id_cpt}>
-                      {compte.designation_cpt}
+                  {listCompte.map(c => (
+                    <MenuItem key={c.id_cpt} value={c.id_cpt}>
+                      {c.designation_cpt}
                     </MenuItem>
                   ))}
                 </CustomTextField>
@@ -399,22 +237,19 @@ const AjouterProduit = () => {
             <Controller
               name='mntTotDev'
               control={control}
-              rules={{ required: true, min: '0' }}
-              render={({ field: { value, onChange } }) => (
+              rules={{ required: true }}
+              render={({ field }) => (
                 <CustomTextField
                   fullWidth
-                  type='number'
-                  label='Montant total en devise'
-                  autoComplete='off'
-                  value={value}
-                  onChange={e => {
-                    onChange(e)
-                    handleMontantChange(e.target.value)
-                  }}
-                  error={Boolean(errors.mntTotDev)}
-                  {...(errors.mntTotDev && { helperText: 'Ce champ doit être supérieur à 0 ' })}
+                  label='Montant Devise'
+                  {...field}
                   InputProps={{
-                    endAdornment: <InputAdornment position='end'>{symboleDev}</InputAdornment>
+                    inputComponent: CleaveInput,
+                    endAdornment: <InputAdornment position='end'>{deviseInfo.symbole}</InputAdornment>
+                  }}
+                  onChange={e => {
+                    field.onChange(e)
+                    updateFinancePreview(e.target.value, getValues('qte'))
                   }}
                 />
               )}
@@ -426,110 +261,67 @@ const AjouterProduit = () => {
               name='qte'
               control={control}
               rules={{ required: true, min: 1 }}
-              render={({ field: { value, onChange } }) => (
+              render={({ field }) => (
                 <CustomTextField
                   fullWidth
-                  value={value}
-                  type='number'
                   label='Quantité'
-                  placeholder='1'
-                  autoComplete='off'
+                  {...field}
+                  InputProps={{ inputComponent: CleaveInput }}
                   onChange={e => {
-                    onChange(e)
-                    handleQuantiteChange(e.target.value)
+                    field.onChange(e)
+                    updateFinancePreview(getValues('mntTotDev'), e.target.value)
                   }}
-                  error={Boolean(errors.qte)}
-                  {...(errors.qte && { helperText: 'Ce champ doit être supérieur à 0' })}
                 />
               )}
             />
           </Grid>
 
           <Grid item xs={12}>
-            <Divider sx={{ mb: '0 !important' }} />
+            <Divider />
           </Grid>
 
-          <Grid item xs={12}>
-            <Typography variant='body2' sx={{ fontWeight: 600 }}>
-              3. Informations supplémentaire sur les prix
-            </Typography>
-          </Grid>
-
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={3}>
             <CustomTextField
-              name='taux'
               fullWidth
-              label='Taux de change'
-              value={taux}
-              InputProps={{
-                readOnly: true,
-                endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
-              }}
+              label='Taux'
+              value={formatMontant(taux)}
+              InputProps={{ readOnly: true, endAdornment: 'DZD' }}
             />
           </Grid>
-
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={3}>
             <CustomTextField
-              name='mntDzd'
               fullWidth
-              label='Montant total en Dinar'
-              value={mntDzd}
-              InputProps={{
-                readOnly: true,
-                endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
-              }}
+              label='Total DZD'
+              value={formatMontant(calculs.mntDzd)}
+              InputProps={{ readOnly: true, endAdornment: 'DZD' }}
             />
           </Grid>
-
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={3}>
             <CustomTextField
-              name='puDev'
               fullWidth
-              label='Prix unitaire en devise'
-              value={puDev}
-              InputProps={{
-                readOnly: true,
-                endAdornment: <InputAdornment position='end'>{devise}</InputAdornment>
-              }}
+              label='PU Devise'
+              value={formatMontant(calculs.puDev, 4)}
+              InputProps={{ readOnly: true, endAdornment: deviseInfo.code }}
             />
           </Grid>
-
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={3}>
             <CustomTextField
-              name='puDzd'
               fullWidth
-              label='Prix unitaire en Dinar'
-              value={puDzd}
-              InputProps={{
-                readOnly: true,
-                endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
-              }}
+              label='PU DZD'
+              value={formatMontant(calculs.puDzd, 4)}
+              InputProps={{ readOnly: true, endAdornment: 'DZD' }}
             />
           </Grid>
 
           <Grid item xs={12}>
-            <Divider sx={{ mb: '0 !important' }} />
-          </Grid>
-
-          <Grid item xs={12}>
-            <Button type='submit' variant='contained'>
-              Ajouter
+            <Button type='submit' variant='contained' size='large'>
+              Enregistrer
             </Button>
           </Grid>
         </Grid>
       </form>
 
-      <Drawer
-        anchor='right'
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        ModalProps={{
-          disablePortal: true,
-          disableAutoFocus: true,
-          disableScrollLock: true,
-          keepMounted: true
-        }}
-      >
+      <Drawer anchor='right' open={drawerOpen} onClose={() => setDrawerOpen(false)}>
         <AjouterCategorie onClose={() => setDrawerOpen(false)} />
       </Drawer>
     </CardContent>
