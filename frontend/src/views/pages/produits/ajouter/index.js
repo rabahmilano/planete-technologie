@@ -1,4 +1,3 @@
-// src/views/pages/produits/ajouter/index.js
 import { useState, useCallback } from 'react'
 import {
   Grid,
@@ -14,7 +13,6 @@ import {
 import { useForm, Controller } from 'react-hook-form'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-import { createFilterOptions } from '@mui/material/Autocomplete'
 import dayjs from 'dayjs'
 import 'dayjs/locale/fr'
 
@@ -28,7 +26,14 @@ import AjouterCategorie from '../ajouterCategorie'
 
 dayjs.locale('fr')
 
-const defaultValues = { desPrd: '', cat: '', cpt: '', mntTotDev: '', qte: '', dateAchat: dayjs() }
+const defaultValues = {
+  desPrd: '',
+  cat: '',
+  cpt: '',
+  mntTotDev: '',
+  qte: '',
+  dateAchat: dayjs()
+}
 
 const debounce = (fn, delay) => {
   let timeout
@@ -55,7 +60,7 @@ const AjouterProduit = () => {
     reset
   } = useForm({ defaultValues })
 
-  // Règle métier : Recalcul prévisionnel pour l'utilisateur
+  // Règle métier : Aperçu financier dynamique pour validation humaine avant soumission
   const updateFinancePreview = (mnt, q, tx) => {
     const montant = parseFloat(mnt) || 0
     const quantite = parseFloat(q) || 0
@@ -72,12 +77,14 @@ const AjouterProduit = () => {
 
   const handleSearch = useCallback(
     debounce(async val => {
-      if (val.length >= 3) {
+      if (val && val.length >= 3) {
         const res = await rechercherProduits(val)
-        setOptions(res)
-      } else setOptions([])
+        setOptions(res || [])
+      } else {
+        setOptions([])
+      }
     }, 300),
-    []
+    [rechercherProduits]
   )
 
   const handleCompteChange = id => {
@@ -109,11 +116,11 @@ const AjouterProduit = () => {
 
   return (
     <CardContent>
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)} autoComplete='off'>
         <Grid container spacing={5}>
           <Grid item xs={12}>
             <Typography variant='subtitle1' sx={{ fontWeight: 600, color: 'primary.main' }}>
-              1. Produit
+              1. Informations sur le produit
             </Typography>
           </Grid>
 
@@ -121,7 +128,7 @@ const AjouterProduit = () => {
             <Controller
               name='desPrd'
               control={control}
-              rules={{ required: 'Obligatoire' }}
+              rules={{ required: 'Ce champ est obligatoire' }}
               render={({ field: { onChange, value } }) => (
                 <CustomAutocomplete
                   freeSolo
@@ -132,14 +139,23 @@ const AjouterProduit = () => {
                     onChange(val)
                     handleSearch(val)
                   }}
-                  getOptionLabel={opt => opt.designation_prd || opt}
+                  getOptionLabel={opt => opt?.designation_prd || opt || ''}
+                  isOptionEqualToValue={(option, val) => {
+                    const optLabel = typeof option === 'string' ? option : option.designation_prd
+                    const valLabel = typeof val === 'string' ? val : val.designation_prd
+                    return optLabel === valLabel
+                  }}
                   renderInput={params => (
                     <CustomTextField
                       {...params}
-                      label='Désignation'
-                      placeholder='SSD 256Go'
+                      label='Désignation du produit'
+                      placeholder='Ex: SSD 256Go'
                       error={!!errors.desPrd}
                       helperText={errors.desPrd?.message}
+                      inputProps={{
+                        ...params.inputProps,
+                        autoComplete: 'new-password' // Hack infaillible pour bloquer l'historique Chrome
+                      }}
                     />
                   )}
                 />
@@ -159,10 +175,17 @@ const AjouterProduit = () => {
                   label='Catégorie'
                   {...field}
                   error={!!errors.cat}
+                  helperText={errors.cat && 'Ce champ est obligatoire'}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position='start'>
-                        <IconButton onClick={() => setDrawerOpen(true)} color='info' size='small'>
+                        <IconButton
+                          onClick={() => setDrawerOpen(true)}
+                          color='info'
+                          size='small'
+                          edge='start'
+                          sx={{ ml: -2, mr: 1 }}
+                        >
                           <Icon icon='tabler:circle-plus' />
                         </IconButton>
                       </InputAdornment>
@@ -185,7 +208,7 @@ const AjouterProduit = () => {
 
           <Grid item xs={12}>
             <Typography variant='subtitle1' sx={{ fontWeight: 600, color: 'primary.main' }}>
-              2. Achat
+              2. Informations sur l'achat
             </Typography>
           </Grid>
 
@@ -193,13 +216,21 @@ const AjouterProduit = () => {
             <Controller
               name='dateAchat'
               control={control}
-              render={({ field }) => (
+              rules={{ required: 'Ce champ est obligatoire' }}
+              render={({ field, fieldState: { error } }) => (
                 <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
                   <DatePicker
                     {...field}
-                    label='Date'
+                    label="Date d'achat"
                     maxDate={dayjs()}
-                    slotProps={{ textField: { fullWidth: true } }}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        error: !!error,
+                        helperText: error?.message,
+                        autoComplete: 'off'
+                      }
+                    }}
                   />
                 </LocalizationProvider>
               )}
@@ -215,13 +246,14 @@ const AjouterProduit = () => {
                 <CustomTextField
                   select
                   fullWidth
-                  label='Compte'
+                  label='Compte de paiement'
                   {...field}
                   onChange={e => {
                     field.onChange(e)
                     handleCompteChange(e.target.value)
                   }}
                   error={!!errors.cpt}
+                  helperText={errors.cpt && 'Ce champ est obligatoire'}
                 >
                   {listCompte.map(c => (
                     <MenuItem key={c.id_cpt} value={c.id_cpt}>
@@ -241,7 +273,8 @@ const AjouterProduit = () => {
               render={({ field }) => (
                 <CustomTextField
                   fullWidth
-                  label='Montant Devise'
+                  label='Montant total en devise'
+                  autoComplete='off'
                   {...field}
                   InputProps={{
                     inputComponent: CleaveInput,
@@ -251,6 +284,8 @@ const AjouterProduit = () => {
                     field.onChange(e)
                     updateFinancePreview(e.target.value, getValues('qte'))
                   }}
+                  error={!!errors.mntTotDev}
+                  helperText={errors.mntTotDev && 'Ce champ est obligatoire'}
                 />
               )}
             />
@@ -265,12 +300,15 @@ const AjouterProduit = () => {
                 <CustomTextField
                   fullWidth
                   label='Quantité'
+                  autoComplete='off'
                   {...field}
                   InputProps={{ inputComponent: CleaveInput }}
                   onChange={e => {
                     field.onChange(e)
                     updateFinancePreview(getValues('mntTotDev'), e.target.value)
                   }}
+                  error={!!errors.qte}
+                  helperText={errors.qte && 'Ce champ doit être supérieur à 0'}
                 />
               )}
             />
@@ -280,12 +318,18 @@ const AjouterProduit = () => {
             <Divider />
           </Grid>
 
+          <Grid item xs={12}>
+            <Typography variant='subtitle1' sx={{ fontWeight: 600, color: 'primary.main' }}>
+              3. Informations supplémentaires sur les prix
+            </Typography>
+          </Grid>
+
           <Grid item xs={12} sm={3}>
             <CustomTextField
               fullWidth
-              label='Taux'
+              label='Taux utilisé'
               value={formatMontant(taux)}
-              InputProps={{ readOnly: true, endAdornment: 'DZD' }}
+              InputProps={{ readOnly: true, endAdornment: <InputAdornment position='end'>DZD</InputAdornment> }}
             />
           </Grid>
           <Grid item xs={12} sm={3}>
@@ -293,7 +337,7 @@ const AjouterProduit = () => {
               fullWidth
               label='Total DZD'
               value={formatMontant(calculs.mntDzd)}
-              InputProps={{ readOnly: true, endAdornment: 'DZD' }}
+              InputProps={{ readOnly: true, endAdornment: <InputAdornment position='end'>DZD</InputAdornment> }}
             />
           </Grid>
           <Grid item xs={12} sm={3}>
@@ -301,7 +345,10 @@ const AjouterProduit = () => {
               fullWidth
               label='PU Devise'
               value={formatMontant(calculs.puDev, 4)}
-              InputProps={{ readOnly: true, endAdornment: deviseInfo.code }}
+              InputProps={{
+                readOnly: true,
+                endAdornment: <InputAdornment position='end'>{deviseInfo.code}</InputAdornment>
+              }}
             />
           </Grid>
           <Grid item xs={12} sm={3}>
@@ -309,13 +356,13 @@ const AjouterProduit = () => {
               fullWidth
               label='PU DZD'
               value={formatMontant(calculs.puDzd, 4)}
-              InputProps={{ readOnly: true, endAdornment: 'DZD' }}
+              InputProps={{ readOnly: true, endAdornment: <InputAdornment position='end'>DZD</InputAdornment> }}
             />
           </Grid>
 
           <Grid item xs={12}>
-            <Button type='submit' variant='contained' size='large'>
-              Enregistrer
+            <Button type='submit' variant='contained' size='large' sx={{ mt: 2 }}>
+              Enregistrer l'achat
             </Button>
           </Grid>
         </Grid>

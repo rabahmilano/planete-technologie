@@ -1,4 +1,3 @@
-// src/context/ProduitContext.js
 import { createContext, useState, useContext, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -28,6 +27,16 @@ export const ProduitProvider = ({ children }) => {
     }
   }, [])
 
+  // LA FONCTION MANQUANTE QUE J'AVAIS OUBLIÉE :
+  const rechercherProduits = async query => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/search`, { params: { query } })
+      return data
+    } catch (error) {
+      return []
+    }
+  }
+
   const ajouterProduit = async data => {
     try {
       await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}produits/addProduit`, data)
@@ -39,7 +48,6 @@ export const ProduitProvider = ({ children }) => {
       return true
     } catch (error) {
       toast.error(error.response?.data?.error?.message || "Erreur lors de l'enregistrement de l'achat")
-
       return false
     }
   }
@@ -50,7 +58,16 @@ export const ProduitProvider = ({ children }) => {
   }, [fetchCategories, fetchComptes])
 
   return (
-    <ProduitContext.Provider value={{ listCategorie, listCompte, fetchCategories, fetchComptes, ajouterProduit }}>
+    <ProduitContext.Provider
+      value={{
+        listCategorie,
+        listCompte,
+        fetchCategories,
+        fetchComptes,
+        ajouterProduit,
+        rechercherProduits // EXPORTÉE ICI
+      }}
+    >
       {children}
     </ProduitContext.Provider>
   )
