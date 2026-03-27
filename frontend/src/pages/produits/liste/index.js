@@ -1,28 +1,21 @@
 import { useState } from 'react'
-import { Grid, Card, CardHeader, CardContent, Tabs, Typography, Box } from '@mui/material'
+import { Grid, Card, CardContent, Typography, Box } from '@mui/material'
+import MuiTab from '@mui/material/Tab'
+import { styled } from '@mui/material/styles'
 
 import TabContext from '@mui/lab/TabContext'
 import MuiTabList from '@mui/lab/TabList'
-import MuiTab from '@mui/material/Tab'
-import { styled } from '@mui/material/styles'
-// ** Icon Imports
-import Icon from 'src/@core/components/icon'
+import TabPanel from '@mui/lab/TabPanel'
 
-import PageHeader from 'src/@core/components/page-header'
+import Icon from 'src/@core/components/icon'
 
 import ProduitsEnStock from 'src/views/pages/produits/produitsEnStock'
 import AchataAttenteStock from 'src/views/pages/produits/achataAttenteStock'
 import HistoriqueAchats from 'src/views/pages/produits/historiqueAchats'
 import HistoriqueDesPrix from 'src/views/pages/produits/historiquesDesPrix'
 
-// Components for each tab content
-// const ProduitsEnStock = () => <Typography>Contenu pour Produits en Stock</Typography>
-
 const ProduitsVendus = () => <Typography>Contenu pour Produits Vendus</Typography>
-
 const StatistiquesDesVentes = () => <Typography>Contenu pour Statistiques des Ventes</Typography>
-
-const ProduitsEnRupture = () => <Typography>Contenu pour Produits en Rupture de Stock</Typography>
 
 const Tab = styled(MuiTab)(({ theme }) => ({
   flexDirection: 'row',
@@ -56,58 +49,53 @@ const TabList = styled(MuiTabList)(({ theme }) => ({
   }
 }))
 
-// TabPanel Component
-const TabPanel = ({ children, value, index }) => {
-  return value === index && <Box sx={{ p: 3 }}>{children}</Box>
-}
-
-// Main Component
 const ProductPage = () => {
-  const [tabIndex, setTabIndex] = useState(0)
+  const [tabValue, setTabValue] = useState('1')
 
-  const handleTabChange = (event, newIndex) => {
-    setTabIndex(newIndex)
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue)
   }
 
   return (
-    <Grid container spacing={6}>
-      {/* <PageHeader title={<Typography variant='h4'>Produit/statistiques</Typography>} /> */}
-      <Grid item xs={12}>
-        <Tabs value={tabIndex} variant='scrollable' scrollButtons='auto' onChange={handleTabChange}>
-          <Tab label='Produits en Stock' />
-          <Tab label='Produits Vendus' />
-          <Tab label='Statistiques des Ventes' />
-          <Tab label='Historique des achats' />
-          <Tab label='À Recevoir' />
-          <Tab label='Historique des Prix' />
-        </Tabs>
-      </Grid>
+    <TabContext value={tabValue}>
+      <Grid container spacing={6}>
+        <Grid item xs={12}>
+          <TabList onChange={handleTabChange} variant='scrollable' scrollButtons='auto'>
+            <Tab value='1' label='Produits en Stock' icon={<Icon icon='tabler:box' />} />
+            <Tab value='2' label='Produits Vendus' icon={<Icon icon='tabler:shopping-cart' />} />
+            <Tab value='3' label='Statistiques des Ventes' icon={<Icon icon='tabler:chart-bar' />} />
+            <Tab value='4' label='Historique des achats' icon={<Icon icon='tabler:history' />} />
+            <Tab value='5' label='À Recevoir' icon={<Icon icon='tabler:truck-delivery' />} />
+            <Tab value='6' label='Historique des Prix' icon={<Icon icon='tabler:currency-dollar' />} />
+          </TabList>
+        </Grid>
 
-      <Grid item xs={12}>
-        <Card>
-          <CardContent>
-            <TabPanel value={tabIndex} index={0}>
-              <ProduitsEnStock />
-            </TabPanel>
-            <TabPanel value={tabIndex} index={1}>
-              <ProduitsVendus />
-            </TabPanel>
-            <TabPanel value={tabIndex} index={2}>
-              <StatistiquesDesVentes />
-            </TabPanel>
-            <TabPanel value={tabIndex} index={3}>
-              <HistoriqueAchats />
-            </TabPanel>
-            <TabPanel value={tabIndex} index={4}>
-              <AchataAttenteStock />
-            </TabPanel>
-            <TabPanel value={tabIndex} index={5}>
-              <HistoriqueDesPrix />
-            </TabPanel>
-          </CardContent>
-        </Card>
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <TabPanel value='1' sx={{ p: 0 }}>
+                <ProduitsEnStock />
+              </TabPanel>
+              <TabPanel value='2' sx={{ p: 0 }}>
+                <ProduitsVendus />
+              </TabPanel>
+              <TabPanel value='3' sx={{ p: 0 }}>
+                <StatistiquesDesVentes />
+              </TabPanel>
+              <TabPanel value='4' sx={{ p: 0 }}>
+                <HistoriqueAchats />
+              </TabPanel>
+              <TabPanel value='5' sx={{ p: 0 }}>
+                <AchataAttenteStock />
+              </TabPanel>
+              <TabPanel value='6' sx={{ p: 0 }}>
+                <HistoriqueDesPrix />
+              </TabPanel>
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
-    </Grid>
+    </TabContext>
   )
 }
 
