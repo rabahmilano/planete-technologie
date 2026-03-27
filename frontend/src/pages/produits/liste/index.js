@@ -8,6 +8,7 @@ import MuiTabList from '@mui/lab/TabList'
 import TabPanel from '@mui/lab/TabPanel'
 
 import Icon from 'src/@core/components/icon'
+import { ProduitProvider } from 'src/context/ProduitContext'
 import { ProduitDashboardProvider } from 'src/context/ProduitDashboardContext'
 
 import ProduitsEnStock from 'src/views/pages/produits/produitsEnStock'
@@ -98,9 +99,11 @@ const ProductPageContent = () => {
 
 const ProductPage = () => {
   return (
-    <ProduitDashboardProvider>
-      <ProductPageContent />
-    </ProduitDashboardProvider>
+    <ProduitProvider>
+      <ProduitDashboardProvider>
+        <ProductPageContent />
+      </ProduitDashboardProvider>
+    </ProduitProvider>
   )
 }
 
