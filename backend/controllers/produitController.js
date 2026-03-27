@@ -473,7 +473,6 @@ export const getAllColis = async (req, res) => {
     produit: {
       designation_prd: {
         contains: search,
-        mode: "insensitive",
       },
     },
   };
@@ -556,7 +555,6 @@ export const getAllColisStats = async (req, res) => {
     produit: {
       designation_prd: {
         contains: search,
-        mode: "insensitive",
       },
     },
   };
@@ -664,16 +662,19 @@ export const getChartDataByAccount = async (req, res) => {
       _count: { id_colis: true },
       orderBy: { _count: { id_colis: "desc" } },
     });
+
     const comptes = await prisma.compte.findMany({
       where: { id_cpt: { in: data.map((i) => i.cpt_id) } },
     });
+
     const map = comptes.reduce(
       (acc, cpt) => ({ ...acc, [cpt.id_cpt]: cpt.designation_cpt }),
       {},
     );
+
     res.status(200).json(
       data.map((i) => ({
-        name: map[cpt_id] || "Inconnu",
+        name: map[i.cpt_id] || "Inconnu",
         value: i._count.id_colis,
       })),
     );
@@ -692,17 +693,20 @@ export const getChartDataTopProducts = async (req, res) => {
       orderBy: { _sum: { qte_achat: "desc" } },
       take: 5,
     });
+
     const prdIds = data.map((i) => i.prd_id);
     const products = await prisma.produit.findMany({
       where: { id_prd: { in: prdIds } },
     });
+
     const map = products.reduce(
       (acc, prd) => ({ ...acc, [prd.id_prd]: prd.designation_prd }),
       {},
     );
+
     res.status(200).json(
       data.map((i) => ({
-        name: map[prd_id] || "Inconnu",
+        name: map[i.prd_id] || "Inconnu",
         value: i._sum.qte_achat,
       })),
     );
@@ -834,12 +838,10 @@ export const updateColisDetails = async (req, res) => {
     if (error.message === "COMPTE_NOT_FOUND")
       return res.status(404).json({ message: "Compte associé non trouvé." });
     if (error.message === "INSUFFICIENT_FUNDS")
-      return res
-        .status(400)
-        .json({
-          message:
-            "Solde insuffisant pour couvrir le nouveau prix après ajustement.",
-        });
+      return res.status(400).json({
+        message:
+          "Solde insuffisant pour couvrir le nouveau prix après ajustement.",
+      });
 
     res
       .status(500)
@@ -885,7 +887,6 @@ export const getProduitsForTable = async (req, res) => {
       where: {
         designation_prd: {
           contains: search,
-          mode: "insensitive",
         },
       },
     });
@@ -1228,7 +1229,6 @@ export const searchProduits = async (req, res) => {
     const conditions = words.map((word) => ({
       designation_prd: {
         contains: word,
-        mode: "insensitive",
       },
     }));
 
