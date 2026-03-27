@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Grid, Card, CardContent, Typography, Box } from '@mui/material'
+import { Grid, Typography } from '@mui/material'
 import MuiTab from '@mui/material/Tab'
 import { styled } from '@mui/material/styles'
 
@@ -8,14 +8,15 @@ import MuiTabList from '@mui/lab/TabList'
 import TabPanel from '@mui/lab/TabPanel'
 
 import Icon from 'src/@core/components/icon'
+import { ProduitDashboardProvider } from 'src/context/ProduitDashboardContext'
 
 import ProduitsEnStock from 'src/views/pages/produits/produitsEnStock'
 import AchataAttenteStock from 'src/views/pages/produits/achataAttenteStock'
 import HistoriqueAchats from 'src/views/pages/produits/historiqueAchats'
 import HistoriqueDesPrix from 'src/views/pages/produits/historiquesDesPrix'
 
-const ProduitsVendus = () => <Typography>Contenu pour Produits Vendus</Typography>
-const StatistiquesDesVentes = () => <Typography>Contenu pour Statistiques des Ventes</Typography>
+const ProduitsVendus = () => <Typography sx={{ p: 4 }}>Contenu pour Produits Vendus</Typography>
+const StatistiquesDesVentes = () => <Typography sx={{ p: 4 }}>Contenu pour Statistiques des Ventes</Typography>
 
 const Tab = styled(MuiTab)(({ theme }) => ({
   flexDirection: 'row',
@@ -26,7 +27,7 @@ const Tab = styled(MuiTab)(({ theme }) => ({
 }))
 
 const TabList = styled(MuiTabList)(({ theme }) => ({
-  borderBottom: '0 !important',
+  borderBottom: `1px solid ${theme.palette.divider}`,
   '&, & .MuiTabs-scroller': {
     boxSizing: 'content-box',
     padding: theme.spacing(1.25, 1.25, 2),
@@ -49,7 +50,7 @@ const TabList = styled(MuiTabList)(({ theme }) => ({
   }
 }))
 
-const ProductPage = () => {
+const ProductPageContent = () => {
   const [tabValue, setTabValue] = useState('1')
 
   const handleTabChange = (event, newValue) => {
@@ -71,31 +72,35 @@ const ProductPage = () => {
         </Grid>
 
         <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <TabPanel value='1' sx={{ p: 0 }}>
-                <ProduitsEnStock />
-              </TabPanel>
-              <TabPanel value='2' sx={{ p: 0 }}>
-                <ProduitsVendus />
-              </TabPanel>
-              <TabPanel value='3' sx={{ p: 0 }}>
-                <StatistiquesDesVentes />
-              </TabPanel>
-              <TabPanel value='4' sx={{ p: 0 }}>
-                <HistoriqueAchats />
-              </TabPanel>
-              <TabPanel value='5' sx={{ p: 0 }}>
-                <AchataAttenteStock />
-              </TabPanel>
-              <TabPanel value='6' sx={{ p: 0 }}>
-                <HistoriqueDesPrix />
-              </TabPanel>
-            </CardContent>
-          </Card>
+          <TabPanel value='1' sx={{ p: 0 }}>
+            <ProduitsEnStock />
+          </TabPanel>
+          <TabPanel value='2' sx={{ p: 0 }}>
+            <ProduitsVendus />
+          </TabPanel>
+          <TabPanel value='3' sx={{ p: 0 }}>
+            <StatistiquesDesVentes />
+          </TabPanel>
+          <TabPanel value='4' sx={{ p: 0 }}>
+            <HistoriqueAchats />
+          </TabPanel>
+          <TabPanel value='5' sx={{ p: 0 }}>
+            <AchataAttenteStock />
+          </TabPanel>
+          <TabPanel value='6' sx={{ p: 0 }}>
+            <HistoriqueDesPrix />
+          </TabPanel>
         </Grid>
       </Grid>
     </TabContext>
+  )
+}
+
+const ProductPage = () => {
+  return (
+    <ProduitDashboardProvider>
+      <ProductPageContent />
+    </ProduitDashboardProvider>
   )
 }
 
