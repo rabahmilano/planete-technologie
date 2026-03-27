@@ -8,23 +8,14 @@ import IconButton from '@mui/material/IconButton'
 import useMediaQuery from '@mui/material/useMediaQuery'
 
 import Icon from 'src/@core/components/icon'
-import toast from 'react-hot-toast'
-
-import axios from 'axios'
-
-// ** Third Party Imports
 import { useForm, Controller } from 'react-hook-form'
 import { useProduit } from 'src/context/ProduitContext'
-
-// ** Custom Component Import
 import CustomTextField from 'src/@core/components/mui/text-field'
 
-const defaultValues = {
-  desCat: ''
-}
+const defaultValues = { desCat: '' }
 
 const AjouterCategorie = ({ onClose }) => {
-  const { fetchCategories } = useProduit()
+  const { ajouterCategorie } = useProduit()
   const theme = useTheme()
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'))
 
@@ -32,37 +23,13 @@ const AjouterCategorie = ({ onClose }) => {
     control,
     handleSubmit,
     formState: { errors },
-    reset,
-    getValues
+    reset
   } = useForm({ defaultValues })
 
-  const onSubmit = async () => {
-    const data = getValues()
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL}produits/addCategorie`
-    try {
-      const reponse = await axios.post(url, data)
-      if (reponse.status === 201) {
-        toast.success('La catégorie a été ajoutée')
-        fetchCategories()
-        reset()
-        onClose()
-      }
-    } catch (error) {
-      if (error.response) {
-        if (error.response.status === 400) {
-          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
-        } else if (error.response.status === 403) {
-          toast.error(error.response.data.message)
-        } else {
-          toast.error('Erreur du serveur: ' + error.response.data.message)
-        }
-      } else if (error.request) {
-        // La requête a été faite mais aucune réponse n'a été reçue
-        toast.error('Pas de réponse du serveur')
-      } else {
-        // Une erreur s'est produite lors de la configuration de la requête
-        toast.error('Erreur: ' + error.message)
-      }
+  const onSubmit = async data => {
+    if (await ajouterCategorie(data)) {
+      reset()
+      onClose()
     }
   }
 
@@ -99,7 +66,7 @@ const AjouterCategorie = ({ onClose }) => {
 
       <Divider sx={{ mb: 8 }} />
 
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)} autoComplete='off'>
         <Grid container spacing={5}>
           <Grid item xs={12}>
             <Controller
@@ -112,9 +79,8 @@ const AjouterCategorie = ({ onClose }) => {
                   label='Désignation'
                   value={value}
                   onChange={onChange}
-                  autoComplete='off'
                   error={Boolean(errors.desCat)}
-                  {...(errors.desCat && { helperText: 'Ce champ est obligatoire' })}
+                  helperText={errors.desCat && 'Ce champ est obligatoire'}
                 />
               )}
             />

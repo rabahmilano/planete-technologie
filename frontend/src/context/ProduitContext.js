@@ -11,8 +11,8 @@ export const ProduitProvider = ({ children }) => {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/allCategories`)
-      setListCategorie(reponse.data)
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/allCategories`)
+      setListCategorie(data)
     } catch (error) {
       toast.error(error.response?.data?.error?.message || 'Erreur lors de la récupération des catégories')
     }
@@ -20,14 +20,13 @@ export const ProduitProvider = ({ children }) => {
 
   const fetchComptes = useCallback(async () => {
     try {
-      const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/allComptes`)
-      setListCompte(reponse.data)
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/allComptes`)
+      setListCompte(data)
     } catch (error) {
       toast.error(error.response?.data?.error?.message || 'Erreur lors de la récupération des comptes')
     }
   }, [])
 
-  // LA FONCTION MANQUANTE QUE J'AVAIS OUBLIÉE :
   const rechercherProduits = async query => {
     try {
       const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/search`, { params: { query } })
@@ -52,6 +51,26 @@ export const ProduitProvider = ({ children }) => {
     }
   }
 
+  const ajouterCategorie = async data => {
+    try {
+      await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}produits/addCategorie`, data)
+      toast.success('La catégorie a été ajoutée')
+      await fetchCategories()
+      return true
+    } catch (error) {
+      if (error.response?.status === 400 && error.response?.data?.errors) {
+        toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
+      } else {
+        toast.error(
+          error.response?.data?.message ||
+            error.response?.data?.error?.message ||
+            "Erreur lors de l'ajout de la catégorie"
+        )
+      }
+      return false
+    }
+  }
+
   useEffect(() => {
     fetchCategories()
     fetchComptes()
@@ -65,7 +84,8 @@ export const ProduitProvider = ({ children }) => {
         fetchCategories,
         fetchComptes,
         ajouterProduit,
-        rechercherProduits // EXPORTÉE ICI
+        rechercherProduits,
+        ajouterCategorie
       }}
     >
       {children}
