@@ -89,11 +89,9 @@ export const formatCVC = (value, cardNumber, Payment) => {
   return clearValue.slice(0, maxLength)
 }
 
-export const formatMontant = value => {
-  if (value === null || value === undefined) return '0,00'
-
-  return Number(value).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+// src/@core/utils/format.js
+export const formatMontant = (val, precision = 2) =>
+  Number(val ?? 0).toLocaleString('fr-FR', {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision
   })
-}
