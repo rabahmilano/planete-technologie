@@ -488,18 +488,18 @@ export const getAllColis = async (req, res) => {
     whereClause.cpt_id = parseInt(compteId, 10);
   }
 
-  if (dateDebut && dateFin) {
-    const start = new Date(dateDebut);
-    const end = new Date(dateFin);
-    end.setHours(23, 59, 59, 999);
+  if (dateDebut || dateFin) {
+    whereClause.date_achat = {};
 
-    whereClause.OR = [
-      { date_achat: { gte: start, lte: end } },
-      {
-        date_achat: null,
-        date_stock: { gte: start, lte: end },
-      },
-    ];
+    if (dateDebut) {
+      whereClause.date_achat.gte = new Date(dateDebut);
+    }
+
+    if (dateFin) {
+      const end = new Date(dateFin);
+      end.setHours(23, 59, 59, 999);
+      whereClause.date_achat.lte = end;
+    }
   }
 
   const orderBy = [];
@@ -516,6 +516,7 @@ export const getAllColis = async (req, res) => {
         where: whereClause,
         select: {
           id_colis: true,
+          cat_id: true,
           date_achat: true,
           date_stock: true,
           mnt_tot_dev: true,
@@ -570,18 +571,18 @@ export const getAllColisStats = async (req, res) => {
     whereClause.cpt_id = parseInt(compteId, 10);
   }
 
-  if (dateDebut && dateFin) {
-    const start = new Date(dateDebut);
-    const end = new Date(dateFin);
-    end.setHours(23, 59, 59, 999);
+  if (dateDebut || dateFin) {
+    whereClause.date_achat = {};
 
-    whereClause.OR = [
-      { date_achat: { gte: start, lte: end } },
-      {
-        date_achat: null,
-        date_stock: { gte: start, lte: end },
-      },
-    ];
+    if (dateDebut) {
+      whereClause.date_achat.gte = new Date(dateDebut);
+    }
+
+    if (dateFin) {
+      const end = new Date(dateFin);
+      end.setHours(23, 59, 59, 999);
+      whereClause.date_achat.lte = end;
+    }
   }
 
   try {
