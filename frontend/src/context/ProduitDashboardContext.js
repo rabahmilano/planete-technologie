@@ -49,13 +49,60 @@ export const ProduitDashboardProvider = ({ children }) => {
     }
   }
 
+  const fetchHistorique = useCallback(async params => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique`, { params })
+      return data
+    } catch (error) {
+      toast.error("Erreur lors de la récupération de l'historique.")
+      return { colis: [], total: 0 }
+    }
+  }, [])
+
+  const fetchHistoriqueAnalytics = useCallback(async filters => {
+    try {
+      const [statsRes, catChartRes, yearChartRes, accChartRes, topPrdChartRes] = await Promise.all([
+        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique/stats`, { params: filters }),
+        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique/charts/by-category`),
+        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique/charts/by-year`),
+        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique/charts/by-account`),
+        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique/charts/top-products`)
+      ])
+
+      return {
+        stats: statsRes.data,
+        chartCategory: catChartRes.data,
+        chartYear: yearChartRes.data,
+        chartAccount: accChartRes.data,
+        chartTopProducts: topPrdChartRes.data
+      }
+    } catch (error) {
+      toast.error('Erreur de récupération des données analytiques.')
+      return null
+    }
+  }, [])
+
+  const updateHistoriqueColis = async (id, dataToUpdate) => {
+    try {
+      await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique/${id}`, dataToUpdate)
+      toast.success('Colis mis à jour avec succès !')
+      return true
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Erreur lors de la mise à jour.')
+      return false
+    }
+  }
+
   return (
     <ProduitDashboardContext.Provider
       value={{
         fetchColisStats,
         fetchColisEnRoute,
         modifierColis,
-        annulerColis
+        annulerColis,
+        fetchHistorique,
+        fetchHistoriqueAnalytics,
+        updateHistoriqueColis
       }}
     >
       {children}
