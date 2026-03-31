@@ -32,10 +32,10 @@ export const addCommande = [
     }
 
     const { dateVente, produits, totalAmount } = req.body;
+
     try {
       await prisma.$transaction(async (tx) => {
         const id_cde = await getMaxValue("commande", "id_cde", null);
-
         let totalRefund = 0;
 
         const commande = await tx.commande.create({
@@ -56,62 +56,47 @@ export const addCommande = [
         });
 
         for (const produit of produits) {
-          // Décrémentation atomique du Produit global avec vérification
+          // Décrémentation atomique pour empêcher les conflits si plusieurs clients achètent simultanément
           const updatedProduit = await tx.produit.update({
             where: { id_prd: produit.id_prd },
             data: { qte_dispo: { decrement: produit.quantity } },
           });
 
-          // Blocage immédiat si le stock tombe en négatif
           if (updatedProduit.qte_dispo < 0) {
-            throw new Error(`Stock insuffisant pour le produit ID: ${produit.id_prd}. Un autre utilisateur vient peut-être de l'acheter.`);
+            throw new Error(
+              `Stock global insuffisant pour le produit ID: ${produit.id_prd}.`,
+            );
           }
 
           let quantityToDeduct = produit.quantity;
-          
-          // ADAPTATION FIFO : Prise en charge de la date_achat facultative
+
+          // Stratégie FIFO (First In, First Out) avec départage par date d'entrée physique en stock
           const achats = await tx.colis.findMany({
             where: {
               prd_id: produit.id_prd,
               qte_stock: { gt: 0 },
-              date_stock: { not: null },
+              date_stock: { not: null }, // Règle métier : interdiction de vendre un colis en transit
             },
-            orderBy: [
-              { date_achat: "asc" }, // 1er tri : Date d'achat (si elle existe)
-              { date_stock: "asc" }  // Sécurité : Date d'entrée en stock pour pallier aux nulls
-            ],
+            orderBy: [{ date_achat: "asc" }, { date_stock: "asc" }],
+            include: {
+              compte: { select: { type_cpt: true } },
+            },
           });
 
           for (const colis of achats) {
             if (quantityToDeduct <= 0) break;
 
-            const availableStock = colis.qte_stock;
-            const deduction = Math.min(quantityToDeduct, availableStock);
+            const deduction = Math.min(quantityToDeduct, colis.qte_stock);
 
-            const infoColis = await tx.colis.findFirst({
-              where: {
-                id_colis: colis.id_colis,
-              },
-              select: {
-                compte: {
-                  select: {
-                    type_cpt: true,
-                  },
-                },
-              },
-            });
-
-            // Décrémentation atomique du Colis spécifique (FIFO)
             const updatedColis = await tx.colis.update({
               where: { id_colis: colis.id_colis },
-              data: {
-                qte_stock: { decrement: deduction },
-              },
+              data: { qte_stock: { decrement: deduction } },
             });
 
-            // Sécurité anti-conflit sur le colis
             if (updatedColis.qte_stock < 0) {
-              throw new Error(`Conflit d'inventaire sur le lot/colis ${colis.id_colis}. Veuillez réessayer la vente.`);
+              throw new Error(
+                `Conflit d'inventaire détecté sur le lot ${colis.id_colis}.`,
+              );
             }
 
             await tx.ligne_commande_colis.create({
@@ -123,20 +108,23 @@ export const addCommande = [
               },
             });
 
-            // Gestion des remboursements si le compte de paiement n'est pas de type "COMMUN"
-            if (infoColis.compte.type_cpt !== "COMMUN") {
-              // 1. On sécurise la multiplication (Quantité * Prix)
-              const refundAmount = arrondir(deduction * colis.pu_dzd); 
-              
-              // 2. On sécurise l'addition au total
-              totalRefund = arrondir(totalRefund + refundAmount);      
+            // Isoler les fonds à rembourser pour les achats effectués avec des comptes personnels (ex: Wise)
+            if (colis.compte.type_cpt !== "COMMUN") {
+              const refundAmount = arrondir(deduction * colis.pu_dzd);
+              totalRefund = arrondir(totalRefund + refundAmount);
             }
 
             quantityToDeduct -= deduction;
           }
+
+          // Règle de sécurité : Vérifier la cohérence entre le stock global théorique et les lots réels
+          if (quantityToDeduct > 0) {
+            throw new Error(
+              `Incohérence des stocks pour le produit ID: ${produit.id_prd}. Les lots détaillés ne suffisent pas.`,
+            );
+          }
         }
 
-        // Mettre à jour le compte "Caisse" pour le montant non remboursé
         const cptCaisse = await tx.compte.findFirst({
           where: {
             designation_cpt: "Caisse",
@@ -144,100 +132,121 @@ export const addCommande = [
           },
         });
 
-        // 3. On sécurise le calcul final du solde (Total - Remboursements)
-        const montantFinalCaisse = arrondir(totalAmount - totalRefund); 
+        if (!cptCaisse) {
+          throw new Error(
+            "Opération annulée : Le compte 'Caisse' (DZD) est introuvable.",
+          );
+        }
+
+        // Encaissement de la marge brute (Montant client - Fonds à restituer aux comptes personnels)
+        const montantFinalCaisse = arrondir(totalAmount - totalRefund);
 
         await tx.compte.update({
-          where: {
-            id_cpt: cptCaisse.id_cpt,
-          },
+          where: { id_cpt: cptCaisse.id_cpt },
           data: {
-            solde_actuel: {
-              increment: montantFinalCaisse,
-            },
+            solde_actuel: { increment: montantFinalCaisse },
           },
         });
 
         res.status(200).json({
           message:
             totalRefund > 0
-              ? `Commande ajoutée avec succès! Montant à rembourser: ${totalRefund.toFixed(
-                  2
-                )} DZD pour les comptes non Wise.`
+              ? `Commande ajoutée avec succès! Montant à rembourser: ${totalRefund.toFixed(2)} DZD pour les comptes non Wise.`
               : "Commande ajoutée avec succès!",
         });
       });
     } catch (error) {
       console.error("Erreur lors de la création de la commande:", error);
 
-      // Si c'est une erreur de stock, on renvoie un code 409 (Conflit)
-      if (error.message.includes("Stock insuffisant") || error.message.includes("Conflit d'inventaire")) {
+      if (
+        error.message.includes("insuffisant") ||
+        error.message.includes("Conflit") ||
+        error.message.includes("Incohérence")
+      ) {
         return res.status(409).json({ message: error.message });
       }
 
-      res.status(500).json({ 
-        message: "Une erreur interne est survenue", 
-        error: { code: error.code, message: error.message } 
+      res.status(500).json({
+        message: "Une erreur interne est survenue",
+        error: { code: error.code, message: error.message },
       });
     }
   },
 ];
 
-// ==========================================
-// STATISTIQUES GLOBALES
-// ==========================================
+const buildWhereClause = (query) => {
+  const { periode, produit } = query;
+  let dateWhereClause = {};
+
+  if (periode && periode !== "all") {
+    if (["1m", "3m", "6m"].includes(periode)) {
+      const months = parseInt(periode.replace("m", ""));
+      dateWhereClause = { gte: dayjs().subtract(months, "month").toDate() };
+    } else if (!isNaN(parseInt(periode, 10))) {
+      dateWhereClause = {
+        gte: dayjs(periode).startOf("year").toDate(),
+        lte: dayjs(periode).endOf("year").toDate(),
+      };
+    }
+  }
+
+  return {
+    ...(Object.keys(dateWhereClause).length > 0 && {
+      date_cde: dateWhereClause,
+    }),
+    ...(produit &&
+      produit !== "all" && {
+        ligne_commande: {
+          some: { prd_id: parseInt(produit) },
+        },
+      }),
+  };
+};
+
 export const getCommandesStats = async (req, res) => {
   try {
-    const aggregate = await prisma.commande.aggregate({
-      _sum: { mnt_cde: true },
-      _count: { id_cde: true }
-    });
+    const whereClause = buildWhereClause(req.query);
 
-    const totalCA = parseFloat(aggregate._sum.mnt_cde || 0);
-    const totalCommandes = aggregate._count.id_cde || 0;
+    const [filteredAggregate, globalAggregate] = await Promise.all([
+      prisma.commande.aggregate({
+        where: whereClause,
+        _sum: { mnt_cde: true },
+        _count: { id_cde: true },
+      }),
+      prisma.commande.aggregate({
+        _sum: { mnt_cde: true },
+        _count: { id_cde: true },
+      }),
+    ]);
+
+    const totalCA = parseFloat(filteredAggregate._sum.mnt_cde || 0);
+    const totalCommandes = filteredAggregate._count.id_cde || 0;
     const panierMoyen = totalCommandes > 0 ? totalCA / totalCommandes : 0;
 
-    res.status(200).json({ totalCA, totalCommandes, panierMoyen });
+    const globalCA = parseFloat(globalAggregate._sum.mnt_cde || 0);
+    const globalCommandes = globalAggregate._count.id_cde || 0;
+
+    res.status(200).json({
+      totalCA,
+      totalCommandes,
+      panierMoyen,
+      globalCA,
+      globalCommandes,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Erreur lors de la récupération des statistiques.", details: error.message });
+    res.status(500).json({
+      message: "Erreur lors de la récupération des statistiques.",
+      details: error.message,
+    });
   }
 };
 
-// ==========================================
-// LISTE AVEC FILTRES ET PAGINATION
-// ==========================================
 export const getAllCommandes = async (req, res) => {
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 10;
   const skip = (page - 1) * limit;
-  const { periode, produit } = req.query;
 
-  // 1. Construction du filtre de Date
-  let dateWhereClause = {};
-  if (periode && periode !== "all") {
-    let startDate;
-    if (["1m", "3m", "6m"].includes(periode)) {
-      const months = parseInt(periode.replace("m", ""));
-      startDate = dayjs().subtract(months, "month").toDate();
-    } else if (!isNaN(parseInt(periode, 10))) {
-      startDate = dayjs(periode).startOf("year").toDate();
-      const endDate = dayjs(periode).endOf("year").toDate();
-      dateWhereClause = { gte: startDate, lte: endDate };
-    }
-    if (startDate && !dateWhereClause.gte) {
-      dateWhereClause = { gte: startDate };
-    }
-  }
-
-  // 2. Construction de la clause WHERE globale
-  const whereClause = {
-    ...(Object.keys(dateWhereClause).length > 0 && { date_cde: dateWhereClause }),
-    ...(produit && produit !== "all" && {
-      ligne_commande: {
-        some: { prd_id: parseInt(produit) }
-      }
-    })
-  };
+  const whereClause = buildWhereClause(req.query);
 
   try {
     const [total, commandes] = await Promise.all([
@@ -246,70 +255,83 @@ export const getAllCommandes = async (req, res) => {
         where: whereClause,
         skip,
         take: limit,
-        orderBy: [
-          { date_cde: "desc" }, // 1er Tri : Date la plus récente
-          { id_cde: "desc" }    // 2ème Tri : ID le plus grand pour le même jour
-        ],
+        orderBy: [{ date_cde: "desc" }, { id_cde: "desc" }],
         include: {
           ligne_commande: {
             include: {
-              produit: { select: { designation_prd: true } }
-            }
-          }
-        }
-      })
+              produit: { select: { designation_prd: true } },
+            },
+          },
+        },
+      }),
     ]);
 
-    const data = commandes.map(c => {
-      // Calcul du nombre total d'unités physiques dans cette commande
-      const totalUnites = c.ligne_commande.reduce((acc, l) => acc + parseInt(l.qte_cde || 0), 0);
+    const data = commandes.map((c) => {
+      const totalUnites = c.ligne_commande.reduce(
+        (acc, l) => acc + parseInt(l.qte_cde || 0),
+        0,
+      );
 
       return {
         id_cde: c.id_cde,
         date_cde: c.date_cde,
         mnt_cde: c.mnt_cde,
-        lignes: c.ligne_commande.map(l => ({
+        lignes: c.ligne_commande.map((l) => ({
           prd_id: l.prd_id,
-          designation: l.produit.designation_prd,
+          designation: l.produit?.designation_prd || "Produit supprimé",
           qte: l.qte_cde,
           pu_vente: l.pu_vente,
-          total_ligne: parseFloat(l.qte_cde) * parseFloat(l.pu_vente)
+          total_ligne: parseFloat(l.qte_cde) * parseFloat(l.pu_vente),
         })),
-        totalProduits: c.ligne_commande.length, // Nombre d'articles distincts
-        totalUnites: totalUnites // Quantité physique totale
+        totalProduits: c.ligne_commande.length,
+        totalUnites: totalUnites,
       };
     });
 
     res.status(200).json({ total, data, page, limit });
   } catch (error) {
-    res.status(500).json({ error: { message: "Erreur lors de la récupération des commandes.", details: error.message } });
+    res.status(500).json({
+      error: {
+        message: "Erreur lors de la récupération des commandes.",
+        details: error.message,
+      },
+    });
   }
 };
 
 export const deleteCommande = async (req, res) => {
   const { id } = req.params;
+
   try {
     await prisma.$transaction(async (tx) => {
-      // 1. Vérification
       const commande = await tx.commande.findUnique({
         where: { id_cde: parseInt(id) },
-        include: { ligne_commande: true }
+        include: { ligne_commande: true },
       });
-      if (!commande) throw new Error("NOT_FOUND");
 
-      // 2. Récupération de la traçabilité des colis
+      if (!commande) {
+        throw new Error("NOT_FOUND");
+      }
+
+      const cptCaisse = await tx.compte.findFirst({
+        where: { designation_cpt: "Caisse", dev_code: "DZD" },
+      });
+
+      if (!cptCaisse) {
+        throw new Error("CAISSE_NOT_FOUND");
+      }
+
       const lcc = await tx.ligne_commande_colis.findMany({
         where: { cde_id: parseInt(id) },
-        include: { colis: { include: { compte: true } } }
+        include: { colis: { include: { compte: true } } },
       });
 
       let totalRefund = 0;
 
-      // 3. Restauration des Colis et calcul de la part Caisse (Inversion de addCommande)
       for (const ligne of lcc) {
         await tx.colis.update({
           where: { id_colis: ligne.colis_id },
-          data: { qte_stock: { increment: ligne.qte } }
+          data: { qte_stock: { increment: ligne.qte } },
         });
 
         if (ligne.colis.compte.type_cpt !== "COMMUN") {
@@ -318,36 +340,59 @@ export const deleteCommande = async (req, res) => {
         }
       }
 
-      // 4. Restauration du Stock Global Produit
       for (const ligne of commande.ligne_commande) {
         await tx.produit.update({
           where: { id_prd: ligne.prd_id },
-          data: { qte_dispo: { increment: ligne.qte_cde } }
+          data: { qte_dispo: { increment: ligne.qte_cde } },
         });
       }
 
-      // 5. Déduction de la Caisse
-      const cptCaisse = await tx.compte.findFirst({
-        where: { designation_cpt: "Caisse", dev_code: "DZD" }
+      const montantFinalCaisse = arrondir(
+        parseFloat(commande.mnt_cde) - totalRefund,
+      );
+
+      await tx.compte.update({
+        where: { id_cpt: cptCaisse.id_cpt },
+        data: { solde_actuel: { decrement: montantFinalCaisse } },
       });
-      
-      if (cptCaisse) {
-        const montantFinalCaisse = arrondir(parseFloat(commande.mnt_cde) - totalRefund);
-        await tx.compte.update({
-          where: { id_cpt: cptCaisse.id_cpt },
-          data: { solde_actuel: { decrement: montantFinalCaisse } }
-        });
-      }
 
-      // 6. Suppression en cascade (Enfants vers Parent)
-      await tx.ligne_commande_colis.deleteMany({ where: { cde_id: parseInt(id) } });
-      await tx.ligne_commande.deleteMany({ where: { cde_id: parseInt(id) } });
-      await tx.commande.delete({ where: { id_cde: parseInt(id) } });
+      await tx.ligne_commande_colis.deleteMany({
+        where: { cde_id: parseInt(id) },
+      });
+      await tx.ligne_commande.deleteMany({
+        where: { cde_id: parseInt(id) },
+      });
+      await tx.commande.delete({
+        where: { id_cde: parseInt(id) },
+      });
     });
 
-    res.status(200).json({ message: "Commande annulée. Stock restauré et Caisse mise à jour." });
+    res.status(200).json({
+      message: "Commande annulée. Stock restauré et Caisse mise à jour.",
+    });
   } catch (error) {
-    if (error.message === "NOT_FOUND") return res.status(404).json({ error: { message: "Commande introuvable." } });
-    res.status(500).json({ error: { message: "Erreur lors de l'annulation.", details: error.message } });
+    if (error.message === "NOT_FOUND") {
+      return res
+        .status(404)
+        .json({ error: { message: "Commande introuvable." } });
+    }
+
+    if (error.message === "CAISSE_NOT_FOUND") {
+      return res
+        .status(409)
+        .json({
+          error: {
+            message:
+              "Annulation impossible : Le compte 'Caisse' est introuvable.",
+          },
+        });
+    }
+
+    res.status(500).json({
+      error: {
+        message: "Erreur lors de l'annulation.",
+        details: error.message,
+      },
+    });
   }
 };
