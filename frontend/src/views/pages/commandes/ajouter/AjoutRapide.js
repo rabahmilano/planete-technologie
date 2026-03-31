@@ -7,6 +7,7 @@ import 'dayjs/locale/fr'
 import Icon from 'src/@core/components/icon'
 import CustomAutocomplete from 'src/@core/components/mui/autocomplete'
 import CustomTextField from 'src/@core/components/mui/text-field'
+import CleaveInput from 'src/components/CleaveInput'
 import toast from 'react-hot-toast'
 
 const AjoutRapide = ({ options, cart, dateVente, setDateVente, onAddToCart }) => {
@@ -14,9 +15,8 @@ const AjoutRapide = ({ options, cart, dateVente, setDateVente, onAddToCart }) =>
   const [quantity, setQuantity] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
 
-  const getStockRestant = (product) => {
+  const getStockRestant = product => {
     if (!product) return 0
-    // Le produit n'est plus qu'une seule fois dans le panier (s'il y est)
     const inCart = cart.find(item => item.id === product.id)
     return product.quantityAvailable - (inCart ? inCart.quantity : 0)
   }
@@ -24,13 +24,13 @@ const AjoutRapide = ({ options, cart, dateVente, setDateVente, onAddToCart }) =>
   const availableOptions = options.filter(opt => getStockRestant(opt) > 0)
 
   const handleAdd = () => {
-    if (!selectedProduct) return toast.error("Veuillez sélectionner un produit.")
-    
+    if (!selectedProduct) return toast.error('Veuillez sélectionner un produit.')
+
     const qte = parseInt(quantity)
     const prix = parseFloat(unitPrice)
 
-    if (isNaN(qte) || qte <= 0) return toast.error("La quantité doit être supérieure à 0.")
-    if (isNaN(prix) || prix <= 0) return toast.error("Le prix unitaire doit être supérieur à 0.")
+    if (isNaN(qte) || qte <= 0) return toast.error('La quantité doit être supérieure à 0.')
+    if (isNaN(prix) || prix <= 0) return toast.error('Le prix unitaire doit être supérieur à 0.')
 
     const stockRestant = getStockRestant(selectedProduct)
     if (qte > stockRestant) return toast.error(`Stock insuffisant. Il ne reste que ${stockRestant} unité(s).`)
@@ -53,8 +53,8 @@ const AjoutRapide = ({ options, cart, dateVente, setDateVente, onAddToCart }) =>
         <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
           <DatePicker
             value={dateVente}
-            onChange={(newValue) => setDateVente(newValue)}
-            maxDate={dayjs().endOf('day')} 
+            onChange={newValue => setDateVente(newValue)}
+            maxDate={dayjs().endOf('day')}
             label='Date de la commande'
             slotProps={{ textField: { fullWidth: true, variant: 'outlined' } }}
           />
@@ -64,37 +64,43 @@ const AjoutRapide = ({ options, cart, dateVente, setDateVente, onAddToCart }) =>
 
         <CustomAutocomplete
           fullWidth
-          options={availableOptions} 
+          options={availableOptions}
           getOptionLabel={option => option.designation}
           value={selectedProduct}
           onChange={(e, newValue) => setSelectedProduct(newValue)}
           renderInput={params => <CustomTextField {...params} label='Rechercher un produit...' />}
         />
 
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'flex-end', 
-          mt: -3, 
-          mb: 1, 
-          minHeight: '20px', 
-          visibility: selectedProduct ? 'visible' : 'hidden' 
-        }}>
-          <Typography variant='caption' sx={{ color: getStockRestant(selectedProduct) > 0 ? 'success.main' : 'error.main', fontWeight: 'bold' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            mt: -3,
+            mb: 1,
+            minHeight: '20px',
+            visibility: selectedProduct ? 'visible' : 'hidden'
+          }}
+        >
+          <Typography
+            variant='caption'
+            sx={{
+              color: getStockRestant(selectedProduct) > 0 ? 'success.main' : 'error.main',
+              fontWeight: 'bold'
+            }}
+          >
             Stock disponible : {selectedProduct ? getStockRestant(selectedProduct) : 0}
           </Typography>
         </Box>
 
         <CustomTextField
           fullWidth
-          type='number'
-          name='no_autofill_price_xyz' 
-          autoComplete='off' 
           label='Prix Unitaire de Vente'
           value={unitPrice}
           onChange={e => setUnitPrice(e.target.value)}
-          inputProps={{ autoComplete: 'off' }} 
+          name='unitPrice'
           InputProps={{
-            endAdornment: <InputAdornment position="end">DZD</InputAdornment>,
+            inputComponent: CleaveInput,
+            endAdornment: <InputAdornment position='end'>DA</InputAdornment>
           }}
         />
 
@@ -106,16 +112,16 @@ const AjoutRapide = ({ options, cart, dateVente, setDateVente, onAddToCart }) =>
           label='Quantité'
           value={quantity}
           onChange={e => setQuantity(e.target.value)}
-          inputProps={{ autoComplete: 'off' }} 
+          inputProps={{ autoComplete: 'off' }}
           error={selectedProduct && quantity > getStockRestant(selectedProduct)}
         />
 
-        <Button 
-          variant='contained' 
-          color='primary' 
+        <Button
+          variant='contained'
+          color='primary'
           startIcon={<Icon icon='tabler:shopping-cart-plus' />}
           onClick={handleAdd}
-          disabled={!selectedProduct || quantity <= 0 || unitPrice <= 0}
+          disabled={!selectedProduct || !quantity || !unitPrice}
           sx={{ mt: 2 }}
         >
           Ajouter au panier
