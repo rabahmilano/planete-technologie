@@ -207,31 +207,43 @@ export const getCommandesStats = async (req, res) => {
   try {
     const whereClause = buildWhereClause(req.query);
 
-    const [filteredAggregate, globalAggregate] = await Promise.all([
-      prisma.commande.aggregate({
-        where: whereClause,
-        _sum: { mnt_cde: true },
-        _count: { id_cde: true },
-      }),
-      prisma.commande.aggregate({
-        _sum: { mnt_cde: true },
-        _count: { id_cde: true },
-      }),
-    ]);
+    const [filteredAggregate, globalAggregate, filteredLignes, globalLignes] =
+      await Promise.all([
+        prisma.commande.aggregate({
+          where: whereClause,
+          _sum: { mnt_cde: true },
+          _count: { id_cde: true },
+        }),
+        prisma.commande.aggregate({
+          _sum: { mnt_cde: true },
+          _count: { id_cde: true },
+        }),
+        prisma.ligne_commande.aggregate({
+          where: { commande: whereClause },
+          _sum: { qte_cde: true },
+        }),
+        prisma.ligne_commande.aggregate({
+          _sum: { qte_cde: true },
+        }),
+      ]);
 
     const totalCA = parseFloat(filteredAggregate._sum.mnt_cde || 0);
     const totalCommandes = filteredAggregate._count.id_cde || 0;
     const panierMoyen = totalCommandes > 0 ? totalCA / totalCommandes : 0;
+    const totalArticles = filteredLignes._sum.qte_cde || 0;
 
     const globalCA = parseFloat(globalAggregate._sum.mnt_cde || 0);
     const globalCommandes = globalAggregate._count.id_cde || 0;
+    const globalArticles = globalLignes._sum.qte_cde || 0;
 
     res.status(200).json({
       totalCA,
       totalCommandes,
       panierMoyen,
+      totalArticles,
       globalCA,
       globalCommandes,
+      globalArticles,
     });
   } catch (error) {
     res.status(500).json({
@@ -378,14 +390,12 @@ export const deleteCommande = async (req, res) => {
     }
 
     if (error.message === "CAISSE_NOT_FOUND") {
-      return res
-        .status(409)
-        .json({
-          error: {
-            message:
-              "Annulation impossible : Le compte 'Caisse' est introuvable.",
-          },
-        });
+      return res.status(409).json({
+        error: {
+          message:
+            "Annulation impossible : Le compte 'Caisse' est introuvable.",
+        },
+      });
     }
 
     res.status(500).json({
