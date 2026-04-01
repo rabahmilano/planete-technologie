@@ -82,6 +82,16 @@ export const CommandeProvider = ({ children }) => {
     [fetchCommandes, fetchGlobalStats]
   )
 
+  const deleteCommande = useCallback(async (id_cde, onSuccess) => {
+    try {
+      await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}commandes/${id_cde}`)
+      toast.success('Commande annulée. Stocks et compte mis à jour.')
+      if (onSuccess) onSuccess()
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || "Erreur lors de l'annulation")
+    }
+  }, [])
+
   return (
     <CommandeContext.Provider
       value={{
@@ -93,7 +103,8 @@ export const CommandeProvider = ({ children }) => {
         fetchCommandes,
         fetchGlobalStats,
         fetchProduitsDisponibles,
-        addCommande
+        addCommande,
+        deleteCommande
       }}
     >
       {children}

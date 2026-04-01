@@ -1,30 +1,42 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, Grid, MenuItem, TextField, Button, Box, Autocomplete, CircularProgress } from '@mui/material'
+import {
+  Card,
+  CardContent,
+  Grid,
+  MenuItem,
+  TextField,
+  Button,
+  Box,
+  Autocomplete,
+  CircularProgress
+} from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import axios from 'axios'
 import dayjs from 'dayjs'
 
 const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setProduitFiltre, onReset }) => {
   const [optionsAnnee, setOptionsAnnee] = useState([])
-
-  // États pour l'Autocomplete (Recherche avec Debounce)
   const [options, setOptions] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [loading, setLoading] = useState(false)
-  const [selectedProduit, setSelectedProduit] = useState(null) // Gère l'affichage dans le champ
+  const [selectedProduit, setSelectedProduit] = useState(null)
 
-  // Générer les années depuis 2023
   useEffect(() => {
     const anneePremierAchat = 2023
     const anneeActuelle = dayjs().year()
-    const options = Array.from({ length: anneeActuelle - anneePremierAchat + 1 }, (_, i) => (anneeActuelle - i).toString())
+    const options = Array.from({ length: anneeActuelle - anneePremierAchat + 1 }, (_, i) =>
+      (anneeActuelle - i).toString()
+    )
     setOptionsAnnee(options)
   }, [])
 
-  // L'astuce du Debounce (Timer de 500ms)
   useEffect(() => {
     if (inputValue.length < 3) {
       setOptions([])
+      return
+    }
+
+    if (selectedProduit && inputValue === selectedProduit.designation_prd) {
       return
     }
 
@@ -40,19 +52,18 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
           setOptions(response.data || [])
         }
       } catch (error) {
-        console.error("Erreur lors de la recherche des produits", error)
+        console.error('Erreur lors de la recherche des produits', error)
       } finally {
         if (isActive) setLoading(false)
       }
-    }, 500) // Attente de 500ms après la dernière frappe
+    }, 500)
 
     return () => {
       isActive = false
-      clearTimeout(timeoutId) // On annule le timer si l'utilisateur tape une nouvelle lettre
+      clearTimeout(timeoutId)
     }
-  }, [inputValue])
+  }, [inputValue, selectedProduit])
 
-  // Synchroniser le bouton "Réinitialiser" du parent avec l'Autocomplete local
   useEffect(() => {
     if (produitFiltre === 'all') {
       setSelectedProduit(null)
@@ -62,9 +73,9 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
   }, [produitFiltre])
 
   return (
-    <Card sx={{ mb: 6, boxShadow: 3 }}>
+    <Card sx={{ boxShadow: 3 }}>
       <CardContent>
-        <Grid container spacing={4} alignItems="center">
+        <Grid container spacing={4} alignItems='center'>
           <Grid item xs={12} sm={4}>
             <TextField
               fullWidth
@@ -78,7 +89,9 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
               <MenuItem value='3m'>3 Derniers Mois</MenuItem>
               <MenuItem value='6m'>6 Derniers Mois</MenuItem>
               {optionsAnnee.map(annee => (
-                <MenuItem key={annee} value={annee}>Année {annee}</MenuItem>
+                <MenuItem key={annee} value={annee}>
+                  Année {annee}
+                </MenuItem>
               ))}
             </TextField>
           </Grid>
@@ -87,30 +100,30 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
             <Autocomplete
               fullWidth
               options={options}
-              getOptionLabel={(option) => option.designation_prd || ''}
+              getOptionLabel={option => option.designation_prd || ''}
               value={selectedProduit}
               onChange={(event, newValue) => {
                 setSelectedProduit(newValue)
-                setProduitFiltre(newValue ? newValue.id_prd : 'all') // Envoie l'ID au parent
+                setProduitFiltre(newValue ? newValue.id_prd : 'all')
               }}
               inputValue={inputValue}
               onInputChange={(event, newInputValue) => {
                 setInputValue(newInputValue)
               }}
               loading={loading}
-              noOptionsText={inputValue.length < 3 ? "Tapez au moins 3 caractères..." : "Aucun produit trouvé"}
-              renderInput={(params) => (
+              noOptionsText={inputValue.length < 3 ? 'Tapez au moins 3 caractères...' : 'Aucun produit trouvé'}
+              renderInput={params => (
                 <TextField
                   {...params}
-                  label="Chercher un produit..."
+                  label='Chercher un produit...'
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
                       <>
-                        {loading ? <CircularProgress color="inherit" size={20} /> : null}
+                        {loading ? <CircularProgress color='inherit' size={20} /> : null}
                         {params.InputProps.endAdornment}
                       </>
-                    ),
+                    )
                   }}
                 />
               )}
@@ -119,10 +132,10 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
 
           <Grid item xs={12} sm={2}>
             <Box sx={{ display: 'flex', height: '100%', alignItems: 'center' }}>
-              <Button 
-                fullWidth 
-                variant='outlined' 
-                color='secondary' 
+              <Button
+                fullWidth
+                variant='outlined'
+                color='secondary'
                 onClick={onReset}
                 startIcon={<Icon icon='tabler:reload' />}
               >
