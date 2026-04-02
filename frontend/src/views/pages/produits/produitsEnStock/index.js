@@ -1,179 +1,155 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  TextField,
+  InputAdornment,
+  CircularProgress,
   Grid,
-  Paper,
-  TableContainer,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Button,
-  Switch,
-  FormControlLabel,
-  Typography
+  alpha,
+  useTheme,
+  Chip,
+  IconButton
 } from '@mui/material'
-
-import CustomTextField from 'src/@core/components/mui/text-field'
-
-import { useForm, Controller } from 'react-hook-form'
-import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-import dayjs from 'dayjs'
-import 'dayjs/locale/fr'
-
-import utc from 'dayjs/plugin/utc'
-dayjs.extend(utc)
-
-dayjs.locale('fr')
-
-import axios from 'axios'
-import toast from 'react-hot-toast'
-
-const defaultValues = {
-  dateStock: dayjs().utc(true).startOf('day')
-  // dateStock: dayjs('2025-02-04').utc(true).startOf('day')
-}
+import Icon from 'src/@core/components/icon'
+import { useProduitDashboard } from 'src/context/ProduitDashboardContext'
+import ProductCard from './ProductCard'
 
 const ProduitsEnStock = () => {
+  const { fetchProduitsEnStock } = useProduitDashboard()
+  const theme = useTheme()
+
   const [produits, setProduits] = useState([])
-  // const [selectedColis, setSelectedColis] = useState(null)
-
-  const [modalOpen, setModalOpen] = useState(false)
-
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-    getValues,
-    reset
-  } = useForm({ defaultValues })
+  const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchProduits = async () => {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/allMarchandiseDisponible`)
-
-      setProduits(response.data)
+    let isMounted = true
+    const loadProduits = async () => {
+      setLoading(true)
+      const data = await fetchProduitsEnStock()
+      if (isMounted) {
+        setProduits(data || [])
+        setLoading(false)
+      }
     }
+    loadProduits()
 
-    fetchProduits()
-  }, [])
+    return () => {
+      isMounted = false
+    }
+  }, [fetchProduitsEnStock])
 
-  const handleRowClick = item => {
-    // setSelectedColis(item)
-    setModalOpen(true)
+  const handleSearch = e => {
+    setSearchQuery(e.target.value.toLowerCase())
   }
 
-  const handleModalClose = () => {
-    setModalOpen(false)
-    // setSelectedColis(null)
-  }
+  const filteredProduits = useMemo(() => {
+    return produits.filter(prd => prd.designation_prd.toLowerCase().includes(searchQuery))
+  }, [produits, searchQuery])
+
+  const totalProduits = produits.length
+  const totalUnites = produits.reduce((acc, prd) => acc + prd.qte_dispo, 0)
 
   return (
-    <>
-      <TableContainer
+    <Card sx={{ boxShadow: 3 }}>
+      <Box
         sx={{
-          boxShadow: 5,
-          borderRadius: 4
-          // overflow: 'hidden'
+          p: 6,
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          alignItems: { xs: 'stretch', md: 'center' },
+          justifyContent: 'space-between',
+          gap: 4,
+          borderBottom: `1px solid ${theme.palette.divider}`
         }}
-        component={Paper}
       >
-        <Table sx={{ minWidth: 700, maxWidth: 900 }}>
-          <TableHead>
-            <TableRow sx={{ backgroundColor: '#0d1b2a' }}>
-              <TableCell sx={{ color: 'white' }} width={10}>
-                N°
-              </TableCell>
-              <TableCell sx={{ color: 'white' }}>Désignation</TableCell>
-              <TableCell sx={{ color: 'white' }} align='right'>
-                Quantité Disponible
-              </TableCell>
-            </TableRow>
-          </TableHead>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 1.5,
+                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                color: theme.palette.primary.main,
+                display: 'flex'
+              }}
+            >
+              <Icon icon='tabler:box' fontSize='1.5rem' />
+            </Box>
+            <Typography variant='h5' sx={{ fontWeight: 'bold' }}>
+              Inventaire en Stock
+            </Typography>
+          </Box>
 
-          <TableBody>
-            {produits.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <Typography variant='h3'>Aucun produit n'est en stock</Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              produits.map((prd, i) => (
-                <TableRow
-                  key={prd.id_prd}
-                  // onClick={() => handleRowClick(prd)}
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: '#778da9',
-                      cursor: 'pointer'
-                    }
-                  }}
-                >
-                  <TableCell>{i + 1}</TableCell>
-                  <TableCell>{prd.designation_prd}</TableCell>
-                  <TableCell align='right'>{prd.qte_dispo}</TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Chip
+              icon={<Icon icon='tabler:tags' />}
+              label={`${totalProduits} Références`}
+              color='primary'
+              variant='outlined'
+              size='small'
+            />
+            <Chip
+              icon={<Icon icon='tabler:packages' />}
+              label={`${totalUnites} Unités au total`}
+              color='success'
+              variant='tonal'
+              size='small'
+            />
+          </Box>
+        </Box>
 
-      <Dialog open={modalOpen} onClose={handleModalClose}>
-        <DialogTitle variant='h3'>Liste des colis</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={5}>
-            <Grid item xs={12}>
-              <CustomTextField fullWidth value={'value 1'} disabled />
-            </Grid>
+        <TextField
+          size='small'
+          value={searchQuery}
+          onChange={handleSearch}
+          placeholder='Chercher un produit...'
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position='start'>
+                <Icon icon='tabler:search' fontSize='1.25rem' />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery ? (
+              <InputAdornment position='end'>
+                <IconButton size='small' onClick={() => setSearchQuery('')} edge='end' title='Effacer la recherche'>
+                  <Icon icon='tabler:x' fontSize='1.25rem' />
+                </IconButton>
+              </InputAdornment>
+            ) : null
+          }}
+          sx={{ width: { xs: '100%', md: 300 } }}
+        />
+      </Box>
 
-            <Grid item>
-              <Controller
-                name='dateStock' // Changé de 'dateVente' à 'dateStock'
-                control={control}
-                rules={{ required: 'Ce champ est obligatoire' }}
-                render={({ field }) => (
-                  <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
-                    <DatePicker
-                      {...field}
-                      maxDate={dayjs()}
-                      label='Date de Stock'
-                      slotProps={{
-                        textField: {
-                          variant: 'outlined',
-                          error: !!errors.dateStock,
-                          helperText: errors.dateStock?.message
-                        }
-                      }}
-                      onChange={date => field.onChange(date)}
-                    />
-                  </LocalizationProvider>
-                )}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControlLabel control={<Switch checked={false} />} label='Droits de Timbre Payés' />
-            </Grid>
+      <CardContent sx={{ pt: 6, backgroundColor: alpha(theme.palette.background.default, 0.4) }}>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 15 }}>
+            <CircularProgress size={50} />
+          </Box>
+        ) : filteredProduits.length === 0 ? (
+          <Box
+            sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 15, textAlign: 'center' }}
+          >
+            <Icon icon='tabler:box-off' fontSize='4rem' color='text.disabled' />
+            <Typography variant='h6' color='text.secondary'>
+              {searchQuery ? `Aucun résultat pour "${searchQuery}".` : "L'entrepôt est vide."}
+            </Typography>
+          </Box>
+        ) : (
+          <Grid container spacing={4}>
+            {filteredProduits.map(prd => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={prd.id_prd}>
+                <ProductCard produit={prd} />
+              </Grid>
+            ))}
           </Grid>
-        </DialogContent>
-
-        <DialogActions>
-          <Button variant='contained' color='success'>
-            Mettre à Jour
-          </Button>
-          <Button onClick={handleModalClose} color='warning'>
-            Annuler
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
