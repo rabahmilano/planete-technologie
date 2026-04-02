@@ -103,6 +103,49 @@ export const ProduitDashboardProvider = ({ children }) => {
     }
   }
 
+  const fetchHistoriquePrix = useCallback(async params => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique-prix`, { params })
+      return data
+    } catch (error) {
+      toast.error('Erreur lors de la récupération des produits.')
+      return { produits: [], total: 0 }
+    }
+  }, [])
+
+  const fetchHistoriquePrixStats = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique-prix/stats`)
+      return data
+    } catch (error) {
+      toast.error('Erreur de récupération des statistiques.')
+      return { totalProduits: 0, produitsEnStock: 0, totalQteAchetee: 0 }
+    }
+  }, [])
+
+  const fetchProductDetails = useCallback(async productId => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique-prix/${productId}`)
+      return data
+    } catch (error) {
+      toast.error('Erreur de récupération des détails du produit.')
+      return null
+    }
+  }, [])
+
+  const fetchProductColis = useCallback(async (productId, params) => {
+    try {
+      const { data } = await axios.get(
+        `${process.env.NEXT_PUBLIC_BASE_URL}produits/historique-prix/${productId}/colis`,
+        { params }
+      )
+      return data
+    } catch (error) {
+      toast.error('Erreur de récupération des colis du produit.')
+      return { colis: [], total: 0 }
+    }
+  }, [])
+
   return (
     <ProduitDashboardContext.Provider
       value={{
@@ -113,7 +156,11 @@ export const ProduitDashboardProvider = ({ children }) => {
         annulerColis,
         fetchHistorique,
         fetchHistoriqueAnalytics,
-        updateHistoriqueColis
+        updateHistoriqueColis,
+        fetchHistoriquePrix,
+        fetchHistoriquePrixStats,
+        fetchProductDetails,
+        fetchProductColis
       }}
     >
       {children}
