@@ -17,10 +17,12 @@ import { useForm, Controller } from 'react-hook-form'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
 
 import CustomTextField from 'src/@core/components/mui/text-field'
 import Icon from 'src/@core/components/icon'
 
+dayjs.extend(utc)
 const defaultValues = { dateStock: dayjs().utc(true).startOf('day') }
 
 const ModalesAction = ({
