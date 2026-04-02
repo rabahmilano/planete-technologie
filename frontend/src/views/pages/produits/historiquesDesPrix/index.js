@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import {
   Grid,
   Card,
@@ -8,92 +8,26 @@ import {
   Typography,
   Box,
   Pagination,
-  CircularProgress
+  CircularProgress,
+  IconButton
 } from '@mui/material'
-import axios from 'axios'
-import toast from 'react-hot-toast'
 import Icon from 'src/@core/components/icon'
-
-import ProductDetailModal from './ProductDetailModal' // Importez la nouvelle modale
-
-// Hook personnalisé pour gérer le debounce de la recherche
-const useDebounce = (value, delay) => {
-  const [debouncedValue, setDebouncedValue] = useState(value)
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay)
-    return () => clearTimeout(handler)
-  }, [value, delay])
-  return debouncedValue
-}
-
-// Sous-composant pour les cartes de statistiques
-const KpiCards = ({ stats }) => (
-  <Grid container spacing={6}>
-    <Grid item xs={12} md={4}>
-      <Card>
-        <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-          <Icon icon='tabler:box' fontSize='2.5rem' color='var(--mui-palette-primary-main)' />
-          <Box sx={{ ml: 4 }}>
-            <Typography variant='h5'>{stats.totalProduits}</Typography>
-            <Typography variant='body2'>Produits Uniques</Typography>
-          </Box>
-        </CardContent>
-      </Card>
-    </Grid>
-    <Grid item xs={12} md={4}>
-      <Card>
-        <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-          <Icon icon='tabler:checkbox' fontSize='2.5rem' color='var(--mui-palette-success-main)' />
-          <Box sx={{ ml: 4 }}>
-            <Typography variant='h5'>{stats.produitsEnStock}</Typography>
-            <Typography variant='body2'>Produits en Stock</Typography>
-          </Box>
-        </CardContent>
-      </Card>
-    </Grid>
-    <Grid item xs={12} md={4}>
-      <Card>
-        <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-          <Icon icon='tabler:packages' fontSize='2.5rem' color='var(--mui-palette-info-main)' />
-          <Box sx={{ ml: 4 }}>
-            <Typography variant='h5'>{stats.totalQteAchetee}</Typography>
-            <Typography variant='body2'>Articles Achetés (Total)</Typography>
-          </Box>
-        </CardContent>
-      </Card>
-    </Grid>
-  </Grid>
-)
-
-// Sous-composant pour chaque carte de produit
-const ProductCard = ({ produit, onClick }) => (
-  <Card onClick={onClick} sx={{ cursor: 'pointer', height: '100%' }}>
-    <CardContent>
-      <Typography variant='h6' sx={{ mb: 2 }}>
-        {produit.designation_prd}
-      </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant='body2'>Disponibilité :</Typography>
-        <Typography
-          variant='body1'
-          sx={{ fontWeight: 'bold' }}
-          color={produit.qte_dispo > 0 ? 'success.main' : 'error.main'}
-        >
-          {produit.qte_dispo}
-        </Typography>
-      </Box>
-    </CardContent>
-  </Card>
-)
+import { useProduitDashboard } from 'src/context/ProduitDashboardContext'
+import { useDebounce } from 'src/@core/hooks/useDebounce'
+import KpiCards from './KpiCards'
+import ProductDetailModal from './ProductDetailModal'
+import ProductCard from './ProductCard'
 
 const HistoriqueDesPrixView = () => {
+  const { fetchHistoriquePrix, fetchHistoriquePrixStats } = useProduitDashboard()
+
   const [produits, setProduits] = useState([])
   const [stats, setStats] = useState({ totalProduits: 0, produitsEnStock: 0, totalQteAchetee: 0 })
   const [totalItems, setTotalItems] = useState(0)
   const [loading, setLoading] = useState(true)
 
-  const [page, setPage] = useState(1) // La pagination est 1-indexée
-  const [rowsPerPage, setRowsPerPage] = useState(24)
+  const [page, setPage] = useState(1)
+  const [rowsPerPage] = useState(24)
   const [searchTerm, setSearchTerm] = useState('')
 
   const [isModalOpen, setModalOpen] = useState(false)
@@ -101,45 +35,33 @@ const HistoriqueDesPrixView = () => {
 
   const debouncedSearchTerm = useDebounce(searchTerm, 500)
 
-  // CORRECTION: Réinitialise la page lors d'une nouvelle recherche
   useEffect(() => {
     setPage(1)
   }, [debouncedSearchTerm])
 
-  const fetchProduits = useCallback(async () => {
+  const loadProduits = useCallback(async () => {
     setLoading(true)
-    try {
-      const params = {
-        page,
-        limit: rowsPerPage,
-        // Les paramètres de tri sont maintenant gérés par le backend
-        search: debouncedSearchTerm.length >= 2 ? debouncedSearchTerm : ''
-      }
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique-prix`, { params })
-      setProduits(response.data.produits)
-      setTotalItems(response.data.total)
-    } catch (error) {
-      toast.error('Erreur lors de la récupération des produits.')
-    } finally {
-      setLoading(false)
-    }
-  }, [page, rowsPerPage, debouncedSearchTerm])
+    const data = await fetchHistoriquePrix({
+      page,
+      limit: rowsPerPage,
+      search: debouncedSearchTerm.length >= 2 ? debouncedSearchTerm : ''
+    })
+    setProduits(data.produits || [])
+    setTotalItems(data.total || 0)
+    setLoading(false)
+  }, [page, rowsPerPage, debouncedSearchTerm, fetchHistoriquePrix])
 
   useEffect(() => {
-    fetchProduits()
-  }, [fetchProduits])
+    loadProduits()
+  }, [loadProduits])
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/historique-prix/stats`)
-        setStats(response.data)
-      } catch (error) {
-        toast.error('Erreur de récupération des statistiques.')
-      }
+    const loadStats = async () => {
+      const data = await fetchHistoriquePrixStats()
+      if (data) setStats(data)
     }
-    fetchStats()
-  }, [])
+    loadStats()
+  }, [fetchHistoriquePrixStats])
 
   const handleProductClick = productId => {
     setSelectedProductId(productId)
@@ -158,19 +80,27 @@ const HistoriqueDesPrixView = () => {
       </Grid>
 
       <Grid item xs={12}>
-        <Card>
+        <Card sx={{ boxShadow: 3 }}>
           <CardContent>
             <TextField
               fullWidth
+              size='small'
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder='Rechercher un produit...'
               InputProps={{
                 startAdornment: (
                   <InputAdornment position='start'>
-                    <Icon icon='tabler:search' />
+                    <Icon icon='tabler:search' fontSize='1.25rem' />
                   </InputAdornment>
-                )
+                ),
+                endAdornment: searchTerm ? (
+                  <InputAdornment position='end'>
+                    <IconButton size='small' onClick={() => setSearchTerm('')} edge='end'>
+                      <Icon icon='tabler:x' fontSize='1.25rem' />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null
               }}
             />
           </CardContent>
@@ -180,6 +110,13 @@ const HistoriqueDesPrixView = () => {
       {loading ? (
         <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', my: 10 }}>
           <CircularProgress />
+        </Grid>
+      ) : produits.length === 0 ? (
+        <Grid item xs={12} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 10 }}>
+          <Icon icon='tabler:search-off' fontSize='4rem' color='text.disabled' />
+          <Typography variant='h6' color='text.secondary' sx={{ mt: 2 }}>
+            Aucun produit trouvé.
+          </Typography>
         </Grid>
       ) : (
         <Grid item xs={12} container spacing={6}>
@@ -191,14 +128,17 @@ const HistoriqueDesPrixView = () => {
         </Grid>
       )}
 
-      <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center' }}>
-        <Pagination
-          count={Math.ceil(totalItems / rowsPerPage)}
-          page={page}
-          onChange={(e, value) => setPage(value)}
-          color='primary'
-        />
-      </Grid>
+      {totalItems > rowsPerPage && (
+        <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+          <Pagination
+            count={Math.ceil(totalItems / rowsPerPage)}
+            page={page}
+            onChange={(e, value) => setPage(value)}
+            color='primary'
+            shape='rounded'
+          />
+        </Grid>
+      )}
 
       <ProductDetailModal open={isModalOpen} onClose={handleCloseModal} productId={selectedProductId} />
     </Grid>
