@@ -7,6 +7,16 @@ const ProduitDashboardContext = createContext()
 export const useProduitDashboard = () => useContext(ProduitDashboardContext)
 
 export const ProduitDashboardProvider = ({ children }) => {
+  const fetchProduitsEnStock = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/allMarchandiseDisponible`)
+      return data
+    } catch (error) {
+      toast.error('Erreur lors de la récupération des produits en stock.')
+      return []
+    }
+  }, [])
+
   const fetchColisStats = useCallback(async () => {
     try {
       const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/colisEnRoute/stats`)
@@ -96,6 +106,7 @@ export const ProduitDashboardProvider = ({ children }) => {
   return (
     <ProduitDashboardContext.Provider
       value={{
+        fetchProduitsEnStock,
         fetchColisStats,
         fetchColisEnRoute,
         modifierColis,
