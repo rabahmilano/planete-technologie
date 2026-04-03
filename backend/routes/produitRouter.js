@@ -16,13 +16,12 @@ import {
   getChartDataByAccount,
   getChartDataTopProducts,
   updateColisDetails,
-  getProduitsForTable, // Nouvelle fonction
-  getProduitsPageStats, // Nouvelle fonction
-  getProduitDetails, // Nouvelle fonction
-  getColisForProduit, // Nouvelle fonction
-  // getDashboardChartData,
+  getProduitsForTable,
+  getProduitsPageStats,
+  getProduitDetails,
+  getColisForProduit,
   getTransactionsChartData,
-  getProduitsChartData,
+  getArticlesChartData,
   searchProduits,
 } from "../controllers/produitController.js";
 
@@ -78,6 +77,6 @@ router.get("/historique-prix/:id/colis", getColisForProduit);
 // ====================================================================
 // router.get("/dashboard/sales-purchases-chart", getDashboardChartData);
 router.get("/dashboard/chart-transactions", getTransactionsChartData);
-router.get("/dashboard/chart-produits", getProduitsChartData);
+router.get("/dashboard/chart-articles", getArticlesChartData);
 
 export default router;
