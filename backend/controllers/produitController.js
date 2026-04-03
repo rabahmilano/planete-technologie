@@ -2,6 +2,8 @@ import prisma from "../config/dbConfig.js";
 import { body, validationResult } from "express-validator";
 import dayjs from "dayjs";
 
+dayjs.locale("fr");
+
 import { getMaxValue } from "../config/utils.js";
 
 export const addCatProduit = [
@@ -1097,6 +1099,71 @@ export const getColisForProduit = async (req, res) => {
   }
 };
 
+export const getArticlesChartData = async (req, res) => {
+  try {
+    const twelveMonthsAgo = dayjs()
+      .subtract(12, "month")
+      .startOf("month")
+      .toDate();
+
+    const achats = await prisma.colis.findMany({
+      where: {
+        OR: [
+          { date_achat: { gte: twelveMonthsAgo } },
+          { date_stock: { gte: twelveMonthsAgo } },
+        ],
+      },
+      select: { date_achat: true, date_stock: true, qte_achat: true },
+    });
+
+    const ventes = await prisma.commande.findMany({
+      where: { date_cde: { gte: twelveMonthsAgo } },
+      include: { ligne_commande: { select: { qte_cde: true } } },
+    });
+
+    const monthlyData = {};
+    for (let i = 0; i < 13; i++) {
+      const monthKey = dayjs().subtract(i, "month").format("YYYY-MM");
+      monthlyData[monthKey] = { articlesAchetes: 0, articlesVendus: 0 };
+    }
+
+    achats.forEach((colis) => {
+      const referenceDate = colis.date_achat || colis.date_stock;
+      const monthKey = dayjs(referenceDate).format("YYYY-MM");
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].articlesAchetes += colis.qte_achat || 0;
+      }
+    });
+
+    ventes.forEach((commande) => {
+      const monthKey = dayjs(commande.date_cde).format("YYYY-MM");
+      if (monthlyData[monthKey]) {
+        const totalProduitsCommande = commande.ligne_commande.reduce(
+          (sum, ligne) => sum + ligne.qte_cde,
+          0,
+        );
+        monthlyData[monthKey].articlesVendus += totalProduitsCommande;
+      }
+    });
+
+    const sortedChartData = Object.keys(monthlyData)
+      .sort()
+      .map((monthKey) => ({
+        month: monthKey,
+        articlesAchetes: monthlyData[monthKey].articlesAchetes,
+        articlesVendus: monthlyData[monthKey].articlesVendus,
+      }));
+
+    if (sortedChartData.length > 12) sortedChartData.shift();
+
+    res.status(200).json(sortedChartData);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
 export const getTransactionsChartData = async (req, res) => {
   try {
     const twelveMonthsAgo = dayjs()
@@ -1108,7 +1175,7 @@ export const getTransactionsChartData = async (req, res) => {
       where: {
         OR: [
           { date_achat: { gte: twelveMonthsAgo } },
-          { date_achat: null, date_stock: { gte: twelveMonthsAgo } },
+          { date_stock: { gte: twelveMonthsAgo } },
         ],
       },
       select: { date_achat: true, date_stock: true },
@@ -1139,73 +1206,9 @@ export const getTransactionsChartData = async (req, res) => {
     const sortedChartData = Object.keys(monthlyData)
       .sort()
       .map((monthKey) => ({
-        month: dayjs(monthKey).format("MMM YY"),
+        month: monthKey,
         colis: monthlyData[monthKey].colis,
         commandes: monthlyData[monthKey].commandes,
-      }));
-
-    if (sortedChartData.length > 12) sortedChartData.shift();
-
-    res.status(200).json(sortedChartData);
-  } catch (error) {
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
-  }
-};
-
-export const getProduitsChartData = async (req, res) => {
-  try {
-    const twelveMonthsAgo = dayjs()
-      .subtract(12, "month")
-      .startOf("month")
-      .toDate();
-
-    const achats = await prisma.colis.findMany({
-      where: {
-        OR: [
-          { date_achat: { gte: twelveMonthsAgo } },
-          { date_achat: null, date_stock: { gte: twelveMonthsAgo } },
-        ],
-      },
-      select: { date_achat: true, date_stock: true, qte_achat: true },
-    });
-
-    const ventes = await prisma.commande.findMany({
-      where: { date_cde: { gte: twelveMonthsAgo } },
-      include: { ligne_commande: { select: { qte_cde: true } } },
-    });
-
-    const monthlyData = {};
-    for (let i = 0; i < 13; i++) {
-      const monthKey = dayjs().subtract(i, "month").format("YYYY-MM");
-      monthlyData[monthKey] = { produitsAchetes: 0, produitsVendus: 0 };
-    }
-
-    achats.forEach((colis) => {
-      const referenceDate = colis.date_achat || colis.date_stock;
-      const monthKey = dayjs(referenceDate).format("YYYY-MM");
-      if (monthlyData[monthKey])
-        monthlyData[monthKey].produitsAchetes += colis.qte_achat || 0;
-    });
-
-    ventes.forEach((commande) => {
-      const monthKey = dayjs(commande.date_cde).format("YYYY-MM");
-      if (monthlyData[monthKey]) {
-        const totalProduitsCommande = commande.ligne_commande.reduce(
-          (sum, ligne) => sum + ligne.qte_cde,
-          0,
-        );
-        monthlyData[monthKey].produitsVendus += totalProduitsCommande;
-      }
-    });
-
-    const sortedChartData = Object.keys(monthlyData)
-      .sort()
-      .map((monthKey) => ({
-        month: dayjs(monthKey).format("MMM YY"),
-        produitsAchetes: monthlyData[monthKey].produitsAchetes,
-        produitsVendus: monthlyData[monthKey].produitsVendus,
       }));
 
     if (sortedChartData.length > 12) sortedChartData.shift();
