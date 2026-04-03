@@ -1,34 +1,50 @@
+import { useState, useEffect } from 'react'
 import Grid from '@mui/material/Grid'
-import TransactionsChart from './TransactionsChart'
-import ProduitsChart from './ProduitsChart'
-import Card from '@mui/material/Card'
-import CardHeader from '@mui/material/CardHeader'
-import CardContent from '@mui/material/CardContent'
+import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import { useHomeDashboard } from 'src/context/HomeDashboardContext'
+
+import KpiCards from './KpiCards'
+import TransactionsChart from './TransactionsChart'
+import ArticlesChart from './ArticlesChart'
 
 const HomeView = () => {
+  const [data, setData] = useState(null)
+  const { fetchAllStats } = useHomeDashboard()
+
+  useEffect(() => {
+    const loadData = async () => {
+      const res = await fetchAllStats()
+      setData(res)
+    }
+    loadData()
+  }, [fetchAllStats])
+
   return (
     <Grid container spacing={6}>
-      {/* Carte de bienvenue */}
       <Grid item xs={12}>
-        <Card>
-          <CardHeader title='Bienvenue sur Web Shop It 🚀'></CardHeader>
-          <CardContent>
-            <Typography>
-              Utilisez le menu de navigation sur la gauche pour gérer vos produits, commandes et dépenses.
-            </Typography>
-          </CardContent>
-        </Card>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant='h5' sx={{ fontWeight: 600 }}>
+            Tableau de Bord 🚀
+          </Typography>
+          <Typography variant='body2' sx={{ color: 'text.secondary' }}>
+            Aperçu immédiat de votre activité commerciale et financière.
+          </Typography>
+        </Box>
       </Grid>
 
-      {/* Graphique pour les transactions (Colis vs Commandes) */}
+      {/* Ligne des 4 StatCards (KPIs) */}
       <Grid item xs={12}>
+        <KpiCards data={data} />
+      </Grid>
+
+      {/* Graphiques côte à côte avec hauteur réduite pour éviter l'effet carré */}
+      <Grid item xs={12} lg={6}>
         <TransactionsChart />
       </Grid>
 
-      {/* Graphique pour les quantités de produits */}
-      <Grid item xs={12}>
-        <ProduitsChart />
+      <Grid item xs={12} lg={6}>
+        <ArticlesChart />
       </Grid>
     </Grid>
   )

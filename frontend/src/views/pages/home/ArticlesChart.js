@@ -11,18 +11,18 @@ import { useHomeDashboard } from 'src/context/HomeDashboardContext'
 import dayjs from 'dayjs'
 import 'dayjs/locale/fr' // Import obligatoire du dictionnaire français
 
-const TransactionsChart = () => {
+const ArticlesChart = () => {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const theme = useTheme()
-  const { fetchTransactionsChartData } = useHomeDashboard()
+  const { fetchArticlesChartData } = useHomeDashboard()
 
   useEffect(() => {
     let isMounted = true
     const fetchData = async () => {
       setLoading(true)
-      const result = await fetchTransactionsChartData()
+      const result = await fetchArticlesChartData()
       if (isMounted) {
         if (result && result.length > 0) {
           const formattedData = result.map(item => ({
@@ -43,7 +43,7 @@ const TransactionsChart = () => {
     return () => {
       isMounted = false
     }
-  }, [fetchTransactionsChartData])
+  }, [fetchArticlesChartData])
 
   const renderContent = () => {
     if (loading) {
@@ -56,11 +56,11 @@ const TransactionsChart = () => {
       <ResponsiveContainer width='100%' height='100%'>
         <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id='colorColis' x1='0' y1='0' x2='0' y2='1'>
+            <linearGradient id='colorAchetes' x1='0' y1='0' x2='0' y2='1'>
               <stop offset='5%' stopColor={theme.palette.primary.main} stopOpacity={0.3} />
               <stop offset='95%' stopColor={theme.palette.primary.main} stopOpacity={0} />
             </linearGradient>
-            <linearGradient id='colorCommandes' x1='0' y1='0' x2='0' y2='1'>
+            <linearGradient id='colorVendus' x1='0' y1='0' x2='0' y2='1'>
               <stop offset='5%' stopColor={theme.palette.success.main} stopOpacity={0.3} />
               <stop offset='95%' stopColor={theme.palette.success.main} stopOpacity={0} />
             </linearGradient>
@@ -91,22 +91,22 @@ const TransactionsChart = () => {
           <Legend wrapperStyle={{ paddingTop: 20 }} iconType='circle' />
           <Area
             type='monotone'
-            dataKey='colis'
-            name="Nombre d'Achats (Colis)"
+            dataKey='articlesAchetes'
+            name='Articles Achetés'
             stroke={theme.palette.primary.main}
             strokeWidth={3}
             fillOpacity={1}
-            fill='url(#colorColis)'
+            fill='url(#colorAchetes)'
             activeDot={{ r: 6, strokeWidth: 0 }}
           />
           <Area
             type='monotone'
-            dataKey='commandes'
-            name='Nombre de Ventes (Commandes)'
+            dataKey='articlesVendus'
+            name='Articles Vendus'
             stroke={theme.palette.success.main}
             strokeWidth={3}
             fillOpacity={1}
-            fill='url(#colorCommandes)'
+            fill='url(#colorVendus)'
             activeDot={{ r: 6, strokeWidth: 0 }}
           />
         </AreaChart>
@@ -116,7 +116,7 @@ const TransactionsChart = () => {
 
   return (
     <Card>
-      <CardHeader title='Activité Commerciale' subheader='Volume des transactions : Achats vs Ventes sur 12 mois' />
+      <CardHeader title='Évolution des Volumes' subheader="Quantité d'articles achetés vs vendus sur 12 mois" />
       <CardContent>
         <Box sx={{ height: 400, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           {renderContent()}
@@ -126,4 +126,4 @@ const TransactionsChart = () => {
   )
 }
 
-export default TransactionsChart
+export default ArticlesChart
