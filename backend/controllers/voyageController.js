@@ -1,10 +1,6 @@
 import prisma from "../config/dbConfig.js";
 import { body, param, validationResult } from "express-validator";
-import { getMaxValue } from "../config/utils.js";
-
-// ==========================================
-// LECTURE DES VOYAGES
-// ==========================================
+import { arrondir, getMaxValue } from "../config/utils.js";
 
 export const getAllVoyages = async (req, res) => {
   try {
@@ -29,10 +25,13 @@ export const getAllVoyages = async (req, res) => {
 };
 
 export const getVoyageById = async (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id))
+    return res.status(400).json({ message: "Identifiant de voyage invalide." });
+
   try {
     const voyage = await prisma.voyage.findUnique({
-      where: { id_voyage: parseInt(id) },
+      where: { id_voyage: id },
       include: {
         compte_defaut: { select: { designation_cpt: true, dev_code: true } },
         depenses: {
@@ -49,16 +48,45 @@ export const getVoyageById = async (req, res) => {
       },
     });
 
-    if (!voyage) return res.status(404).json({ message: "Voyage introuvable" });
+    if (!voyage)
+      return res.status(404).json({ message: "Voyage introuvable." });
 
-    // Calculs rapides à la volée pour le Dashboard Front-end
-    const totalDepensesDZD = voyage.depenses
-      .filter((d) => !d.isAnnule)
-      .reduce((sum, d) => sum + parseFloat(d.mnt_dep_dzd), 0);
+    // Calcul du total des dépenses annexes (logistique, séjour, etc.)
+    const totalDepensesDZD = arrondir(
+      voyage.depenses
+        .filter((d) => !d.isAnnule)
+        .reduce((sum, d) => sum + parseFloat(d.mnt_dep_dzd), 0),
+    );
 
-    const totalAchatsDZD = voyage.transactions.reduce(
-      (sum, t) => sum + parseFloat(t.mnt_tot_fact) * parseFloat(t.taux_trans),
-      0,
+    // Isolation du coût d'achat fournisseur (Montant de la facture pure)
+    const totalAchatsDZD = arrondir(
+      voyage.transactions.reduce(
+        (sum, t) => sum + parseFloat(t.mnt_tot_fact) * parseFloat(t.taux_trans),
+        0,
+      ),
+    );
+
+    // Isolation des commissions du moyen de paiement (ex: Alipay, WeChat)
+    const totalCommPaieDZD = arrondir(
+      voyage.transactions.reduce(
+        (sum, t) =>
+          sum + parseFloat(t.mnt_comm_paie || 0) * parseFloat(t.taux_trans),
+        0,
+      ),
+    );
+
+    // Isolation des commissions bancaires (ex: Frais de virement)
+    const totalCommBanqueDZD = arrondir(
+      voyage.transactions.reduce(
+        (sum, t) =>
+          sum + parseFloat(t.mnt_comm_banque || 0) * parseFloat(t.taux_trans),
+        0,
+      ),
+    );
+
+    // Coût global actuel préparatoire au calcul du Coefficient d'Approche
+    const coutTotalDZD = arrondir(
+      totalDepensesDZD + totalAchatsDZD + totalCommPaieDZD + totalCommBanqueDZD,
     );
 
     res.status(200).json({
@@ -66,7 +94,9 @@ export const getVoyageById = async (req, res) => {
       kpis: {
         totalDepensesDZD,
         totalAchatsDZD,
-        coutTotalDZD: totalDepensesDZD + totalAchatsDZD,
+        totalCommPaieDZD,
+        totalCommBanqueDZD,
+        coutTotalDZD,
       },
     });
   } catch (error) {
@@ -75,10 +105,6 @@ export const getVoyageById = async (req, res) => {
       .json({ error: { code: error.code, message: error.message } });
   }
 };
-
-// ==========================================
-// CRÉATION ET MODIFICATION
-// ==========================================
 
 export const addVoyage = [
   body("desVoyage")
@@ -110,6 +136,17 @@ export const addVoyage = [
       cptDefautId,
     } = req.body;
 
+    // Règle métier : Chronologie du voyage
+    const dDepart = new Date(dateDepart);
+    const dRetour = new Date(dateRetour);
+
+    if (dRetour < dDepart) {
+      return res.status(400).json({
+        message:
+          "La date de retour doit être ultérieure ou égale à la date de départ.",
+      });
+    }
+
     try {
       const idVoyage = await getMaxValue("voyage", "id_voyage", null);
 
@@ -118,10 +155,10 @@ export const addVoyage = [
           id_voyage: idVoyage,
           des_voyage: desVoyage,
           dest_voyage: destination || null,
-          date_dep: new Date(dateDepart),
-          date_ret: new Date(dateRetour),
+          date_dep: dDepart,
+          date_ret: dRetour,
           dev_dest: deviseDest || "CNY",
-          cpt_defaut_id: cptDefautId ? parseInt(cptDefautId) : null,
+          cpt_defaut_id: cptDefautId ? parseInt(cptDefautId, 10) : null,
           statut_voy: "EN_PREPARATION",
         },
       });
@@ -148,29 +185,45 @@ export const updateVoyage = [
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
 
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id))
+      return res.status(400).json({ message: "Identifiant invalide." });
+
     const { desVoyage, destination, dateDepart, dateRetour, cptDefautId } =
       req.body;
 
+    const dDepart = new Date(dateDepart);
+    const dRetour = new Date(dateRetour);
+
+    if (dRetour < dDepart) {
+      return res.status(400).json({
+        message:
+          "La date de retour doit être ultérieure ou égale à la date de départ.",
+      });
+    }
+
     try {
       const voyage = await prisma.voyage.findUnique({
-        where: { id_voyage: parseInt(id) },
+        where: { id_voyage: id },
       });
+
       if (!voyage)
         return res.status(404).json({ message: "Voyage introuvable" });
-      if (voyage.statut_voy === "CLOTURE")
+
+      if (voyage.statut_voy === "CLOTURE") {
         return res
           .status(403)
           .json({ message: "Impossible de modifier un voyage clôturé" });
+      }
 
       await prisma.voyage.update({
-        where: { id_voyage: parseInt(id) },
+        where: { id_voyage: id },
         data: {
           des_voyage: desVoyage,
           dest_voyage: destination || null,
-          date_dep: new Date(dateDepart),
-          date_ret: new Date(dateRetour),
-          cpt_defaut_id: cptDefautId ? parseInt(cptDefautId) : null,
+          date_dep: dDepart,
+          date_ret: dRetour,
+          cpt_defaut_id: cptDefautId ? parseInt(cptDefautId, 10) : null,
         },
       });
 
@@ -182,14 +235,18 @@ export const updateVoyage = [
 ];
 
 export const deleteVoyage = async (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id))
+    return res.status(400).json({ message: "Identifiant invalide." });
+
   try {
     const voyage = await prisma.voyage.findUnique({
-      where: { id_voyage: parseInt(id) },
+      where: { id_voyage: id },
       include: { _count: { select: { depenses: true, transactions: true } } },
     });
 
     if (!voyage) return res.status(404).json({ message: "Voyage introuvable" });
+
     if (voyage._count.depenses > 0 || voyage._count.transactions > 0) {
       return res.status(403).json({
         message:
@@ -197,7 +254,7 @@ export const deleteVoyage = async (req, res) => {
       });
     }
 
-    await prisma.voyage.delete({ where: { id_voyage: parseInt(id) } });
+    await prisma.voyage.delete({ where: { id_voyage: id } });
     res.status(200).json({ message: "Voyage supprimé avec succès." });
   } catch (error) {
     res.status(500).json({ error: { message: error.message } });
@@ -209,13 +266,16 @@ export const deleteVoyage = async (req, res) => {
 // ==========================================
 
 export const changerStatutVoyage = async (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id))
+    return res.status(400).json({ message: "Identifiant invalide." });
+
   const { statut, tauxChange } = req.body;
 
   try {
     await prisma.$transaction(async (tx) => {
       const voyage = await tx.voyage.findUnique({
-        where: { id_voyage: parseInt(id) },
+        where: { id_voyage: id },
         include: {
           depenses: { where: { isAnnule: false } },
           transactions: {
@@ -226,51 +286,60 @@ export const changerStatutVoyage = async (req, res) => {
 
       if (!voyage) throw new Error("Voyage introuvable");
 
+      if (voyage.statut_voy === "CLOTURE" && statut === "CLOTURE") {
+        throw new Error("Le voyage est déjà clôturé.");
+      }
+
       if (statut === "EN_COURS") {
-        if (!tauxChange)
-          throw new Error("Le taux de change prévisionnel est requis.");
+        const dataUpdate = { statut_voy: "EN_COURS" };
+        if (tauxChange) dataUpdate.taux_change = parseFloat(tauxChange);
 
         await tx.voyage.update({
-          where: { id_voyage: parseInt(id) },
-          data: {
-            statut_voy: "EN_COURS",
-            taux_change: parseFloat(tauChange),
-          },
+          where: { id_voyage: id },
+          data: dataUpdate,
         });
       } else if (statut === "CLOTURE") {
-        if (voyage.transactions.length === 0)
+        if (voyage.transactions.length === 0) {
           throw new Error("Impossible de clôturer sans transactions.");
+        }
 
-        const totalFraisDZD = voyage.depenses.reduce(
+        const totalDepensesDZD = voyage.depenses.reduce(
           (sum, d) => sum + parseFloat(d.mnt_dep_dzd),
           0,
         );
-        let totalMarchandisesDZD = 0;
+
+        let totalAchatsPursDZD = 0;
+        let totalCommissionsDZD = 0;
 
         voyage.transactions.forEach((t) => {
-          totalMarchandisesDZD +=
-            parseFloat(t.mnt_tot_fact) * parseFloat(t.taux_trans);
+          const taux = parseFloat(t.taux_trans);
+          totalAchatsPursDZD += parseFloat(t.mnt_tot_fact) * taux;
+          totalCommissionsDZD +=
+            (parseFloat(t.mnt_comm_paie || 0) +
+              parseFloat(t.mnt_comm_banque || 0)) *
+            taux;
         });
 
-        // SÉCURITÉ : Éviter la division par zéro si un voyage a des transactions mais un total de 0
-        if (totalMarchandisesDZD === 0) {
-          throw new Error(
-            "Le total des marchandises est de 0 DZD. Impossible de calculer le coefficient d'approche.",
-          );
+        if (totalAchatsPursDZD === 0) {
+          throw new Error("Le total des marchandises est de 0 DZD.");
         }
 
-        const coeffApproche =
-          (totalMarchandisesDZD + totalFraisDZD) / totalMarchandisesDZD;
+        const coutGlobalDZD =
+          totalAchatsPursDZD + totalCommissionsDZD + totalDepensesDZD;
+        const coeffApproche = coutGlobalDZD / totalAchatsPursDZD;
 
         await tx.voyage.update({
-          where: { id_voyage: parseInt(id) },
-          data: { statut_voy: "CLOTURE", coeff_approche: coeffApproche },
+          where: { id_voyage: id },
+          data: {
+            statut_voy: "CLOTURE",
+            coeff_approche: coeffApproche,
+          },
         });
 
         for (const transaction of voyage.transactions) {
           for (const cv of transaction.colis_voyage) {
-            const ancienTTC = parseFloat(cv.colis.pu_dzd_ttc);
-            const nouveauTTC = ancienTTC * coeffApproche;
+            const puDzdBase = parseFloat(cv.colis.pu_dzd);
+            const nouveauTTC = arrondir(puDzdBase * coeffApproche);
 
             await tx.colis.update({
               where: { id_colis: cv.id_colis_voy },
@@ -316,6 +385,7 @@ export const addTransactionVoyage = [
     .withMessage("Le montant prélevé est requis"),
   body("commBanque").optional().isFloat(),
   body("commPaiement").optional().isFloat(),
+  body("dateAchat").notEmpty().withMessage("La date d'achat est requise"),
 
   body("articles")
     .isArray({ min: 1 })
@@ -340,27 +410,37 @@ export const addTransactionVoyage = [
       montantDebite,
       commBanque = 0,
       commPaiement = 0,
+      dateAchat,
       articles,
     } = req.body;
 
     try {
       await prisma.$transaction(async (tx) => {
         const compte = await tx.compte.findUnique({
-          where: { id_cpt: parseInt(cptPaiementId) },
+          where: { id_cpt: parseInt(cptPaiementId, 10) },
         });
+
         if (!compte) throw new Error("Compte introuvable");
         if (parseFloat(compte.solde_actuel) < parseFloat(montantDebite)) {
           throw new Error("Solde insuffisant.");
         }
 
         const voyage = await tx.voyage.findUnique({
-          where: { id_voyage: parseInt(idVoyage) },
+          where: { id_voyage: parseInt(idVoyage, 10) },
         });
+
         if (!voyage || voyage.statut_voy !== "EN_COURS") {
           throw new Error("Le voyage doit être EN_COURS.");
         }
 
-        // CORRECTION LOGIQUE : Calcul automatique de la date de stock (Date de retour + 1 jour)
+        const dAchatObj = new Date(dateAchat);
+        const dDepObj = new Date(voyage.date_dep);
+        const dRetObj = new Date(voyage.date_ret);
+
+        if (dAchatObj < dDepObj || dAchatObj > dRetObj) {
+          throw new Error("DATE_ACHAT_HORS_VOYAGE");
+        }
+
         const dateStockPrevue = new Date(voyage.date_ret);
         dateStockPrevue.setDate(dateStockPrevue.getDate() + 1);
 
@@ -369,17 +449,18 @@ export const addTransactionVoyage = [
           "id_trans",
           null,
         );
+
         const transaction = await tx.transaction_voyage.create({
           data: {
             id_trans: idTransaction,
-            voyage_id: parseInt(idVoyage),
-            cpt_id: parseInt(cptPaiementId),
+            voyage_id: parseInt(idVoyage, 10),
+            cpt_id: parseInt(cptPaiementId, 10),
             fournisseur: fournisseur || null,
             dev_trans: deviseFacture,
             taux_trans: parseFloat(tauxDzd),
-            mnt_tot_fact: parseFloat(montantFacture),
-            mnt_comm_banque: parseFloat(commBanque),
-            mnt_comm_paie: parseFloat(commPaiement),
+            mnt_tot_fact: arrondir(parseFloat(montantFacture)),
+            mnt_comm_banque: arrondir(parseFloat(commBanque)),
+            mnt_comm_paie: arrondir(parseFloat(commPaiement)),
           },
         });
 
@@ -387,15 +468,15 @@ export const addTransactionVoyage = [
           parseFloat(montantDebite) / parseFloat(montantFacture);
 
         for (const article of articles) {
-          const qte = parseInt(article.qte);
-          const pu_dest = parseFloat(article.puDevise);
-          const mnt_tot_dest = pu_dest * qte;
+          const qte = parseInt(article.qte, 10);
+          const pu_dest = arrondir(parseFloat(article.puDevise));
+          const mnt_tot_dest = arrondir(pu_dest * qte);
 
-          const mnt_tot_carte = mnt_tot_dest * ratioConversionCarte;
-          const pu_carte = mnt_tot_carte / qte;
+          const mnt_tot_carte = arrondir(mnt_tot_dest * ratioConversionCarte);
+          const pu_carte = arrondir(mnt_tot_carte / qte);
 
-          const mnt_tot_dzd = mnt_tot_dest * parseFloat(tauxDzd);
-          const pu_dzd = mnt_tot_dzd / qte;
+          const mnt_tot_dzd = arrondir(mnt_tot_dest * parseFloat(tauxDzd));
+          const pu_dzd = arrondir(mnt_tot_dzd / qte);
 
           let prd_id;
           const produitExist = await tx.produit.findFirst({
@@ -415,11 +496,12 @@ export const addTransactionVoyage = [
           await tx.colis.create({
             data: {
               id_colis: idColis,
-              cat_id: parseInt(article.catId),
+              cat_id: parseInt(article.catId, 10),
               prd_id: prd_id,
-              cpt_id: parseInt(cptPaiementId),
+              cpt_id: parseInt(cptPaiementId, 10),
               mnt_tot_dev: mnt_tot_carte,
-              date_stock: dateStockPrevue, // Utilisation de la logique (retour + 1j)
+              date_achat: dAchatObj,
+              date_stock: dateStockPrevue,
               qte_achat: qte,
               mnt_tot_dzd: mnt_tot_dzd,
               pu_dev: pu_carte,
@@ -437,7 +519,7 @@ export const addTransactionVoyage = [
         }
 
         await tx.compte.update({
-          where: { id_cpt: parseInt(cptPaiementId) },
+          where: { id_cpt: parseInt(cptPaiementId, 10) },
           data: { solde_actuel: { decrement: parseFloat(montantDebite) } },
         });
       });
@@ -446,6 +528,16 @@ export const addTransactionVoyage = [
         .status(201)
         .json({ message: "Facture et articles enregistrés avec succès." });
     } catch (error) {
+      if (error.message === "DATE_ACHAT_HORS_VOYAGE") {
+        return res
+          .status(400)
+          .json({
+            error: {
+              message:
+                "La date d'achat doit être comprise entre la date de départ et la date de retour du voyage.",
+            },
+          });
+      }
       res.status(400).json({ error: { message: error.message } });
     }
   },
