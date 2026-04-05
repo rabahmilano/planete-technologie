@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useState, useCallback } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
@@ -76,9 +76,7 @@ export const VoyageProvider = ({ children }) => {
   const changerStatutVoyage = async (id, statut, tauxChange = null) => {
     try {
       await axios.put(`${API_URL}/${id}/statut`, { statut, tauxChange })
-
       const message = statut === 'CLOTURE' ? 'Voyage clôturé et prix calculés !' : 'Voyage réouvert avec succès.'
-
       toast.success(message)
       fetchVoyages()
       return true
@@ -99,10 +97,6 @@ export const VoyageProvider = ({ children }) => {
       throw err
     }
   }
-
-  useEffect(() => {
-    fetchVoyages()
-  }, [fetchVoyages])
 
   return (
     <VoyageContext.Provider
