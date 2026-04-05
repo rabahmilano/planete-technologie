@@ -1,11 +1,8 @@
 import { useState, useEffect, useContext } from 'react'
 import { useRouter } from 'next/router'
 import { Grid, Box, CircularProgress, Card, CardContent, Typography, Button } from '@mui/material'
-
-// Context
+import Icon from 'src/@core/components/icon'
 import { VoyageContext } from 'src/context/VoyageContext'
-
-// Sous-composants
 import VoyageHeaderKpis from './VoyageHeaderKpis'
 import TransactionsTable from './TransactionsTable'
 import DepensesTable from './DepensesTable'
@@ -62,6 +59,17 @@ const VoyageDetails = () => {
   return (
     <Grid container spacing={6}>
       <Grid item xs={12}>
+        <Button
+          size='small'
+          startIcon={<Icon icon='tabler:arrow-left' />}
+          onClick={() => router.push('/voyages/liste')}
+          sx={{ mb: 4 }}
+        >
+          Retour à la liste
+        </Button>
+      </Grid>
+
+      <Grid item xs={12}>
         <VoyageHeaderKpis voyage={voyage} />
       </Grid>
 
@@ -81,20 +89,24 @@ const VoyageDetails = () => {
         />
       </Grid>
 
-      <AddTransactionModal
-        open={openTransactionModal}
-        handleClose={() => setOpenTransactionModal(false)}
-        voyageId={id}
-        deviseDest={voyage.dev_dest}
-        onSuccess={fetchDetails}
-      />
+      {openTransactionModal && (
+        <AddTransactionModal
+          open={openTransactionModal}
+          handleClose={() => setOpenTransactionModal(false)}
+          voyageId={id}
+          deviseDest={voyage.dev_dest}
+          onSuccess={fetchDetails}
+        />
+      )}
 
-      <AddDepenseModal
-        open={openDepenseModal}
-        handleClose={() => setOpenDepenseModal(false)}
-        voyageId={id}
-        onSuccess={fetchDetails}
-      />
+      {openDepenseModal && (
+        <AddDepenseModal
+          open={openDepenseModal}
+          handleClose={() => setOpenDepenseModal(false)}
+          voyageId={id}
+          onSuccess={fetchDetails}
+        />
+      )}
     </Grid>
   )
 }
