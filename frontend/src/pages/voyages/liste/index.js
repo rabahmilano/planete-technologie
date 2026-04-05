@@ -1,9 +1,5 @@
 import { Grid } from '@mui/material'
-
-// Import de la Vue
 import VoyagesList from 'src/views/pages/voyages/liste'
-
-// Import des Providers selon ton architecture
 import { VoyageProvider } from 'src/context/VoyageContext'
 import { CompteProvider } from 'src/context/CompteContext'
 
@@ -17,7 +13,6 @@ const VoyagesListPageContent = () => {
   )
 }
 
-// Injection des contextes
 const VoyagesListPage = () => {
   return (
     <CompteProvider>
