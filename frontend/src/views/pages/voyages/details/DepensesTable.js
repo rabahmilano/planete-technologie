@@ -10,15 +10,14 @@ import {
   TableHead,
   TableRow,
   Typography,
-  Button
+  Button,
+  Tooltip
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import dayjs from 'dayjs'
+import { formatMontant } from 'src/@core/utils/format'
 
 const DepensesTable = ({ depenses, statut, onAddFrais }) => {
-  const formatNumber = num =>
-    parseFloat(num || 0).toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
   return (
     <Card sx={{ boxShadow: 3, borderRadius: 2, height: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 5 }}>
@@ -45,11 +44,17 @@ const DepensesTable = ({ depenses, statut, onAddFrais }) => {
       <Divider sx={{ m: '0 !important' }} />
       <TableContainer>
         <Table size='small'>
-          <TableHead sx={{ backgroundColor: 'rgba(0,0,0,0.02)' }}>
+          <TableHead sx={{ backgroundColor: '#0d1b2a' }}>
             <TableRow>
-              <TableCell>Date</TableCell>
-              <TableCell>Nature</TableCell>
-              <TableCell align='right'>Montant DZD</TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Date
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Nature
+              </TableCell>
+              <TableCell align='right' sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Débours
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -62,18 +67,57 @@ const DepensesTable = ({ depenses, statut, onAddFrais }) => {
             ) : (
               depenses?.map(d => (
                 <TableRow hover key={d.id_op_dep}>
-                  <TableCell>{dayjs(d.date_dep).format('DD/MM/YYYY')}</TableCell>
-                  <TableCell>
-                    <Typography variant='body2' fontWeight={600}>
+                  <TableCell sx={{ whiteSpace: 'nowrap', verticalAlign: 'top', pt: 3 }}>
+                    {dayjs(d.date_dep).format('DD/MM/YYYY')}
+                  </TableCell>
+
+                  <TableCell sx={{ maxWidth: 180, verticalAlign: 'top', pt: 3 }}>
+                    <Typography variant='body2' sx={{ fontWeight: 600, lineHeight: 1.2 }}>
                       {d.nature_dep?.designation_nat_dep}
                     </Typography>
-                    <Typography variant='caption' color='textSecondary'>
-                      {d.observation}
-                    </Typography>
+                    {d.observation && (
+                      <Tooltip title={d.observation} placement='bottom-start'>
+                        <Typography
+                          variant='caption'
+                          color='textSecondary'
+                          sx={{
+                            display: 'block',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            mt: 0.5
+                          }}
+                        >
+                          {d.observation}
+                        </Typography>
+                      </Tooltip>
+                    )}
                   </TableCell>
-                  <TableCell align='right'>
-                    <Typography variant='body2' color='error.main' fontWeight={600}>
-                      {formatNumber(d.mnt_dep_dzd)}
+
+                  <TableCell align='right' sx={{ verticalAlign: 'top', pt: 3 }}>
+                    <Typography variant='body2' color='error.main' sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+                      {formatMontant(d.mnt_dep_dzd)} DZD
+                    </Typography>
+
+                    <Typography
+                      variant='caption'
+                      color='textPrimary'
+                      sx={{ display: 'block', fontWeight: 500, fontSize: '0.7rem', mt: 0.5 }}
+                    >
+                      {formatMontant(d.mnt_dep)} {d.compte?.dev_code || ''}
+                    </Typography>
+
+                    <Typography
+                      variant='caption'
+                      sx={{
+                        display: 'block',
+                        fontSize: '0.62rem',
+                        fontStyle: 'italic',
+                        color: 'text.disabled',
+                        lineHeight: 1
+                      }}
+                    >
+                      {d.compte?.designation_cpt || 'Compte inconnu'}
                     </Typography>
                   </TableCell>
                 </TableRow>
