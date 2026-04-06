@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -9,22 +9,26 @@ import {
   Typography,
   Box,
   MenuItem,
-  InputAdornment
+  InputAdornment,
+  IconButton,
+  Divider
 } from '@mui/material'
 import { useForm, Controller } from 'react-hook-form'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
 import 'dayjs/locale/fr'
-import axios from 'axios'
-import toast from 'react-hot-toast'
 
 import Icon from 'src/@core/components/icon'
 import CustomTextField from 'src/@core/components/mui/text-field'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+import CleaveInput from 'src/components/CleaveInput'
 
-// Context
 import { useCompte } from 'src/context/CompteContext'
+import { useDepense } from 'src/context/DepenseContext'
+import { formatMontant } from 'src/@core/utils/format'
+
+import AddNatureModal from './AddNatureModal'
 
 const defaultValues = {
   nature: '',
@@ -36,29 +40,29 @@ const defaultValues = {
 
 const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
   const { comptes } = useCompte()
+  const { listNature, ajouterDepense } = useDepense()
 
-  const [natures, setNatures] = useState([])
   const [openConfirm, setOpenConfirm] = useState(false)
   const [formDataToSubmit, setFormDataToSubmit] = useState(null)
+  const [compteDevise, setCompteDevise] = useState('')
+  const [openAddNature, setOpenAddNature] = useState(false)
 
-  const { control, handleSubmit, reset } = useForm({ defaultValues })
+  const { control, handleSubmit, reset, watch } = useForm({ defaultValues })
 
-  // Chargement des natures de dépenses (Hôtel, Vol, etc.)
+  const watchCpt = watch('cpt')
+
   useEffect(() => {
-    const fetchNatures = async () => {
-      try {
-        // Assure-toi que cette URL correspond à ta route backend pour getAllNatDep
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/natures`)
-        setNatures(res.data)
-      } catch (error) {
-        console.error('Erreur chargement natures de dépenses', error)
-      }
+    if (watchCpt) {
+      const selectedCpt = comptes.find(c => c.id_cpt === watchCpt)
+      if (selectedCpt) setCompteDevise(selectedCpt.dev_code)
+    } else {
+      setCompteDevise('')
     }
-    fetchNatures()
-  }, [])
+  }, [watchCpt, comptes])
 
   const onClose = () => {
     reset()
+    setCompteDevise('')
     handleClose()
   }
 
@@ -77,55 +81,74 @@ const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
       nature: parseInt(data.nature),
       dateDepense: dayjs(data.dateDepense).toISOString(),
       observation: data.observation || '',
-      voyage_id: parseInt(voyageId) // La liaison magique avec le voyage !
+      voyage_id: parseInt(voyageId)
     }
 
-    try {
-      await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}depenses`, payload)
-      toast.success('Frais ajouté avec succès !')
-      reset()
+    const success = await ajouterDepense(payload)
+    if (success) {
       onClose()
-      if (onSuccess) onSuccess() // Rafraîchit les KPIs du Dashboard
-    } catch (error) {
-      toast.error(error.response?.data?.error?.message || "Erreur lors de l'ajout")
+      if (onSuccess) onSuccess()
     }
   }
 
   return (
     <>
       <Dialog open={open} onClose={onClose} fullWidth maxWidth='md'>
-        <DialogTitle sx={{ pb: 4 }}>
+        <DialogTitle sx={{ pb: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Icon icon='tabler:receipt-tax' fontSize='1.75rem' color='#ea5455' />
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(234, 84, 85, 0.1)',
+                borderRadius: 1,
+                p: 2
+              }}
+            >
+              <Icon icon='tabler:receipt-tax' fontSize='1.75rem' color='#ea5455' />
+            </Box>
             <Typography variant='h5'>Ajouter un frais au voyage</Typography>
           </Box>
         </DialogTitle>
+        <Divider sx={{ mb: 0 }} />
 
         <form onSubmit={handleSubmit(onPreSubmit)}>
-          <DialogContent>
-            <Grid container spacing={4}>
+          <DialogContent sx={{ backgroundColor: 'rgba(0,0,0,0.01)', pt: 6 }}>
+            <Grid container spacing={5}>
               <Grid item xs={12} sm={6}>
-                <Controller
-                  name='nature'
-                  control={control}
-                  rules={{ required: 'Obligatoire' }}
-                  render={({ field, fieldState: { error } }) => (
-                    <CustomTextField
-                      select
-                      fullWidth
-                      label='Nature du frais (Ex: Vol, Hôtel)'
-                      error={!!error}
-                      helperText={error?.message}
-                      {...field}
-                    >
-                      {natures.map(n => (
-                        <MenuItem key={n.id_nat_dep} value={n.id_nat_dep}>
-                          {n.designation_nat_dep}
-                        </MenuItem>
-                      ))}
-                    </CustomTextField>
-                  )}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                  <Controller
+                    name='nature'
+                    control={control}
+                    rules={{ required: 'Obligatoire' }}
+                    render={({ field, fieldState: { error } }) => (
+                      <CustomTextField
+                        select
+                        fullWidth
+                        label='Nature du frais'
+                        error={!!error}
+                        helperText={error?.message}
+                        {...field}
+                      >
+                        {listNature
+                          .filter(n => n.contexte === 'VOYAGE')
+                          .map(n => (
+                            <MenuItem key={n.id_nat_dep} value={n.id_nat_dep}>
+                              {n.designation_nat_dep}
+                            </MenuItem>
+                          ))}
+                      </CustomTextField>
+                    )}
+                  />
+                  <IconButton
+                    color='primary'
+                    sx={{ mt: 5, backgroundColor: 'rgba(115, 103, 240, 0.1)' }}
+                    onClick={() => setOpenAddNature(true)}
+                  >
+                    <Icon icon='tabler:plus' fontSize='1.2rem' />
+                  </IconButton>
+                </Box>
               </Grid>
 
               <Grid item xs={12} sm={6}>
@@ -140,6 +163,13 @@ const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
                       label='Compte de paiement'
                       error={!!error}
                       helperText={error?.message}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position='start'>
+                            <Icon icon='tabler:credit-card' fontSize={20} />
+                          </InputAdornment>
+                        )
+                      }}
                       {...field}
                     >
                       {comptes.map(c => (
@@ -156,15 +186,30 @@ const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
                 <Controller
                   name='montant'
                   control={control}
-                  rules={{ required: 'Obligatoire', min: 1 }}
+                  rules={{ required: 'Obligatoire' }}
                   render={({ field, fieldState: { error } }) => (
                     <CustomTextField
                       {...field}
                       fullWidth
-                      type='number'
-                      label='Montant payé (En devise du compte)'
+                      autoComplete='off' // <--- AJOUTER CETTE LIGNE
+                      label='Montant payé'
                       error={!!error}
                       helperText={error?.message}
+                      InputProps={{
+                        inputComponent: CleaveInput,
+                        startAdornment: (
+                          <InputAdornment position='start'>
+                            <Icon icon='tabler:currency' fontSize={20} />
+                          </InputAdornment>
+                        ),
+                        endAdornment: compteDevise ? (
+                          <InputAdornment position='end'>
+                            <Typography variant='caption' sx={{ fontWeight: 'bold' }}>
+                              {compteDevise}
+                            </Typography>
+                          </InputAdornment>
+                        ) : null
+                      }}
                     />
                   )}
                 />
@@ -174,13 +219,20 @@ const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
                 <Controller
                   name='dateDepense'
                   control={control}
-                  rules={{ required: 'Obligatoire' }}
+                  rules={{ required: 'Ce champ est obligatoire' }}
                   render={({ field, fieldState: { error } }) => (
                     <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
                       <DatePicker
                         {...field}
-                        label='Date du paiement'
-                        slotProps={{ textField: { fullWidth: true, error: !!error, helperText: error?.message } }}
+                        maxDate={dayjs().endOf('day')}
+                        label='Date de la dépense'
+                        slotProps={{
+                          textField: {
+                            fullWidth: true,
+                            error: !!error,
+                            helperText: error && 'Ce champ est obligatoire'
+                          }
+                        }}
                       />
                     </LocalizationProvider>
                   )}
@@ -192,29 +244,25 @@ const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
                   name='observation'
                   control={control}
                   render={({ field }) => (
-                    <CustomTextField
-                      {...field}
-                      fullWidth
-                      multiline
-                      rows={2}
-                      label='Observation (Optionnel)'
-                      placeholder='Ex: Nuits du 12 au 15, Billet Air Algérie...'
-                    />
+                    <CustomTextField {...field} fullWidth multiline rows={2} label='Observation (Optionnel)' />
                   )}
                 />
               </Grid>
             </Grid>
           </DialogContent>
-          <DialogActions sx={{ pb: 6, px: 6 }}>
+          <Divider sx={{ m: 0 }} />
+          <DialogActions sx={{ pt: 4, pb: 4, px: 6, backgroundColor: 'rgba(0,0,0,0.01)' }}>
             <Button variant='tonal' color='secondary' onClick={onClose}>
               Annuler
             </Button>
             <Button type='submit' variant='contained' color='error'>
-              Ajouter la dépense
+              Enregistrer la dépense
             </Button>
           </DialogActions>
         </form>
       </Dialog>
+
+      <AddNatureModal open={openAddNature} onClose={() => setOpenAddNature(false)} />
 
       <ConfirmDialog
         open={openConfirm}
@@ -224,8 +272,11 @@ const AddDepenseModal = ({ open, handleClose, voyageId, onSuccess }) => {
         title='Confirmer le frais'
         content={
           <Typography variant='body1'>
-            Confirmez-vous l'ajout de cette dépense d'un montant de <strong>{formDataToSubmit?.montant}</strong> ? Ce
-            montant impactera le coût de revient du voyage.
+            Confirmez-vous l'ajout de cette dépense d'un montant de{' '}
+            <strong>
+              {formatMontant(formDataToSubmit?.montant)} {compteDevise}
+            </strong>{' '}
+            ?
           </Typography>
         }
       />
