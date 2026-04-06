@@ -14,13 +14,18 @@ export const addNatureDepense = [
     .trim()
     .notEmpty()
     .withMessage("La désignation du nature de dépense est obligatoire"),
+  body("contexte")
+    .optional()
+    .isString()
+    .trim()
+    .withMessage("Le contexte doit être une chaîne de caractères valide"),
 
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
 
-    const { natDep } = req.body;
+    const { natDep, contexte } = req.body;
     const cleanedNatDep = natDep.trim().toUpperCase();
 
     try {
@@ -39,6 +44,7 @@ export const addNatureDepense = [
         data: {
           id_nat_dep: idNatDep,
           designation_nat_dep: cleanedNatDep,
+          contexte: contexte === "VOYAGE" ? "VOYAGE" : "GLOBAL",
         },
       });
 
@@ -50,7 +56,6 @@ export const addNatureDepense = [
     }
   },
 ];
-
 export const getAllNatDep = async (req, res) => {
   try {
     const listNature = await prisma.nature_dep.findMany({
@@ -150,14 +155,12 @@ export const addNewDepense = [
           .status(404)
           .json({ error: { message: "Voyage introuvable." } });
       if (error.message === "VOYAGE_CLOTURE")
-        return res
-          .status(403)
-          .json({
-            error: {
-              message:
-                "Impossible d'ajouter une dépense à un voyage clôturé. Veuillez d'abord le rouvrir.",
-            },
-          });
+        return res.status(403).json({
+          error: {
+            message:
+              "Impossible d'ajouter une dépense à un voyage clôturé. Veuillez d'abord le rouvrir.",
+          },
+        });
       if (error.message === "NATURE_NOT_FOUND")
         return res
           .status(404)

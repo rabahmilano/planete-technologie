@@ -161,9 +161,15 @@ model depense {
   voyage     voyage?    @relation(fields: [voyage_id], references: [id_voyage])
 }
 
+enum ContextNature {
+  GLOBAL
+  VOYAGE
+}
+
 model nature_dep {
   id_nat_dep          Int    @id
   designation_nat_dep String @db.VarChar(50)
+  contexte            ContextNature @default(GLOBAL)
 
   depense depense[]
 }
