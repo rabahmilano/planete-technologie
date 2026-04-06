@@ -2,6 +2,7 @@ import { Grid } from '@mui/material'
 import VoyageDetails from 'src/views/pages/voyages/details'
 import { VoyageProvider } from 'src/context/VoyageContext'
 import { CompteProvider } from 'src/context/CompteContext'
+import { DepenseProvider } from 'src/context/DepenseContext'
 
 const VoyageDetailsPageContent = () => {
   return (
@@ -15,11 +16,13 @@ const VoyageDetailsPageContent = () => {
 
 const VoyageDetailsPage = () => {
   return (
-    <CompteProvider>
-      <VoyageProvider>
-        <VoyageDetailsPageContent />
-      </VoyageProvider>
-    </CompteProvider>
+    <DepenseProvider>
+      <CompteProvider>
+        <VoyageProvider>
+          <VoyageDetailsPageContent />
+        </VoyageProvider>
+      </CompteProvider>
+    </DepenseProvider>
   )
 }
 
