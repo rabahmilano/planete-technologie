@@ -1,100 +1,111 @@
 import { useState, useEffect, useContext } from 'react'
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Grid,
-  Typography,
-  Box,
-  InputAdornment,
-  MenuItem,
-  IconButton,
-  Divider
-} from '@mui/material'
-import { useForm, Controller, useFieldArray } from 'react-hook-form'
-import axios from 'axios'
+import { Drawer, Box, Typography, IconButton, Button, Grid } from '@mui/material'
+import { useForm } from 'react-hook-form'
+import dayjs from 'dayjs'
 
 import Icon from 'src/@core/components/icon'
-import CustomTextField from 'src/@core/components/mui/text-field'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+import { formatMontant } from 'src/@core/utils/format'
 
-// Contexts
-import { useCompte } from 'src/context/CompteContext'
 import { VoyageContext } from 'src/context/VoyageContext'
+import { useCompte } from 'src/context/CompteContext'
+import { useProduit } from 'src/context/ProduitContext'
+
+import InfosGlobalesForm from './InfosGlobalesForm'
+import ArticlesPanier from './ArticlesPanier'
+import RecapitulatifFinancier from './RecapitulatifFinancier'
 
 const defaultValues = {
   fournisseur: '',
+  dateAchat: null,
   cptPaiementId: '',
-  deviseFacture: 'CNY',
-  tauxDzd: '',
-  montantFacture: '',
-  montantDebite: '',
+  deviseFacture: '',
+  tauxChange: '',
+  fraisIntermediaire: '',
   articles: [{ desPrd: '', catId: '', qte: '', puDevise: '' }]
 }
 
-const AddTransactionModal = ({ open, handleClose, voyageId, deviseDest, onSuccess }) => {
+const AddTransactionModal = ({ open, handleClose, voyageId, onSuccess }) => {
   const { comptes } = useCompte()
-  const { addTransactionVoyage } = useContext(VoyageContext)
+  const { addTransactionVoyage, getVoyageById } = useContext(VoyageContext)
+  const { listCategorie } = useProduit()
 
-  const [categories, setCategories] = useState([])
+  const [minDate, setMinDate] = useState(null)
+  const [maxDate, setMaxDate] = useState(null)
+
   const [openConfirm, setOpenConfirm] = useState(false)
   const [formDataToSubmit, setFormDataToSubmit] = useState(null)
 
   const { control, handleSubmit, reset, watch, setValue } = useForm({ defaultValues })
 
-  // useFieldArray gère la liste dynamique des articles de manière très optimisée
-  const { fields, append, remove } = useFieldArray({ control, name: 'articles' })
-
-  // Initialisation de la devise par défaut selon le voyage
   useEffect(() => {
-    if (open && deviseDest) setValue('deviseFacture', deviseDest)
-  }, [open, deviseDest, setValue])
+    if (open && voyageId) {
+      const initDonneesVoyage = async () => {
+        const v = await getVoyageById(voyageId)
+        if (v) {
+          setValue('deviseFacture', v.dev_dest || '')
+          setValue('tauxChange', v.taux_change || '')
+          setValue('cptPaiementId', v.cpt_defaut_id || '')
 
-  // Récupération des catégories de produits pour le menu déroulant
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/categories`) // Ajuste l'URL si nécessaire
-        setCategories(res.data)
-      } catch (error) {
-        console.error('Erreur chargement catégories', error)
+          if (v.date_dep) setMinDate(dayjs(v.date_dep))
+          if (v.date_ret) setMaxDate(dayjs(v.date_ret))
+          setValue('dateAchat', v.date_dep ? dayjs(v.date_dep) : dayjs())
+        }
       }
+      initDonneesVoyage()
     }
-    fetchCategories()
-  }, [])
+  }, [open, voyageId, setValue, getVoyageById])
+
+  const watchArticles = watch('articles')
+  const watchFraisInt = watch('fraisIntermediaire')
+  const watchCptId = watch('cptPaiementId')
+  const watchDevise = watch('deviseFacture')
+
+  const totalFacture =
+    watchArticles?.reduce((acc, item) => {
+      const qte = parseFloat(item.qte) || 0
+      const pu = parseFloat(item.puDevise) || 0
+      return acc + qte * pu
+    }, 0) || 0
+
+  const fraisIntermediaire = parseFloat(watchFraisInt) || 0
+  const sousTotal = totalFacture + fraisIntermediaire
+
+  const selectedCpt = comptes.find(c => c.id_cpt === watchCptId)
+  const commissionPct = selectedCpt ? parseFloat(selectedCpt.commission_pct || 0) : 0
+  const fraisCarte = sousTotal * (commissionPct / 100)
+
+  const montantPreleve = sousTotal + fraisCarte
 
   const onClose = () => {
     reset()
     handleClose()
   }
 
-  // Interception
   const onPreSubmit = data => {
     setFormDataToSubmit(data)
     setOpenConfirm(true)
   }
 
-  // Exécution finale
   const executeApiCall = async () => {
     setOpenConfirm(false)
     const data = formDataToSubmit
 
     const payload = {
-      idVoyage: parseInt(voyageId),
-      cptPaiementId: parseInt(data.cptPaiementId),
+      idVoyage: parseInt(voyageId, 10),
+      cptPaiementId: parseInt(data.cptPaiementId, 10),
       fournisseur: data.fournisseur,
+      dateAchat: dayjs(data.dateAchat).toISOString(),
       deviseFacture: data.deviseFacture,
-      tauxDzd: parseFloat(data.tauxDzd),
-      montantFacture: parseFloat(data.montantFacture),
-      montantDebite: parseFloat(data.montantDebite),
-      commBanque: 0,
-      commPaiement: 0,
+      tauxDzd: parseFloat(data.tauxChange),
+      montantFacture: totalFacture,
+      montantDebite: montantPreleve,
+      commPaiement: fraisIntermediaire,
+      commBanque: fraisCarte,
       articles: data.articles.map(a => ({
         desPrd: a.desPrd,
-        catId: parseInt(a.catId),
-        qte: parseInt(a.qte),
+        catId: parseInt(a.catId, 10),
+        qte: parseInt(a.qte, 10),
         puDevise: parseFloat(a.puDevise)
       }))
     }
@@ -103,255 +114,108 @@ const AddTransactionModal = ({ open, handleClose, voyageId, deviseDest, onSucces
       await addTransactionVoyage(payload)
       reset()
       onClose()
-      if (onSuccess) onSuccess() // Rafraîchit la page de détails
-    } catch (error) {
-      // L'erreur est gérée par les Toasts du VoyageContext
-    }
+      if (onSuccess) onSuccess()
+    } catch (error) {}
   }
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} fullWidth maxWidth='lg' scroll='body'>
-        <DialogTitle sx={{ pb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Icon icon='tabler:receipt' fontSize='1.75rem' color='#primary.main' />
-            <Typography variant='h5'>Ajouter une facture d'achat</Typography>
+      <Drawer
+        open={open}
+        anchor='right'
+        variant='temporary'
+        onClose={onClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{ '& .MuiDrawer-paper': { width: '100%' } }}
+      >
+        <form onSubmit={handleSubmit(onPreSubmit)} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              p: 5,
+              borderBottom: '1px solid rgba(0,0,0,0.08)',
+              backgroundColor: '#ffffff'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(40, 199, 111, 0.1)',
+                  borderRadius: 1,
+                  p: 2
+                }}
+              >
+                <Icon icon='tabler:shopping-cart-plus' fontSize='1.75rem' color='#28c76f' />
+              </Box>
+              <Typography variant='h5'>Nouvel Achat (Facture)</Typography>
+            </Box>
+            <IconButton size='small' onClick={onClose} sx={{ color: 'text.secondary' }}>
+              <Icon icon='tabler:x' fontSize='1.5rem' />
+            </IconButton>
           </Box>
-        </DialogTitle>
 
-        <form onSubmit={handleSubmit(onPreSubmit)}>
-          <DialogContent sx={{ pb: 6 }}>
-            {/* --- BLOC 1 : INFOS DE LA FACTURE --- */}
-            <Typography variant='subtitle2' sx={{ mb: 4, fontWeight: 600, color: 'primary.main' }}>
-              1. Informations Générales
-            </Typography>
-            <Grid container spacing={4}>
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name='fournisseur'
-                  control={control}
-                  render={({ field }) => <CustomTextField {...field} fullWidth label='Fournisseur (Optionnel)' />}
-                />
+          <Box sx={{ flex: 1, overflowY: 'auto', p: 6, backgroundColor: '#f5f5f9' }}>
+            <Grid container spacing={6}>
+              <Grid item xs={12} md={8} lg={9}>
+                <InfosGlobalesForm control={control} minDate={minDate} maxDate={maxDate} comptes={comptes} />
+                <Box sx={{ my: 6 }} />
+                <ArticlesPanier control={control} watch={watch} categories={listCategorie} />
               </Grid>
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name='cptPaiementId'
+
+              <Grid item xs={12} md={4} lg={3}>
+                <RecapitulatifFinancier
                   control={control}
-                  rules={{ required: 'Obligatoire' }}
-                  render={({ field, fieldState: { error } }) => (
-                    <CustomTextField
-                      select
-                      fullWidth
-                      label='Compte de paiement (Carte)'
-                      error={!!error}
-                      helperText={error?.message}
-                      {...field}
-                    >
-                      {comptes.map(c => (
-                        <MenuItem key={c.id_cpt} value={c.id_cpt}>
-                          {c.designation_cpt} ({c.dev_code})
-                        </MenuItem>
-                      ))}
-                    </CustomTextField>
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name='deviseFacture'
-                  control={control}
-                  rules={{ required: 'Obligatoire' }}
-                  render={({ field, fieldState: { error } }) => (
-                    <CustomTextField
-                      {...field}
-                      fullWidth
-                      label='Devise de la facture'
-                      error={!!error}
-                      helperText={error?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name='montantFacture'
-                  control={control}
-                  rules={{ required: 'Obligatoire' }}
-                  render={({ field, fieldState: { error } }) => (
-                    <CustomTextField
-                      {...field}
-                      fullWidth
-                      type='number'
-                      label='Montant Total (Facture)'
-                      error={!!error}
-                      helperText={error?.message}
-                      InputProps={{
-                        endAdornment: <InputAdornment position='end'>{watch('deviseFacture')}</InputAdornment>
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name='montantDebite'
-                  control={control}
-                  rules={{ required: 'Obligatoire' }}
-                  render={({ field, fieldState: { error } }) => (
-                    <CustomTextField
-                      {...field}
-                      fullWidth
-                      type='number'
-                      label='Montant prélevé sur la carte'
-                      error={!!error}
-                      helperText={error?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name='tauxDzd'
-                  control={control}
-                  rules={{ required: 'Obligatoire' }}
-                  render={({ field, fieldState: { error } }) => (
-                    <CustomTextField
-                      {...field}
-                      fullWidth
-                      type='number'
-                      label={`Taux douanier (1 ${watch('deviseFacture')} = ? DZD)`}
-                      error={!!error}
-                      helperText={error?.message}
-                    />
-                  )}
+                  watchDevise={watchDevise}
+                  totalFacture={totalFacture}
+                  commissionPct={commissionPct}
+                  fraisCarte={fraisCarte}
+                  montantPreleve={montantPreleve}
                 />
               </Grid>
             </Grid>
+          </Box>
 
-            <Divider sx={{ my: 6 }} />
-
-            {/* --- BLOC 2 : LISTE DES ARTICLES --- */}
-            <Typography variant='subtitle2' sx={{ mb: 4, fontWeight: 600, color: 'primary.main' }}>
-              2. Détail des articles (Colis)
-            </Typography>
-
-            {fields.map((item, index) => (
-              <Grid container spacing={4} key={item.id} alignItems='center' sx={{ mb: 4 }}>
-                <Grid item xs={12} sm={4}>
-                  <Controller
-                    name={`articles.${index}.desPrd`}
-                    control={control}
-                    rules={{ required: 'Obligatoire' }}
-                    render={({ field, fieldState: { error } }) => (
-                      <CustomTextField
-                        {...field}
-                        fullWidth
-                        label='Désignation Produit'
-                        error={!!error}
-                        helperText={error?.message}
-                      />
-                    )}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={3}>
-                  <Controller
-                    name={`articles.${index}.catId`}
-                    control={control}
-                    rules={{ required: 'Obligatoire' }}
-                    render={({ field, fieldState: { error } }) => (
-                      <CustomTextField
-                        select
-                        fullWidth
-                        label='Catégorie'
-                        error={!!error}
-                        helperText={error?.message}
-                        {...field}
-                      >
-                        {categories.map(cat => (
-                          <MenuItem key={cat.id_cat} value={cat.id_cat}>
-                            {cat.designation_cat}
-                          </MenuItem>
-                        ))}
-                      </CustomTextField>
-                    )}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={2}>
-                  <Controller
-                    name={`articles.${index}.qte`}
-                    control={control}
-                    rules={{ required: 'Obligatoire', min: 1 }}
-                    render={({ field, fieldState: { error } }) => (
-                      <CustomTextField
-                        {...field}
-                        fullWidth
-                        type='number'
-                        label='Quantité'
-                        error={!!error}
-                        helperText={error?.message}
-                      />
-                    )}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={2}>
-                  <Controller
-                    name={`articles.${index}.puDevise`}
-                    control={control}
-                    rules={{ required: 'Obligatoire', min: 0.01 }}
-                    render={({ field, fieldState: { error } }) => (
-                      <CustomTextField
-                        {...field}
-                        fullWidth
-                        type='number'
-                        label={`PU (${watch('deviseFacture')})`}
-                        error={!!error}
-                        helperText={error?.message}
-                      />
-                    )}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={1}>
-                  <IconButton color='error' onClick={() => remove(index)} disabled={fields.length === 1}>
-                    <Icon icon='tabler:trash' />
-                  </IconButton>
-                </Grid>
-              </Grid>
-            ))}
-
-            <Button
-              variant='outlined'
-              color='primary'
-              startIcon={<Icon icon='tabler:plus' />}
-              onClick={() => append({ desPrd: '', catId: '', qte: '', puDevise: '' })}
-            >
-              Ajouter un article
-            </Button>
-          </DialogContent>
-          <DialogActions sx={{ pb: 6, px: 6 }}>
+          <Box
+            sx={{
+              p: 5,
+              borderTop: '1px solid rgba(0,0,0,0.08)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 2,
+              backgroundColor: '#ffffff'
+            }}
+          >
             <Button variant='tonal' color='secondary' onClick={onClose}>
               Annuler
             </Button>
-            <Button type='submit' variant='contained'>
-              Enregistrer la facture
+            <Button type='submit' variant='contained' color='primary'>
+              Enregistrer l'achat
             </Button>
-          </DialogActions>
+          </Box>
         </form>
-      </Dialog>
+      </Drawer>
 
       <ConfirmDialog
         open={openConfirm}
         handleClose={() => setOpenConfirm(false)}
         handleConfirm={executeApiCall}
         actionType='create'
-        title='Confirmer la facture'
+        title='Confirmer la transaction'
         content={
           <Typography variant='body1'>
-            Vous êtes sur le point d'imputer une facture de{' '}
+            Vous êtes sur le point de valider une facture contenant{' '}
+            <strong>{watchArticles?.length || 0} article(s)</strong>. <br />
+            <br />
+            Un montant total de{' '}
             <strong>
-              {formDataToSubmit?.montantFacture} {formDataToSubmit?.deviseFacture}
+              {formatMontant(montantPreleve)} {watchDevise}
             </strong>{' '}
-            (qui sera prélevée sur votre carte) contenant{' '}
-            <strong>{formDataToSubmit?.articles?.length} article(s)</strong> à ce voyage. Confirmez-vous ?
+            sera prélevé sur votre compte bancaire. Confirmez-vous cette opération ?
           </Typography>
         }
       />

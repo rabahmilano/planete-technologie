@@ -3,6 +3,7 @@ import VoyageDetails from 'src/views/pages/voyages/details'
 import { VoyageProvider } from 'src/context/VoyageContext'
 import { CompteProvider } from 'src/context/CompteContext'
 import { DepenseProvider } from 'src/context/DepenseContext'
+import { ProduitProvider } from 'src/context/ProduitContext'
 
 const VoyageDetailsPageContent = () => {
   return (
@@ -16,13 +17,15 @@ const VoyageDetailsPageContent = () => {
 
 const VoyageDetailsPage = () => {
   return (
-    <DepenseProvider>
-      <CompteProvider>
-        <VoyageProvider>
-          <VoyageDetailsPageContent />
-        </VoyageProvider>
-      </CompteProvider>
-    </DepenseProvider>
+    <ProduitProvider>
+      <DepenseProvider>
+        <CompteProvider>
+          <VoyageProvider>
+            <VoyageDetailsPageContent />
+          </VoyageProvider>
+        </CompteProvider>
+      </DepenseProvider>
+    </ProduitProvider>
   )
 }
 

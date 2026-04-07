@@ -14,11 +14,9 @@ import {
   Typography
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
+import { formatMontant } from 'src/@core/utils/format'
 
 const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
-  const formatNumber = num =>
-    parseFloat(num || 0).toLocaleString('fr-DZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
   return (
     <Card sx={{ boxShadow: 3, borderRadius: 2, height: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 5 }}>
@@ -45,13 +43,23 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
       <Divider sx={{ m: '0 !important' }} />
       <TableContainer>
         <Table size='small'>
-          <TableHead sx={{ backgroundColor: 'rgba(0,0,0,0.02)' }}>
+          <TableHead sx={{ backgroundColor: '#0d1b2a' }}>
             <TableRow>
-              <TableCell>Fournisseur</TableCell>
-              <TableCell>Devise</TableCell>
-              <TableCell align='right'>Total Devise</TableCell>
-              <TableCell align='right'>Total DZD</TableCell>
-              <TableCell align='center'>Articles</TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Fournisseur
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Devise
+              </TableCell>
+              <TableCell align='right' sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Total Devise
+              </TableCell>
+              <TableCell align='right' sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Total DZD
+              </TableCell>
+              <TableCell align='center' sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Articles
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -70,14 +78,22 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip label={t.devise_transaction} size='small' />
+                    <Chip
+                      label={t.devise_transaction}
+                      size='small'
+                      color='primary'
+                      variant='tonal'
+                      sx={{ fontWeight: 'bold' }}
+                    />
                   </TableCell>
                   <TableCell align='right'>
                     <Typography variant='body2' fontWeight={600}>
-                      {formatNumber(t.montant_total)}
+                      {formatMontant(t.montant_total)}
                     </Typography>
                   </TableCell>
-                  <TableCell align='right'>{formatNumber(t.montant_total * t.taux_transaction)}</TableCell>
+                  <TableCell align='right' sx={{ fontWeight: 700, color: 'success.main' }}>
+                    {formatMontant(t.montant_total * t.taux_transaction)} DZD
+                  </TableCell>
                   <TableCell align='center'>
                     <Chip label={`${t._count?.colis_voyage || 0} lots`} variant='outlined' size='small' />
                   </TableCell>
