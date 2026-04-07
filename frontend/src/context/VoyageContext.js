@@ -88,7 +88,7 @@ export const VoyageProvider = ({ children }) => {
 
   const addTransactionVoyage = async transactionData => {
     try {
-      await axios.post(`${API_URL}/${transactionData.idVoyage}/transactions`, transactionData)
+      await axios.post(`${API_URL}/${transactionData.idVoyage}/addTransaction`, transactionData)
       toast.success('Transaction enregistrée !')
       return true
     } catch (err) {
