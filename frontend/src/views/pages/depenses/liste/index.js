@@ -56,13 +56,14 @@ const ListeDepensesView = () => {
   }, [listNature])
 
   const { totalDepensesFiltrees, totalCoffreFortFiltre, chartData } = useMemo(() => {
-    const depensesOperationnelles = depenses.filter(d => d.nature !== 'COFFRE FORT')
-    const epargneCoffreFort = depenses.filter(d => d.nature === 'COFFRE FORT')
+    const depensesValides = depenses.filter(d => d.isAnnule === false)
+
+    const depensesOperationnelles = depensesValides.filter(d => d.nature !== 'COFFRE FORT')
+    const epargneCoffreFort = depensesValides.filter(d => d.nature === 'COFFRE FORT')
 
     const totalDep = depensesOperationnelles.reduce((acc, curr) => acc + parseFloat(curr.montant || 0), 0)
     const totalCf = epargneCoffreFort.reduce((acc, curr) => acc + parseFloat(curr.montant || 0), 0)
 
-    // 1. On calcule les données pour le graphique et on les stocke dans une variable `dataForChart`
     const dataForChart = Object.values(
       depensesOperationnelles.reduce((acc, { nature, montant }) => {
         acc[nature] = { name: nature, value: (acc[nature]?.value || 0) + parseFloat(montant || 0) }
@@ -83,12 +84,9 @@ const ListeDepensesView = () => {
     setPage(0)
   }
 
-  // Fonction pour rafraîchir les données après une modification ou annulation
   const handleRefreshData = async () => {
-    // 1. Rafraîchit le tableau principal
     await fetchData(page, rowsPerPage, { nature: natureFiltre, periode: periodeFiltre })
 
-    // 2. Force le recalcul des KPIs en haut de la page (Coffre-fort, Total, etc.)
     if (fetchGlobalStats) {
       await fetchGlobalStats()
     }
@@ -120,11 +118,8 @@ const ListeDepensesView = () => {
           totalCoffreFortFiltre={totalCoffreFortFiltre}
         />
       </Grid>
-      {/* COLONNE DE GAUCHE : LES GRAPHES */}
       <Grid item xs={12} md={4} sx={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* 1er GRAPHE : LA PÉRIODE */}
         <ExpensesChart title='Répartition des Dépenses (Période)' data={chartData} />
-        {/* 2ème GRAPHE : LE GLOBAL */}
         <ExpensesChart title='Répartition des Dépenses (Global)' data={globalChartData} />
       </Grid>
       <Grid item xs={12} lg={8}>

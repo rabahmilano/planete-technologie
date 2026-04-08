@@ -234,6 +234,7 @@ export const deleteDepense = [
       await prisma.$transaction(async (tx) => {
         const depense = await tx.depense.findUnique({
           where: { id_op_dep: parseInt(id) },
+          include: { voyage: true },
         });
 
         if (!depense) throw new Error("NOT_FOUND");
@@ -244,9 +245,24 @@ export const deleteDepense = [
           data: { solde_actuel: { increment: depense.mnt_dep } },
         });
 
+        let dataUpdate = { isAnnule: true };
+
+        if (depense.voyage_id && depense.voyage) {
+          const traceStr = `[Annulée - Était liée au voyage : ${depense.voyage.des_voyage}]`;
+          const nouvelleObservation = depense.observation
+            ? `${traceStr} ${depense.observation}`
+            : traceStr;
+
+          dataUpdate = {
+            ...dataUpdate,
+            voyage_id: null,
+            observation: nouvelleObservation,
+          };
+        }
+
         await tx.depense.update({
           where: { id_op_dep: parseInt(id) },
-          data: { isAnnule: true },
+          data: dataUpdate,
         });
       });
 
