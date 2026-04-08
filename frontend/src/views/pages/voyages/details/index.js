@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react'
+import { useState, useEffect, useContext, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { Grid, Box, CircularProgress, Card, CardContent, Typography, Button } from '@mui/material'
 import Icon from 'src/@core/components/icon'
@@ -16,24 +16,37 @@ const VoyageDetails = () => {
   const { getVoyageById } = useContext(VoyageContext)
 
   const [voyage, setVoyage] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [openTransactionModal, setOpenTransactionModal] = useState(false)
   const [openDepenseModal, setOpenDepenseModal] = useState(false)
 
-  const fetchDetails = async () => {
-    if (id) {
-      setLoading(true)
-      const data = await getVoyageById(id)
-      if (data) setVoyage(data)
-      setLoading(false)
-    }
-  }
+  const fetchDetails = useCallback(
+    async (isSilentRefresh = false) => {
+      if (id) {
+        if (!isSilentRefresh) {
+          setInitialLoading(true)
+        }
+
+        const data = await getVoyageById(id)
+        if (data) setVoyage(data)
+
+        if (!isSilentRefresh) {
+          setInitialLoading(false)
+        }
+      }
+    },
+    [id, getVoyageById]
+  )
 
   useEffect(() => {
-    fetchDetails()
-  }, [id])
+    fetchDetails(false)
+  }, [fetchDetails])
 
-  if (loading) {
+  const handleSilentRefresh = () => {
+    fetchDetails(true)
+  }
+
+  if (initialLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
         <CircularProgress />
@@ -89,24 +102,19 @@ const VoyageDetails = () => {
         />
       </Grid>
 
-      {openTransactionModal && (
-        <AddTransactionModal
-          open={openTransactionModal}
-          handleClose={() => setOpenTransactionModal(false)}
-          voyageId={id}
-          deviseDest={voyage.dev_dest}
-          onSuccess={fetchDetails}
-        />
-      )}
+      <AddTransactionModal
+        open={openTransactionModal}
+        handleClose={() => setOpenTransactionModal(false)}
+        voyage={voyage}
+        onSuccess={handleSilentRefresh}
+      />
 
-      {openDepenseModal && (
-        <AddDepenseModal
-          open={openDepenseModal}
-          handleClose={() => setOpenDepenseModal(false)}
-          voyageId={id}
-          onSuccess={fetchDetails}
-        />
-      )}
+      <AddDepenseModal
+        open={openDepenseModal}
+        handleClose={() => setOpenDepenseModal(false)}
+        voyageId={id}
+        onSuccess={handleSilentRefresh}
+      />
     </Grid>
   )
 }
