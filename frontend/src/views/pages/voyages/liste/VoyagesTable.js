@@ -43,14 +43,26 @@ const VoyagesTable = ({ voyages, loading, onAction }) => {
     <>
       <TableContainer>
         <Table sx={{ minWidth: 800 }}>
-          <TableHead sx={{ backgroundColor: 'rgba(0,0,0,0.02)' }}>
+          <TableHead sx={{ backgroundColor: '#0d1b2a' }}>
             <TableRow>
-              <TableCell>Désignation</TableCell>
-              <TableCell>Destination</TableCell>
-              <TableCell>Dates (Aller - Retour)</TableCell>
-              <TableCell>Contenu du dossier</TableCell>
-              <TableCell>Statut</TableCell>
-              <TableCell align='right'>Actions</TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Désignation
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Destination
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Dates (Aller - Retour)
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Contenu du dossier
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Statut
+              </TableCell>
+              <TableCell align='right' sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Actions
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -75,9 +87,13 @@ const VoyagesTable = ({ voyages, loading, onAction }) => {
                     <Typography variant='subtitle2' sx={{ fontWeight: 600 }}>
                       {voyage.des_voyage}
                     </Typography>
-                    <Typography variant='caption' color='textSecondary'>
-                      Devise : {voyage.dev_dest}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      <Icon icon='tabler:credit-card' fontSize='0.9rem' color='text.secondary' />
+                      <Typography variant='caption' color='textSecondary'>
+                        {voyage.compte_defaut?.designation_cpt || 'Aucun compte par défaut'}{' '}
+                        {voyage.dev_dest ? `(${voyage.dev_dest})` : ''}
+                      </Typography>
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Typography variant='body2'>{voyage.dest_voyage || '--'}</Typography>
@@ -111,12 +127,19 @@ const VoyagesTable = ({ voyages, loading, onAction }) => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={getStatusLabel(voyage.statut_voy)}
-                      color={getStatusColor(voyage.statut_voy)}
-                      size='small'
-                      sx={{ fontWeight: 600 }}
-                    />
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <Chip
+                        label={getStatusLabel(voyage.statut_voy)}
+                        color={getStatusColor(voyage.statut_voy)}
+                        size='small'
+                        sx={{ fontWeight: 600 }}
+                      />
+                      {voyage.statut_voy === 'CLOTURE' && voyage.coeff_approche && (
+                        <Typography variant='caption' sx={{ mt: 1, fontWeight: 700, color: 'success.main' }}>
+                          Coeff Final : {parseFloat(voyage.coeff_approche).toFixed(4)}
+                        </Typography>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell align='right'>
                     <Tooltip title='Voir les détails'>
@@ -151,6 +174,11 @@ const VoyagesTable = ({ voyages, loading, onAction }) => {
         {selectedVoyage?.statut_voy === 'CLOTURE' && (
           <MenuItem onClick={() => handleAction('REOUVRIR')} sx={{ color: 'warning.main' }}>
             <Icon icon='tabler:lock-open' style={{ marginRight: 8 }} /> Réouvrir le voyage
+          </MenuItem>
+        )}
+        {selectedVoyage?._count?.depenses === 0 && selectedVoyage?._count?.transactions === 0 && (
+          <MenuItem onClick={() => handleAction('SUPPRIMER')} sx={{ color: 'error.main' }}>
+            <Icon icon='tabler:trash' style={{ marginRight: 8 }} /> Supprimer le dossier
           </MenuItem>
         )}
       </Menu>

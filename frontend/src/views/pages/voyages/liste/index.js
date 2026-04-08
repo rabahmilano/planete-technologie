@@ -7,13 +7,15 @@ import { VoyageContext } from 'src/context/VoyageContext'
 import VoyagesTable from './VoyagesTable'
 import ModalDemarrerVoyage from './ModalDemarrerVoyage'
 import ModalReouvrirVoyage from './ModalReouvrirVoyage'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 const VoyagesList = () => {
-  const { voyages, loading, changerStatutVoyage, fetchVoyages } = useContext(VoyageContext)
+  const { voyages, loading, changerStatutVoyage, fetchVoyages, deleteVoyage } = useContext(VoyageContext)
 
   const [activeVoyage, setActiveVoyage] = useState(null)
   const [openDemarrerModal, setOpenDemarrerModal] = useState(false)
   const [openReouvrirModal, setOpenReouvrirModal] = useState(false)
+  const [openDeleteModal, setOpenDeleteModal] = useState(false)
 
   useEffect(() => {
     fetchVoyages()
@@ -26,6 +28,8 @@ const VoyagesList = () => {
       setOpenDemarrerModal(true)
     } else if (actionType === 'REOUVRIR') {
       setOpenReouvrirModal(true)
+    } else if (actionType === 'SUPPRIMER') {
+      setOpenDeleteModal(true)
     } else if (actionType === 'CLOTURER') {
       await changerStatutVoyage(voyage.id_voyage, 'CLOTURE')
       setActiveVoyage(null)
@@ -41,6 +45,12 @@ const VoyagesList = () => {
   const validerReouverture = async () => {
     await changerStatutVoyage(activeVoyage.id_voyage, 'EN_COURS')
     setOpenReouvrirModal(false)
+    setActiveVoyage(null)
+  }
+
+  const validerSuppression = async () => {
+    await deleteVoyage(activeVoyage.id_voyage)
+    setOpenDeleteModal(false)
     setActiveVoyage(null)
   }
 
@@ -86,6 +96,15 @@ const VoyagesList = () => {
           onValidate={validerReouverture}
         />
       )}
+
+      <ConfirmDialog
+        open={openDeleteModal}
+        handleClose={() => setOpenDeleteModal(false)}
+        handleConfirm={validerSuppression}
+        actionType='delete'
+        title='Supprimer le voyage'
+        content={`Êtes-vous sûr de vouloir supprimer le dossier "${activeVoyage?.des_voyage}" ? Cette action est irréversible.`}
+      />
     </>
   )
 }

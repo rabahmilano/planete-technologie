@@ -10,7 +10,10 @@ export const getAllVoyages = async (req, res) => {
           select: { designation_cpt: true, dev_code: true },
         },
         _count: {
-          select: { depenses: true, transactions: true },
+          select: {
+            depenses: { where: { isAnnule: false } },
+            transactions: true,
+          },
         },
       },
       orderBy: { date_dep: "desc" },
@@ -35,6 +38,7 @@ export const getVoyageById = async (req, res) => {
       include: {
         compte_defaut: { select: { designation_cpt: true, dev_code: true } },
         depenses: {
+          where: { isAnnule: false },
           include: { nature_dep: true, compte: true },
           orderBy: { date_dep: "desc" },
         },
@@ -51,14 +55,10 @@ export const getVoyageById = async (req, res) => {
     if (!voyage)
       return res.status(404).json({ message: "Voyage introuvable." });
 
-    // Calcul du total des dépenses annexes (logistique, séjour, etc.)
     const totalDepensesDZD = arrondir(
-      voyage.depenses
-        .filter((d) => !d.isAnnule)
-        .reduce((sum, d) => sum + parseFloat(d.mnt_dep_dzd), 0),
+      voyage.depenses.reduce((sum, d) => sum + parseFloat(d.mnt_dep_dzd), 0),
     );
 
-    // Isolation du coût d'achat fournisseur (Montant de la facture pure)
     const totalAchatsDZD = arrondir(
       voyage.transactions.reduce(
         (sum, t) => sum + parseFloat(t.mnt_tot_fact) * parseFloat(t.taux_trans),
@@ -66,7 +66,6 @@ export const getVoyageById = async (req, res) => {
       ),
     );
 
-    // Isolation des commissions du moyen de paiement (ex: Alipay, WeChat)
     const totalCommPaieDZD = arrondir(
       voyage.transactions.reduce(
         (sum, t) =>
@@ -75,7 +74,6 @@ export const getVoyageById = async (req, res) => {
       ),
     );
 
-    // Isolation des commissions bancaires (ex: Frais de virement)
     const totalCommBanqueDZD = arrondir(
       voyage.transactions.reduce(
         (sum, t) =>
@@ -84,7 +82,6 @@ export const getVoyageById = async (req, res) => {
       ),
     );
 
-    // Coût global actuel préparatoire au calcul du Coefficient d'Approche
     const coutTotalDZD = arrondir(
       totalDepensesDZD + totalAchatsDZD + totalCommPaieDZD + totalCommBanqueDZD,
     );
@@ -242,7 +239,14 @@ export const deleteVoyage = async (req, res) => {
   try {
     const voyage = await prisma.voyage.findUnique({
       where: { id_voyage: id },
-      include: { _count: { select: { depenses: true, transactions: true } } },
+      include: {
+        _count: {
+          select: {
+            depenses: { where: { isAnnule: false } },
+            transactions: true,
+          },
+        },
+      },
     });
 
     if (!voyage) return res.status(404).json({ message: "Voyage introuvable" });
@@ -250,7 +254,7 @@ export const deleteVoyage = async (req, res) => {
     if (voyage._count.depenses > 0 || voyage._count.transactions > 0) {
       return res.status(403).json({
         message:
-          "Impossible de supprimer ce voyage car il contient des dépenses ou des transactions.",
+          "Impossible de supprimer ce voyage car il contient des dépenses ou des transactions actives.",
       });
     }
 
@@ -529,14 +533,12 @@ export const addTransactionVoyage = [
         .json({ message: "Facture et articles enregistrés avec succès." });
     } catch (error) {
       if (error.message === "DATE_ACHAT_HORS_VOYAGE") {
-        return res
-          .status(400)
-          .json({
-            error: {
-              message:
-                "La date d'achat doit être comprise entre la date de départ et la date de retour du voyage.",
-            },
-          });
+        return res.status(400).json({
+          error: {
+            message:
+              "La date d'achat doit être comprise entre la date de départ et la date de retour du voyage.",
+          },
+        });
       }
       res.status(400).json({ error: { message: error.message } });
     }

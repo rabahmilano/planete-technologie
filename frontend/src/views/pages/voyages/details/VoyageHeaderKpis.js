@@ -1,118 +1,143 @@
-import { Card, CardContent, Grid, Typography, Box, Chip } from '@mui/material'
+import { Card, CardContent, Grid, Typography, Box, Divider, Chip } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import dayjs from 'dayjs'
-
 import { formatMontant } from 'src/@core/utils/format'
-import { getStatusColor } from 'src/@core/utils/voyageUtils'
+import { getStatusColor, getStatusLabel } from 'src/@core/utils/voyageUtils'
 
 const VoyageHeaderKpis = ({ voyage }) => {
+  if (!voyage) return null
+
+  const { kpis } = voyage
+
+  const coeffEstime = kpis?.totalAchatsDZD > 0 ? kpis.coutTotalDZD / kpis.totalAchatsDZD : 0
+
   return (
-    <Card sx={{ boxShadow: 3, borderRadius: 2 }}>
+    <Card>
       <CardContent>
-        <Grid container spacing={4} alignItems='center'>
-          <Grid item xs={12} md={5}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mb: 2 }}>
-              <Icon icon='tabler:plane' fontSize='2.5rem' color='#primary.main' />
-              <Typography variant='h4'>{voyage.des_voyage}</Typography>
-              <Chip
-                label={voyage.statut_voy.replace('_', ' ')}
-                color={getStatusColor(voyage.statut_voy)}
-                size='small'
-                sx={{ fontWeight: 'bold' }}
-              />
-            </Box>
-            <Typography variant='body1' color='textSecondary' sx={{ mb: 1 }}>
-              <Icon icon='tabler:map-pin' fontSize='1.1rem' style={{ verticalAlign: 'sub', marginRight: 4 }} />
-              {voyage.dest_voyage || 'Destination non précisée'}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 6 }}>
+          <Box>
+            <Typography variant='h5' sx={{ fontWeight: 700, color: 'text.primary', mb: 4 }}>
+              {voyage.des_voyage}
             </Typography>
-            <Typography variant='body2' color='textSecondary'>
-              <Icon icon='tabler:calendar-event' fontSize='1.1rem' style={{ verticalAlign: 'sub', marginRight: 4 }} />
-              Du {dayjs(voyage.date_dep).format('DD/MM/YYYY')} au {dayjs(voyage.date_ret).format('DD/MM/YYYY')}
-            </Typography>
-          </Grid>
-
-          <Grid item xs={12} md={7}>
-            <Grid container spacing={4}>
-              <Grid item xs={12} sm={3}>
-                <Box
-                  sx={{
-                    p: 3,
-                    backgroundColor: 'rgba(40, 199, 111, 0.1)',
-                    borderRadius: 1,
-                    border: '1px solid rgba(40, 199, 111, 0.2)'
-                  }}
-                >
-                  <Typography variant='caption' color='success.main' sx={{ fontWeight: 600 }}>
-                    MARCHANDISES
-                  </Typography>
-                  <Typography variant='h6' sx={{ color: 'success.main', mt: 1 }}>
-                    {formatMontant(voyage.kpis?.totalAchatsDZD)} DA
-                  </Typography>
-                </Box>
-              </Grid>
-
-              <Grid item xs={12} sm={3}>
-                <Box
-                  sx={{
-                    p: 3,
-                    backgroundColor: 'rgba(234, 84, 85, 0.1)',
-                    borderRadius: 1,
-                    border: '1px solid rgba(234, 84, 85, 0.2)'
-                  }}
-                >
-                  <Typography variant='caption' color='error.main' sx={{ fontWeight: 600 }}>
-                    FRAIS ANNEXES
-                  </Typography>
-                  <Typography variant='h6' sx={{ color: 'error.main', mt: 1 }}>
-                    {formatMontant(voyage.kpis?.totalDepensesDZD)} DA
-                  </Typography>
-                </Box>
-              </Grid>
-
-              <Grid item xs={12} sm={3}>
-                <Box
-                  sx={{
-                    p: 3,
-                    backgroundColor: 'rgba(255, 159, 67, 0.1)',
-                    borderRadius: 1,
-                    border: '1px solid rgba(255, 159, 67, 0.2)'
-                  }}
-                >
-                  <Typography variant='caption' color='warning.main' sx={{ fontWeight: 600 }}>
-                    COMMISSIONS
-                  </Typography>
-                  <Typography variant='h6' sx={{ color: 'warning.main', mt: 1 }}>
-                    {formatMontant(voyage.kpis?.totalCommissionsDZD)} DA
-                  </Typography>
-                </Box>
-              </Grid>
-
-              <Grid item xs={12} sm={3}>
-                <Box
-                  sx={{
-                    p: 3,
-                    backgroundColor: 'rgba(115, 103, 240, 0.1)',
-                    borderRadius: 1,
-                    border: '1px solid rgba(115, 103, 240, 0.2)'
-                  }}
-                >
-                  <Typography variant='caption' color='primary.main' sx={{ fontWeight: 600 }}>
-                    COÛT DE REVIENT
-                  </Typography>
-                  <Typography variant='h6' sx={{ color: 'primary.main', mt: 1 }}>
-                    {formatMontant(voyage.kpis?.coutTotalDZD)} DA
-                  </Typography>
-                </Box>
-              </Grid>
-            </Grid>
-
-            {voyage.statut_voy === 'CLOTURE' && (
-              <Box sx={{ mt: 3, textAlign: 'right' }}>
-                <Typography variant='body2' color='textSecondary'>
-                  Coefficient d'approche calculé : <strong>{formatMontant(voyage.coeff_approche, 4)}</strong>
+            <Box sx={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Box>
+                <Typography variant='caption' color='textSecondary' sx={{ textTransform: 'uppercase' }}>
+                  Destination
+                </Typography>
+                <Typography variant='body2' fontWeight={600}>
+                  {voyage.dest_voyage || '--'}
                 </Typography>
               </Box>
-            )}
+              <Box>
+                <Typography variant='caption' color='textSecondary' sx={{ textTransform: 'uppercase' }}>
+                  Devise
+                </Typography>
+                <Typography variant='body2' fontWeight={600}>
+                  {voyage.dev_dest}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant='caption' color='textSecondary' sx={{ textTransform: 'uppercase' }}>
+                  Compte par défaut
+                </Typography>
+                <Typography variant='body2' fontWeight={600}>
+                  {voyage.compte_defaut?.designation_cpt || 'Non défini'}
+                </Typography>
+              </Box>
+              {voyage.statut_voy === 'CLOTURE' && voyage.coeff_approche ? (
+                <Box>
+                  <Typography
+                    variant='caption'
+                    color='success.main'
+                    sx={{ textTransform: 'uppercase', fontWeight: 'bold' }}
+                  >
+                    Coeff Final
+                  </Typography>
+                  <Typography variant='body2' color='success.main' fontWeight={700}>
+                    {parseFloat(voyage.coeff_approche).toFixed(4)}
+                  </Typography>
+                </Box>
+              ) : coeffEstime > 0 ? (
+                <Box>
+                  <Typography
+                    variant='caption'
+                    color='info.main'
+                    sx={{ textTransform: 'uppercase', fontWeight: 'bold' }}
+                  >
+                    Coeff Estimé
+                  </Typography>
+                  <Typography variant='body2' color='info.main' fontWeight={700}>
+                    {coeffEstime.toFixed(4)}
+                  </Typography>
+                </Box>
+              ) : null}
+            </Box>
+          </Box>
+          <Chip
+            label={getStatusLabel(voyage.statut_voy)}
+            color={getStatusColor(voyage.statut_voy)}
+            sx={{ fontWeight: 700, px: 2 }}
+          />
+        </Box>
+
+        <Divider sx={{ mb: 6 }} />
+
+        <Grid container spacing={4} sx={{ textAlign: 'center' }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Box sx={{ p: 4, borderRadius: 1, backgroundColor: 'rgba(0,0,0,0.02)' }}>
+              <Typography
+                variant='body2'
+                color='textSecondary'
+                sx={{ textTransform: 'uppercase', fontWeight: 600, mb: 1 }}
+              >
+                Total Achats (TTC)
+              </Typography>
+              <Typography variant='h6' color='text.primary' fontWeight={700}>
+                {formatMontant(kpis?.totalAchatsDZD)} DZD
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Box sx={{ p: 4, borderRadius: 1, backgroundColor: 'rgba(0,0,0,0.02)' }}>
+              <Typography
+                variant='body2'
+                color='textSecondary'
+                sx={{ textTransform: 'uppercase', fontWeight: 600, mb: 1 }}
+              >
+                Frais Annexes
+              </Typography>
+              <Typography variant='h6' color='error.main' fontWeight={700}>
+                {formatMontant(kpis?.totalDepensesDZD)} DZD
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Box sx={{ p: 4, borderRadius: 1, backgroundColor: 'rgba(0,0,0,0.02)' }}>
+              <Typography
+                variant='body2'
+                color='textSecondary'
+                sx={{ textTransform: 'uppercase', fontWeight: 600, mb: 1 }}
+              >
+                Frais Bancaires
+              </Typography>
+              <Typography variant='h6' color='info.main' fontWeight={700}>
+                {formatMontant(kpis?.totalCommBanqueDZD + kpis?.totalCommPaieDZD)} DZD
+              </Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Box sx={{ p: 4, borderRadius: 1, backgroundColor: 'rgba(40, 199, 111, 0.1)' }}>
+              <Typography
+                variant='body2'
+                color='success.main'
+                sx={{ textTransform: 'uppercase', fontWeight: 700, mb: 1 }}
+              >
+                Coût Global Estimé
+              </Typography>
+              <Typography variant='h5' color='success.main' fontWeight={800}>
+                {formatMontant(kpis?.coutTotalDZD)} DZD
+              </Typography>
+            </Box>
           </Grid>
         </Grid>
       </CardContent>
