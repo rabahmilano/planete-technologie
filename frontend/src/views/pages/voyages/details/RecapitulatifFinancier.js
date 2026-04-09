@@ -1,44 +1,60 @@
 import React from 'react'
-import { Typography, Card, CardContent, Box, Divider, InputAdornment } from '@mui/material'
+import { Typography, Box, InputAdornment, Grid } from '@mui/material'
 import { Controller } from 'react-hook-form'
 
 import CustomTextField from 'src/@core/components/mui/text-field'
 import CleaveInput from 'src/components/CleaveInput'
 import { formatMontant } from 'src/@core/utils/format'
 
-const RecapitulatifFinancier = ({ watchDevise, totalFacture, commissionPct, fraisCarte, montantPreleve, control }) => {
-  return (
-    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', boxShadow: 3 }}>
-      <CardContent sx={{ p: 6, flexGrow: 1 }}>
-        <Typography
-          variant='subtitle1'
-          sx={{ mb: 6, fontWeight: 700, color: 'primary.main', textTransform: 'uppercase' }}
-        >
-          Récapitulatif
-        </Typography>
+const RecapitulatifFinancier = ({
+  control,
+  watchDevise,
+  deviseCompte,
+  totalFacture,
+  tauxTrans,
+  tauxCompte,
+  commissionPct,
+  fraisCarte,
+  montantPreleve,
+  articlesCount
+}) => {
+  const totalDzd = totalFacture * tauxTrans
+  const totalDeviseCompte = totalDzd / tauxCompte
+  const totalAPayerCompte = (montantPreleve * tauxTrans) / tauxCompte
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
-          <Typography variant='body1'>Total Articles</Typography>
-          <Typography variant='body1' fontWeight={600}>
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 6, alignItems: 'flex-start' }}>
+        <Typography variant='h6' sx={{ fontWeight: 700 }}>
+          Total articles : {articlesCount}
+        </Typography>
+        <Box textAlign='right'>
+          <Typography variant='h6' fontWeight={800} color='primary.main'>
             {formatMontant(totalFacture)} {watchDevise}
           </Typography>
-        </Box>
-
-        <Box sx={{ mb: 4 }}>
-          <Typography variant='body2' sx={{ mb: 2 }}>
-            Frais Intermédiaire
+          {watchDevise !== deviseCompte && (
+            <Typography variant='body2' color='textSecondary'>
+              {formatMontant(totalDeviseCompte)} {deviseCompte}
+            </Typography>
+          )}
+          <Typography variant='body2' color='success.main' fontWeight='bold'>
+            {formatMontant(totalDzd)} DZD
           </Typography>
+        </Box>
+      </Box>
+
+      <Grid container spacing={4} sx={{ mb: 6 }}>
+        <Grid item xs={12}>
           <Controller
             name='fraisIntermediaire'
             control={control}
-            render={({ field, fieldState: { error } }) => (
+            render={({ field }) => (
               <CustomTextField
                 {...field}
                 fullWidth
+                label='Frais intermédiaire'
                 size='small'
                 autoComplete='off'
-                error={!!error}
-                helperText={error?.message}
                 InputProps={{
                   inputComponent: CleaveInput,
                   endAdornment: <InputAdornment position='end'>{watchDevise}</InputAdornment>
@@ -46,38 +62,39 @@ const RecapitulatifFinancier = ({ watchDevise, totalFacture, commissionPct, frai
               />
             )}
           />
-        </Box>
+        </Grid>
+      </Grid>
 
-        <Divider sx={{ my: 5 }} />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 6 }}>
+        <Typography variant='body2' color='textSecondary'>
+          Frais bancaire ({commissionPct}%)
+        </Typography>
+        <Typography variant='body2' color='error.main' fontWeight='bold'>
+          + {formatMontant(fraisCarte)} {watchDevise}
+        </Typography>
+      </Box>
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
-          <Typography variant='body2' color='textSecondary'>
-            Frais Bancaire ({commissionPct}%)
+      <Box
+        sx={{
+          p: 4,
+          backgroundColor: 'rgba(115, 103, 240, 0.08)',
+          border: '1px solid rgba(115, 103, 240, 0.2)',
+          borderRadius: 1
+        }}
+      >
+        <Typography variant='caption' sx={{ textTransform: 'uppercase', fontWeight: 700, color: 'primary.main' }}>
+          Montant total à payer
+        </Typography>
+        <Typography variant='h4' color='primary.main' sx={{ fontWeight: 800, mt: 1 }}>
+          {formatMontant(montantPreleve)} {watchDevise}
+        </Typography>
+        {watchDevise !== deviseCompte && (
+          <Typography variant='body1' color='textSecondary' sx={{ mt: 1, fontWeight: 600 }}>
+            Prélèvement compte : ~ {formatMontant(totalAPayerCompte)} {deviseCompte}
           </Typography>
-          <Typography variant='body2' color='error.main'>
-            + {formatMontant(fraisCarte)} {watchDevise}
-          </Typography>
-        </Box>
-
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            mt: 6,
-            p: 4,
-            backgroundColor: 'rgba(40, 199, 111, 0.1)',
-            borderRadius: 1
-          }}
-        >
-          <Typography variant='h6' color='success.main'>
-            Prélevé
-          </Typography>
-          <Typography variant='h6' color='success.main'>
-            {formatMontant(montantPreleve)} {watchDevise}
-          </Typography>
-        </Box>
-      </CardContent>
-    </Card>
+        )}
+      </Box>
+    </Box>
   )
 }
 

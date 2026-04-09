@@ -71,7 +71,7 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
               </TableRow>
             ) : (
               transactions?.map(t => (
-                <TableRow hover key={t.id_transaction}>
+                <TableRow hover key={t.id_trans}>
                   <TableCell>
                     <Typography variant='body2' fontWeight={600}>
                       {t.fournisseur || 'Inconnu'}
@@ -79,7 +79,7 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={t.devise_transaction}
+                      label={t.dev_trans}
                       size='small'
                       color='primary'
                       variant='tonal'
@@ -88,11 +88,11 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
                   </TableCell>
                   <TableCell align='right'>
                     <Typography variant='body2' fontWeight={600}>
-                      {formatMontant(t.montant_total)}
+                      {formatMontant(t.mnt_tot_fact)}
                     </Typography>
                   </TableCell>
                   <TableCell align='right' sx={{ fontWeight: 700, color: 'success.main' }}>
-                    {formatMontant(t.montant_total * t.taux_transaction)} DZD
+                    {formatMontant(parseFloat(t.mnt_tot_fact || 0) * parseFloat(t.taux_trans || 1))} DZD
                   </TableCell>
                   <TableCell align='center'>
                     <Chip label={`${t._count?.colis_voyage || 0} lots`} variant='outlined' size='small' />
