@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Grid, Typography, MenuItem, Box, Button, Autocomplete, InputAdornment } from '@mui/material'
+import { Grid, Typography, Box, Button, Autocomplete, InputAdornment, CircularProgress } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import CustomTextField from 'src/@core/components/mui/text-field'
 import CleaveInput from 'src/components/CleaveInput'
@@ -9,12 +9,15 @@ const AjoutRapideLigne = ({ append, categories, rechercherProduits, deviseTrans 
   const [draft, setDraft] = useState({ desPrd: '', catId: '', qte: '', puDevise: '' })
   const [options, setOptions] = useState([])
   const [inputValue, setInputValue] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (inputValue.length >= 3) {
+        setLoading(true)
         const results = await rechercherProduits(inputValue)
         setOptions(results || [])
+        setLoading(false)
       } else {
         setOptions([])
       }
@@ -36,42 +39,67 @@ const AjoutRapideLigne = ({ append, categories, rechercherProduits, deviseTrans 
   const puVal = parseFloat(draft.puDevise) || 0
   const totalLigne = qteVal * puVal
 
+  const selectedProduit = options.find(o => o.designation_prd === draft.desPrd) || null
+  const selectedCategorie = categories?.find(c => c.id_cat === draft.catId) || null
+
   return (
     <Box>
-      <Typography variant='h6' sx={{ mb: 4, fontWeight: 700, color: 'primary.main' }}>
+      <Typography variant='subtitle1' sx={{ mb: 3, fontWeight: 700, color: 'primary.main' }}>
         Ajouter un produit
       </Typography>
-      <Grid container spacing={4} alignItems='flex-end'>
-        <Grid item xs={12}>
+      <Grid container spacing={3} alignItems='flex-end'>
+        <Grid item xs={12} sm={8}>
           <Autocomplete
+            fullWidth
             freeSolo
-            options={options.map(p => p.designation_prd)}
-            inputValue={inputValue}
-            onInputChange={(e, newInputValue) => {
-              setInputValue(newInputValue || '')
-              setDraft({ ...draft, desPrd: newInputValue || '' })
+            options={options}
+            getOptionLabel={option => (typeof option === 'string' ? option : option.designation_prd || '')}
+            value={selectedProduit}
+            onChange={(event, newValue) => {
+              setDraft({
+                ...draft,
+                desPrd: typeof newValue === 'string' ? newValue : newValue?.designation_prd || '',
+                catId: newValue?.id_cat || draft.catId
+              })
             }}
+            inputValue={inputValue}
+            onInputChange={(event, newInputValue) => {
+              setInputValue(newInputValue)
+              setDraft({ ...draft, desPrd: newInputValue })
+            }}
+            loading={loading}
+            noOptionsText={inputValue.length < 3 ? 'Tapez au moins 3 caractères...' : 'Aucun produit trouvé'}
             renderInput={params => (
-              <CustomTextField {...params} fullWidth label='Désignation du produit' autoComplete='off' />
+              <CustomTextField
+                {...params}
+                label='Chercher ou saisir un produit...'
+                autoComplete='off'
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {loading ? <CircularProgress color='inherit' size={20} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  )
+                }}
+              />
             )}
           />
         </Grid>
-        <Grid item xs={12} sm={3}>
-          <CustomTextField
-            select
+        <Grid item xs={12} sm={4}>
+          <Autocomplete
             fullWidth
-            label='Catégorie'
-            value={draft.catId}
-            onChange={e => setDraft({ ...draft, catId: e.target.value })}
-          >
-            {categories?.map(cat => (
-              <MenuItem key={cat.id_cat} value={cat.id_cat}>
-                {cat.designation_cat}
-              </MenuItem>
-            ))}
-          </CustomTextField>
+            options={categories || []}
+            getOptionLabel={option => option.designation_cat || ''}
+            value={selectedCategorie}
+            onChange={(event, newValue) => {
+              setDraft({ ...draft, catId: newValue ? newValue.id_cat : '' })
+            }}
+            renderInput={params => <CustomTextField {...params} label='Catégorie' autoComplete='off' />}
+          />
         </Grid>
-        <Grid item xs={12} sm={2}>
+        <Grid item xs={12} sm={3}>
           <CustomTextField
             fullWidth
             label='Qté'
@@ -81,7 +109,7 @@ const AjoutRapideLigne = ({ append, categories, rechercherProduits, deviseTrans 
             InputProps={{ inputComponent: CleaveInput }}
           />
         </Grid>
-        <Grid item xs={12} sm={3}>
+        <Grid item xs={12} sm={4}>
           <CustomTextField
             fullWidth
             label='Prix Unitaire'
@@ -94,25 +122,24 @@ const AjoutRapideLigne = ({ append, categories, rechercherProduits, deviseTrans 
             }}
           />
         </Grid>
-        <Grid item xs={12} sm={3}>
+        <Grid item xs={12} sm={4}>
           <CustomTextField
             fullWidth
             label='Total (Info)'
             value={formatMontant(totalLigne)}
             disabled
-            sx={{ backgroundColor: 'rgba(0,0,0,0.02)' }}
             InputProps={{
               endAdornment: <InputAdornment position='end'>{deviseTrans}</InputAdornment>
             }}
           />
         </Grid>
-        <Grid item xs={12} sm={1} sx={{ textAlign: 'right' }}>
+        <Grid item xs={12} sm={1}>
           <Button
             variant='contained'
             color='primary'
             onClick={handleAdd}
             disabled={!isFormValid}
-            sx={{ minWidth: 45, px: 2, height: 38 }}
+            sx={{ minWidth: '100%', px: 2, height: 38 }}
           >
             <Icon icon='tabler:plus' />
           </Button>

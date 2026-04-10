@@ -1,5 +1,5 @@
 import React from 'react'
-import { Grid, Typography, MenuItem, Box } from '@mui/material'
+import { Grid, Typography, MenuItem, Box, InputAdornment } from '@mui/material'
 import { Controller } from 'react-hook-form'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -24,10 +24,10 @@ const InfosGlobalesForm = ({
 
   return (
     <Box>
-      <Typography variant='h6' sx={{ mb: 4, fontWeight: 700 }}>
+      <Typography variant='subtitle1' sx={{ mb: 3, fontWeight: 700 }}>
         Informations Générales
       </Typography>
-      <Grid container spacing={4}>
+      <Grid container spacing={3}>
         <Grid item xs={12} sm={4}>
           <Controller
             name='dateAchat'
@@ -80,17 +80,11 @@ const InfosGlobalesForm = ({
             name='fournisseur'
             control={control}
             render={({ field }) => (
-              <CustomTextField
-                {...field}
-                fullWidth
-                label='Fournisseur (Optionnel)'
-                autoComplete='off'
-                disabled={isLocked}
-              />
+              <CustomTextField {...field} fullWidth label='Fournisseur' autoComplete='off' disabled={isLocked} />
             )}
           />
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <Controller
             name='deviseFacture'
             control={control}
@@ -115,7 +109,7 @@ const InfosGlobalesForm = ({
             )}
           />
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <Controller
             name='tauxChange'
             control={control}
@@ -124,15 +118,30 @@ const InfosGlobalesForm = ({
               <CustomTextField
                 {...field}
                 fullWidth
-                label='Taux de change appliqué'
+                label='Taux de change (Facture)'
                 error={!!error}
                 helperText={error?.message}
                 disabled={true}
                 autoComplete='off'
-                InputProps={{ inputComponent: CleaveInput }}
-                sx={{ backgroundColor: 'rgba(0,0,0,0.03)' }}
+                InputProps={{
+                  inputComponent: CleaveInput,
+                  endAdornment: <InputAdornment position='end'>DA</InputAdornment>
+                }}
               />
             )}
+          />
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <CustomTextField
+            fullWidth
+            label='Taux actuel du compte'
+            value={selectedCpt ? selectedCpt.taux_change_actuel || '' : ''}
+            disabled={true}
+            autoComplete='off'
+            InputProps={{
+              inputComponent: CleaveInput,
+              endAdornment: <InputAdornment position='end'>DA</InputAdornment>
+            }}
           />
         </Grid>
       </Grid>

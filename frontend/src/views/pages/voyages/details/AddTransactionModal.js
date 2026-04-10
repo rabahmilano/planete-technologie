@@ -58,7 +58,6 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
   const watchFraisInt = watch('fraisIntermediaire')
 
   const isLocked = watchArticles && watchArticles.length > 0
-
   const selectedCpt = comptes.find(c => c.id_cpt === watchCptId)
 
   const handleCompteChange = newCptId => {
@@ -151,8 +150,8 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
         ModalProps={{ keepMounted: true }}
         sx={{
           '& .MuiDrawer-paper': {
-            width: { xs: '100%', xl: '1300px' },
-            maxWidth: '100%',
+            width: '100vw',
+            maxWidth: '100vw',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -165,7 +164,7 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            p: 5,
+            p: 4,
             backgroundColor: '#ffffff',
             borderBottom: '1px solid #e0e0e0'
           }}
@@ -182,17 +181,18 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
           onSubmit={handleSubmit(onPreSubmit)}
           style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         >
-          <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, overflow: 'hidden' }}>
             <Box
               sx={{
-                flex: '0 0 55%',
+                width: { xs: '100%', lg: '40%' },
                 display: 'flex',
                 flexDirection: 'column',
-                borderRight: '1px solid #e0e0e0',
+                borderRight: { lg: '1px solid #e0e0e0' },
+                backgroundColor: '#ffffff',
                 overflowY: 'auto'
               }}
             >
-              <Box sx={{ p: 6, backgroundColor: '#ffffff', mb: 2 }}>
+              <Box sx={{ p: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <InfosGlobalesForm
                   control={control}
                   minDate={minDate}
@@ -204,8 +204,7 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
                   handleDeviseChange={handleDeviseChange}
                   selectedCpt={selectedCpt}
                 />
-              </Box>
-              <Box sx={{ p: 6, backgroundColor: '#ffffff', flex: 1 }}>
+                <Divider />
                 <AjoutRapideLigne
                   append={append}
                   categories={listCategorie}
@@ -213,30 +212,8 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
                   deviseTrans={watchDevise}
                 />
               </Box>
-            </Box>
 
-            <Box
-              sx={{
-                flex: '0 0 45%',
-                display: 'flex',
-                flexDirection: 'column',
-                backgroundColor: '#f8f9fa'
-              }}
-            >
-              <Box sx={{ flex: 1, overflowY: 'auto', p: 6 }}>
-                <PanierTable
-                  fields={fields}
-                  remove={remove}
-                  articles={watchArticles}
-                  deviseTrans={watchDevise}
-                  deviseCompte={deviseCompte}
-                  tauxTrans={tauxTrans}
-                  tauxCompte={tauxCompte}
-                  listCategorie={listCategorie}
-                />
-              </Box>
-              <Divider />
-              <Box sx={{ p: 6, backgroundColor: '#ffffff', borderTop: '1px solid #e0e0e0' }}>
+              <Box sx={{ p: 4, borderTop: '1px solid #e0e0e0', backgroundColor: '#fafafa', mt: 'auto' }}>
                 <RecapitulatifFinancier
                   control={control}
                   watchDevise={watchDevise}
@@ -251,11 +228,33 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
                 />
               </Box>
             </Box>
+
+            <Box
+              sx={{
+                width: { xs: '100%', lg: '60%' },
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: '#f8f9fa'
+              }}
+            >
+              <Box sx={{ flex: 1, overflowY: 'auto', p: 4 }}>
+                <PanierTable
+                  fields={fields}
+                  remove={remove}
+                  articles={watchArticles}
+                  deviseTrans={watchDevise}
+                  deviseCompte={deviseCompte}
+                  tauxTrans={tauxTrans}
+                  tauxCompte={tauxCompte}
+                  listCategorie={listCategorie}
+                />
+              </Box>
+            </Box>
           </Box>
 
           <Box
             sx={{
-              p: 5,
+              p: 4,
               borderTop: '1px solid #e0e0e0',
               backgroundColor: '#ffffff',
               display: 'flex',
