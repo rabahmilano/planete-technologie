@@ -390,7 +390,6 @@ export const addTransactionVoyage = [
   body("commBanque").optional().isFloat(),
   body("commPaiement").optional().isFloat(),
   body("dateAchat").notEmpty().withMessage("La date d'achat est requise"),
-
   body("articles")
     .isArray({ min: 1 })
     .withMessage("Au moins un article est requis"),
@@ -424,17 +423,21 @@ export const addTransactionVoyage = [
           where: { id_cpt: parseInt(cptPaiementId, 10) },
         });
 
-        if (!compte) throw new Error("Compte introuvable");
-        if (parseFloat(compte.solde_actuel) < parseFloat(montantDebite)) {
-          throw new Error("Solde insuffisant.");
-        }
+        if (!compte) throw new Error("Compte introuvable.");
 
         const voyage = await tx.voyage.findUnique({
           where: { id_voyage: parseInt(idVoyage, 10) },
         });
 
         if (!voyage || voyage.statut_voy !== "EN_COURS") {
-          throw new Error("Le voyage doit être EN_COURS.");
+          throw new Error("Le voyage n'est pas EN_COURS.");
+        }
+
+        if (
+          deviseFacture !== voyage.dev_dest &&
+          deviseFacture !== compte.dev_code
+        ) {
+          throw new Error("DEVISE_INVALIDE");
         }
 
         const dAchatObj = new Date(dateAchat);
@@ -448,39 +451,50 @@ export const addTransactionVoyage = [
         const dateStockPrevue = new Date(voyage.date_ret);
         dateStockPrevue.setDate(dateStockPrevue.getDate() + 1);
 
+        const tauxTrans = parseFloat(tauxDzd);
+        const tauxCompte = parseFloat(compte.taux_change_actuel) || 1;
+        const tauxVoyage = parseFloat(voyage.taux_change) || 1;
+
+        const montantADeduire =
+          (parseFloat(montantDebite) * tauxTrans) / tauxCompte;
+
+        if (parseFloat(compte.solde_actuel) < montantADeduire) {
+          throw new Error("Solde insuffisant.");
+        }
+
         const idTransaction = await getMaxValue(
           "transaction_voyage",
           "id_trans",
           null,
         );
 
-        const transaction = await tx.transaction_voyage.create({
+        await tx.transaction_voyage.create({
           data: {
             id_trans: idTransaction,
             voyage_id: parseInt(idVoyage, 10),
             cpt_id: parseInt(cptPaiementId, 10),
             fournisseur: fournisseur || null,
             dev_trans: deviseFacture,
-            taux_trans: parseFloat(tauxDzd),
+            taux_trans: tauxTrans,
             mnt_tot_fact: arrondir(parseFloat(montantFacture)),
             mnt_comm_banque: arrondir(parseFloat(commBanque)),
             mnt_comm_paie: arrondir(parseFloat(commPaiement)),
           },
         });
 
-        const ratioConversionCarte =
-          parseFloat(montantDebite) / parseFloat(montantFacture);
-
         for (const article of articles) {
           const qte = parseInt(article.qte, 10);
-          const pu_dest = arrondir(parseFloat(article.puDevise));
-          const mnt_tot_dest = arrondir(pu_dest * qte);
+          const pu_trans = parseFloat(article.puDevise);
+          const mnt_tot_article_trans = pu_trans * qte;
 
-          const mnt_tot_carte = arrondir(mnt_tot_dest * ratioConversionCarte);
-          const pu_carte = arrondir(mnt_tot_carte / qte);
+          const mnt_tot_dzd = mnt_tot_article_trans * tauxTrans;
+          const pu_dzd = mnt_tot_dzd / qte;
 
-          const mnt_tot_dzd = arrondir(mnt_tot_dest * parseFloat(tauxDzd));
-          const pu_dzd = arrondir(mnt_tot_dzd / qte);
+          const mnt_tot_dest = mnt_tot_dzd / tauxVoyage;
+          const pu_dev_dest = mnt_tot_dest / qte;
+
+          const mnt_tot_dev = mnt_tot_dzd / tauxCompte;
+          const pu_dev = mnt_tot_dev / qte;
 
           let prd_id;
           const produitExist = await tx.produit.findFirst({
@@ -497,25 +511,27 @@ export const addTransactionVoyage = [
           }
 
           const idColis = await getMaxValue("colis", "id_colis", null);
+
           await tx.colis.create({
             data: {
               id_colis: idColis,
               cat_id: parseInt(article.catId, 10),
               prd_id: prd_id,
               cpt_id: parseInt(cptPaiementId, 10),
-              mnt_tot_dev: mnt_tot_carte,
+              mnt_tot_dev: arrondir(mnt_tot_dev),
               date_achat: dAchatObj,
               date_stock: dateStockPrevue,
               qte_achat: qte,
-              mnt_tot_dzd: mnt_tot_dzd,
-              pu_dev: pu_carte,
-              pu_dzd: pu_dzd,
-              pu_dzd_ttc: pu_dzd,
+              qte_stock: qte,
+              mnt_tot_dzd: arrondir(mnt_tot_dzd),
+              pu_dev: arrondir(pu_dev),
+              pu_dzd: arrondir(pu_dzd),
+              pu_dzd_ttc: arrondir(pu_dzd),
               colis_voyage: {
                 create: {
                   trans_id: idTransaction,
-                  pu_dev_dest: pu_dest,
-                  mnt_tot_dest: mnt_tot_dest,
+                  pu_dev_dest: arrondir(pu_dev_dest),
+                  mnt_tot_dest: arrondir(mnt_tot_dest),
                 },
               },
             },
@@ -524,7 +540,7 @@ export const addTransactionVoyage = [
 
         await tx.compte.update({
           where: { id_cpt: parseInt(cptPaiementId, 10) },
-          data: { solde_actuel: { decrement: parseFloat(montantDebite) } },
+          data: { solde_actuel: { decrement: arrondir(montantADeduire) } },
         });
       });
 
@@ -537,6 +553,14 @@ export const addTransactionVoyage = [
           error: {
             message:
               "La date d'achat doit être comprise entre la date de départ et la date de retour du voyage.",
+          },
+        });
+      }
+      if (error.message === "DEVISE_INVALIDE") {
+        return res.status(400).json({
+          error: {
+            message:
+              "La devise de la facture doit correspondre à celle du voyage ou du compte.",
           },
         });
       }
