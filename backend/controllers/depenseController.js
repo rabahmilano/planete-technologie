@@ -1,12 +1,7 @@
 import prisma from "../config/dbConfig.js";
 import { body, param, validationResult } from "express-validator";
-import { arrondir } from "../config/utils.js";
+import { arrondir, getMaxValue } from "../config/utils.js";
 import dayjs from "dayjs";
-import { getMaxValue } from "../config/utils.js";
-
-// ==========================================
-// NATURE DE DÉPENSES
-// ==========================================
 
 export const addNatureDepense = [
   body("natDep")
@@ -56,6 +51,7 @@ export const addNatureDepense = [
     }
   },
 ];
+
 export const getAllNatDep = async (req, res) => {
   try {
     const listNature = await prisma.nature_dep.findMany({
@@ -68,10 +64,6 @@ export const getAllNatDep = async (req, res) => {
       .json({ error: { code: error.code, message: error.message } });
   }
 };
-
-// ==========================================
-// GESTION DES DÉPENSES (CRUD)
-// ==========================================
 
 export const addNewDepense = [
   body("montant")
@@ -114,23 +106,33 @@ export const addNewDepense = [
 
         const infoCompte = await tx.compte.findUnique({
           where: { id_cpt: parseInt(cpt, 10) },
-          select: { solde_actuel: true, taux_change_actuel: true },
+          select: {
+            solde_actuel: true,
+            taux_change_actuel: true,
+            solde_bloque: true,
+          },
         });
 
         if (!infoCompte) throw new Error("COMPTE_NOT_FOUND");
-        if (parseFloat(infoCompte.solde_actuel) < parseFloat(montant))
+
+        const soldeActuel = parseFloat(infoCompte.solde_actuel) || 0;
+        const soldeBloque = parseFloat(infoCompte.solde_bloque) || 0;
+        const soldeDisponible = arrondir(soldeActuel - soldeBloque);
+        const montantSaisi = arrondir(parseFloat(montant));
+
+        if (soldeDisponible < montantSaisi)
           throw new Error("INSUFFICIENT_FUNDS");
 
         const newId = await getMaxValue("depense", "id_op_dep", null);
         const mnt_dep_dzd = arrondir(
-          parseFloat(montant) * parseFloat(infoCompte.taux_change_actuel),
+          montantSaisi * parseFloat(infoCompte.taux_change_actuel),
         );
 
         const depenseCree = await tx.depense.create({
           data: {
             id_op_dep: newId,
             date_dep: new Date(dateDepense),
-            mnt_dep: parseFloat(montant),
+            mnt_dep: montantSaisi,
             mnt_dep_dzd: mnt_dep_dzd,
             cpt_id: parseInt(cpt, 10),
             nat_dep_id: parseInt(nature, 10),
@@ -142,7 +144,7 @@ export const addNewDepense = [
 
         await tx.compte.update({
           where: { id_cpt: parseInt(cpt, 10) },
-          data: { solde_actuel: { decrement: parseFloat(montant) } },
+          data: { solde_actuel: { decrement: montantSaisi } },
         });
 
         return depenseCree;
@@ -172,7 +174,9 @@ export const addNewDepense = [
       if (error.message === "INSUFFICIENT_FUNDS")
         return res
           .status(403)
-          .json({ error: { message: "Solde insuffisant." } });
+          .json({
+            error: { message: "Solde insuffisant (Fonds bloqués atteints)." },
+          });
       res.status(500).json({ error: { message: error.message } });
     }
   },
@@ -285,10 +289,6 @@ export const deleteDepense = [
   },
 ];
 
-// ==========================================
-// STATISTIQUES ET FILTRES (Lecture seule)
-// ==========================================
-
 export const getGlobalStats = async (req, res) => {
   try {
     const [
@@ -312,7 +312,6 @@ export const getGlobalStats = async (req, res) => {
           nature_dep: { designation_nat_dep: "COFFRE FORT" },
         },
       }),
-      // ADAPTATION : Pont de compatibilité pour chercher dans colis ET colis_classique
       prisma.colis.count({
         where: {
           OR: [
@@ -410,7 +409,6 @@ export const getDepensesFiltrees = async (req, res) => {
     }
 
     if ((noNatureFilter || natureIsColisTimbre) && excludeTimbres !== "true") {
-      // ADAPTATION : Pont de compatibilité pour chercher les timbres dans l'ancienne et la nouvelle structure
       droitsTimbreFromColisPromise = prisma.colis.findMany({
         where: {
           OR: [

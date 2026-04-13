@@ -2,9 +2,6 @@ import prisma from "../config/dbConfig.js";
 import { body, param, validationResult } from "express-validator";
 import { getMaxValue, arrondir } from "../config/utils.js";
 
-// ==========================================
-// LECTURE
-// ==========================================
 export const getAllEmprunts = async (req, res) => {
   try {
     const emprunts = await prisma.emprunt.findMany({
@@ -25,9 +22,6 @@ export const getAllEmprunts = async (req, res) => {
   }
 };
 
-// ==========================================
-// CRÉATION (Ajout d'un emprunt)
-// ==========================================
 export const addEmprunt = [
   body("desEmprunt")
     .isString()
@@ -93,9 +87,6 @@ export const addEmprunt = [
   },
 ];
 
-// ==========================================
-// REMBOURSEMENT (Sortie de trésorerie)
-// ==========================================
 export const addRemboursement = [
   body("idEmpruntCible")
     .isNumeric()
@@ -157,7 +148,7 @@ export const addRemboursement = [
 
         const infoCompte = await tx.compte.findUnique({
           where: { id_cpt: parseInt(cptCible) },
-          select: { solde_actuel: true },
+          select: { solde_actuel: true, solde_bloque: true },
         });
 
         if (!infoCompte) {
@@ -166,9 +157,14 @@ export const addRemboursement = [
           throw err;
         }
 
-        if (parseFloat(infoCompte.solde_actuel) < montantSaisi) {
+        const soldeDisponible = arrondir(
+          parseFloat(infoCompte.solde_actuel) -
+            parseFloat(infoCompte.solde_bloque || 0),
+        );
+
+        if (soldeDisponible < montantSaisi) {
           const err = new Error(
-            "Fonds insuffisants sur le compte sélectionné.",
+            "Fonds insuffisants (Fonds bloqués atteints) sur le compte sélectionné.",
           );
           err.statusCode = 403;
           throw err;
@@ -227,9 +223,6 @@ export const addRemboursement = [
   },
 ];
 
-// ==========================================
-// SUPPRESSION D'UN EMPRUNT (DELETE)
-// ==========================================
 export const deleteEmprunt = [
   param("id")
     .isInt()
@@ -264,10 +257,29 @@ export const deleteEmprunt = [
           throw err;
         }
 
+        const compte = await tx.compte.findUnique({
+          where: { id_cpt: emprunt.cpt_id },
+          select: { solde_actuel: true, solde_bloque: true },
+        });
+
+        const soldeDisponible = arrondir(
+          parseFloat(compte.solde_actuel) -
+            parseFloat(compte.solde_bloque || 0),
+        );
+        const montantADeduire = arrondir(parseFloat(emprunt.mnt_emprunt));
+
+        if (soldeDisponible < montantADeduire) {
+          const err = new Error(
+            "Fonds insuffisants (Fonds bloqués atteints) pour annuler cet emprunt.",
+          );
+          err.statusCode = 403;
+          throw err;
+        }
+
         await tx.compte.update({
           where: { id_cpt: emprunt.cpt_id },
           data: {
-            solde_actuel: { decrement: parseFloat(emprunt.mnt_emprunt) },
+            solde_actuel: { decrement: montantADeduire },
           },
         });
 
@@ -288,9 +300,6 @@ export const deleteEmprunt = [
   },
 ];
 
-// ==========================================
-// SUPPRESSION D'UN REMBOURSEMENT (DELETE)
-// ==========================================
 export const deleteRemboursement = [
   param("id")
     .isInt()
@@ -322,7 +331,6 @@ export const deleteRemboursement = [
           data: { solde_actuel: { increment: parseFloat(remb.mnt_remb) } },
         });
 
-        // Règle métier : Repasser l'emprunt en "EN_COURS" s'il avait été clôturé
         if (remb.emprunt.statut_emprunt === "SOLDE") {
           await tx.emprunt.update({
             where: { id_emprunt: remb.emprunt_id },
@@ -347,9 +355,6 @@ export const deleteRemboursement = [
   },
 ];
 
-// ==========================================
-// MODIFICATION D'UN EMPRUNT (PUT)
-// ==========================================
 export const updateEmprunt = [
   body("desEmprunt")
     .isString()
@@ -391,7 +396,6 @@ export const updateEmprunt = [
         );
         const newMontant = parseFloat(montant);
 
-        // Règle métier : Impossible de baisser le montant de l'emprunt sous ce qui a déjà été payé
         if (newMontant < totalRembourse) {
           const err = new Error(
             `Le montant ne peut pas être inférieur au total déjà remboursé (${totalRembourse} DZD).`,
@@ -401,10 +405,29 @@ export const updateEmprunt = [
         }
 
         if (oldEmprunt.cpt_id !== parseInt(cpt)) {
+          const oldCompte = await tx.compte.findUnique({
+            where: { id_cpt: oldEmprunt.cpt_id },
+            select: { solde_actuel: true, solde_bloque: true },
+          });
+
+          const soldeDisponible = arrondir(
+            parseFloat(oldCompte.solde_actuel) -
+              parseFloat(oldCompte.solde_bloque || 0),
+          );
+          const montantADeduire = arrondir(parseFloat(oldEmprunt.mnt_emprunt));
+
+          if (soldeDisponible < montantADeduire) {
+            const err = new Error(
+              "Fonds insuffisants (Fonds bloqués atteints) sur l'ancien compte pour effectuer ce transfert.",
+            );
+            err.statusCode = 403;
+            throw err;
+          }
+
           await tx.compte.update({
             where: { id_cpt: oldEmprunt.cpt_id },
             data: {
-              solde_actuel: { decrement: parseFloat(oldEmprunt.mnt_emprunt) },
+              solde_actuel: { decrement: montantADeduire },
             },
           });
 
@@ -413,7 +436,27 @@ export const updateEmprunt = [
             data: { solde_actuel: { increment: newMontant } },
           });
         } else if (newMontant !== parseFloat(oldEmprunt.mnt_emprunt)) {
-          const diff = newMontant - parseFloat(oldEmprunt.mnt_emprunt);
+          const diff = arrondir(
+            newMontant - parseFloat(oldEmprunt.mnt_emprunt),
+          );
+
+          if (diff < 0) {
+            const compte = await tx.compte.findUnique({
+              where: { id_cpt: oldEmprunt.cpt_id },
+              select: { solde_actuel: true, solde_bloque: true },
+            });
+            const soldeDisponible = arrondir(
+              parseFloat(compte.solde_actuel) -
+                parseFloat(compte.solde_bloque || 0),
+            );
+            if (soldeDisponible < Math.abs(diff)) {
+              const err = new Error(
+                "Fonds insuffisants (Fonds bloqués atteints) pour réduire le montant de cet emprunt.",
+              );
+              err.statusCode = 403;
+              throw err;
+            }
+          }
 
           await tx.compte.update({
             where: { id_cpt: oldEmprunt.cpt_id },
@@ -448,9 +491,6 @@ export const updateEmprunt = [
   },
 ];
 
-// ==========================================
-// MODIFICATION D'UN REMBOURSEMENT (PUT)
-// ==========================================
 export const updateRemboursement = [
   body("mntRembourse")
     .isDecimal()
@@ -485,10 +525,9 @@ export const updateRemboursement = [
         }
 
         const emprunt = oldRemb.emprunt;
-        const newMontantSaisi = parseFloat(mntRembourse);
+        const newMontantSaisi = arrondir(parseFloat(mntRembourse));
         const newCompteId = parseInt(cptCible);
 
-        // Calcul du total remboursé SANS ce paiement précis pour autoriser la modification
         const autresRemboursements = emprunt.remboursements.filter(
           (r) => r.id_remb !== parseInt(id),
         );
@@ -496,11 +535,13 @@ export const updateRemboursement = [
           (sum, r) => sum + parseFloat(r.mnt_remb),
           0,
         );
-        const maxAutorise = parseFloat(emprunt.mnt_emprunt) - totalAutres;
+        const maxAutorise = arrondir(
+          parseFloat(emprunt.mnt_emprunt) - totalAutres,
+        );
 
         if (newMontantSaisi > maxAutorise) {
           const err = new Error(
-            `Le montant corrigé dépasse le reste à payer (${arrondir(maxAutorise)} DZD).`,
+            `Le montant corrigé dépasse le reste à payer (${maxAutorise} DZD).`,
           );
           err.statusCode = 403;
           throw err;
@@ -514,15 +555,23 @@ export const updateRemboursement = [
 
           const infoNouveauCompte = await tx.compte.findUnique({
             where: { id_cpt: newCompteId },
-            select: { solde_actuel: true },
+            select: { solde_actuel: true, solde_bloque: true },
           });
 
-          if (
-            !infoNouveauCompte ||
-            parseFloat(infoNouveauCompte.solde_actuel) < newMontantSaisi
-          ) {
+          if (!infoNouveauCompte) {
+            const err = new Error("Nouveau compte introuvable.");
+            err.statusCode = 404;
+            throw err;
+          }
+
+          const soldeDisponible = arrondir(
+            parseFloat(infoNouveauCompte.solde_actuel) -
+              parseFloat(infoNouveauCompte.solde_bloque || 0),
+          );
+
+          if (soldeDisponible < newMontantSaisi) {
             const err = new Error(
-              "Fonds insuffisants sur le nouveau compte sélectionné.",
+              "Fonds insuffisants (Fonds bloqués atteints) sur le nouveau compte sélectionné.",
             );
             err.statusCode = 403;
             throw err;
@@ -533,7 +582,27 @@ export const updateRemboursement = [
             data: { solde_actuel: { decrement: newMontantSaisi } },
           });
         } else if (newMontantSaisi !== parseFloat(oldRemb.mnt_remb)) {
-          const diff = newMontantSaisi - parseFloat(oldRemb.mnt_remb);
+          const diff = arrondir(newMontantSaisi - parseFloat(oldRemb.mnt_remb));
+
+          if (diff > 0) {
+            const compte = await tx.compte.findUnique({
+              where: { id_cpt: oldRemb.cpt_remb },
+              select: { solde_actuel: true, solde_bloque: true },
+            });
+            const soldeDisponible = arrondir(
+              parseFloat(compte.solde_actuel) -
+                parseFloat(compte.solde_bloque || 0),
+            );
+
+            if (soldeDisponible < diff) {
+              const err = new Error(
+                "Fonds insuffisants (Fonds bloqués atteints) pour augmenter ce remboursement.",
+              );
+              err.statusCode = 403;
+              throw err;
+            }
+          }
+
           await tx.compte.update({
             where: { id_cpt: oldRemb.cpt_remb },
             data: { solde_actuel: { decrement: diff } },
@@ -549,7 +618,7 @@ export const updateRemboursement = [
           },
         });
 
-        const nouveauTotal = totalAutres + newMontantSaisi;
+        const nouveauTotal = arrondir(totalAutres + newMontantSaisi);
         const nouveauStatut =
           nouveauTotal >= parseFloat(emprunt.mnt_emprunt)
             ? "SOLDE"
