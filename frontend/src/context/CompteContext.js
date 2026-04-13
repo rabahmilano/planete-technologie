@@ -7,16 +7,23 @@ const CompteContext = createContext()
 export const useCompte = () => useContext(CompteContext)
 
 export const CompteProvider = ({ children }) => {
+  const [tousLesComptes, setTousLesComptes] = useState([])
   const [comptes, setComptes] = useState([])
+  const [bilanGlobal, setBilanGlobal] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const fetchComptes = async () => {
     setLoading(true)
     try {
       const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/allComptes`)
-      setComptes(reponse.data)
+      const data = reponse.data
+      setTousLesComptes(data)
+      setComptes(data.filter(c => c.type_cpt?.toUpperCase() !== 'COFFRE'))
+
+      const bilanReponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/bilan-global`)
+      setBilanGlobal(bilanReponse.data)
     } catch (error) {
-      console.error('Erreur lors de la récupération des comptes:', error)
+      toast.error('Erreur lors de la récupération des données')
     } finally {
       setLoading(false)
     }
@@ -31,17 +38,7 @@ export const CompteProvider = ({ children }) => {
         return true
       }
     } catch (error) {
-      if (error.response) {
-        if (error.response.status === 400) {
-          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
-        } else if (error.response.status === 403 || error.response.status === 409) {
-          toast.error(error.response.data.message || error.response.data.error?.message || 'Le compte existe déjà')
-        } else {
-          toast.error('Erreur du serveur: ' + (error.response.data.message || ''))
-        }
-      } else {
-        toast.error('Erreur de connexion au serveur')
-      }
+      toast.error(error.response?.data?.message || 'Erreur lors de la création')
       return false
     }
   }
@@ -50,24 +47,26 @@ export const CompteProvider = ({ children }) => {
     try {
       const reponse = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/crediterCompte`, data)
       if (reponse.status === 200) {
-        toast.success(reponse.data.message || 'Compte crédité avec succès')
+        toast.success(reponse.data.message)
         fetchComptes()
         return true
       }
     } catch (error) {
-      if (error.response) {
-        if (error.response.status === 400 && error.response.data.errors) {
-          toast.error('Erreur de validation: ' + error.response.data.errors.map(err => err.msg).join(', '))
-        } else if (error.response.data.message) {
-          toast.error(error.response.data.message)
-        } else if (error.response.data.error?.message) {
-          toast.error(error.response.data.error.message)
-        } else {
-          toast.error('Erreur du serveur')
-        }
-      } else {
-        toast.error('Erreur de connexion au serveur')
+      toast.error(error.response?.data?.message || "Erreur lors de l'opération")
+      return false
+    }
+  }
+
+  const transferer = async data => {
+    try {
+      const reponse = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}transferts/createTransfert`, data)
+      if (reponse.status === 201) {
+        toast.success(reponse.data.message)
+        fetchComptes()
+        return true
       }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Erreur lors du transfert')
       return false
     }
   }
@@ -77,10 +76,13 @@ export const CompteProvider = ({ children }) => {
   }, [])
 
   const value = {
+    tousLesComptes,
     comptes,
+    bilanGlobal,
     fetchComptes,
     ajouterCompte,
     crediter,
+    transferer,
     loading
   }
 
