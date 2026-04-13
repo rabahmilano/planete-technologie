@@ -455,10 +455,15 @@ export const addTransactionVoyage = [
         const tauxCompte = parseFloat(compte.taux_change_actuel) || 1;
         const tauxVoyage = parseFloat(voyage.taux_change) || 1;
 
-        const montantADeduire =
-          (parseFloat(montantDebite) * tauxTrans) / tauxCompte;
+        const montantADeduire = arrondir(
+          (parseFloat(montantDebite) * tauxTrans) / tauxCompte,
+        );
+        const soldeDisponible = arrondir(
+          parseFloat(compte.solde_actuel) -
+            parseFloat(compte.solde_bloque || 0),
+        );
 
-        if (parseFloat(compte.solde_actuel) < montantADeduire) {
+        if (soldeDisponible < montantADeduire) {
           throw new Error("Solde insuffisant.");
         }
 
@@ -540,7 +545,7 @@ export const addTransactionVoyage = [
 
         await tx.compte.update({
           where: { id_cpt: parseInt(cptPaiementId, 10) },
-          data: { solde_actuel: { decrement: arrondir(montantADeduire) } },
+          data: { solde_actuel: { decrement: montantADeduire } },
         });
       });
 
@@ -561,6 +566,14 @@ export const addTransactionVoyage = [
           error: {
             message:
               "La devise de la facture doit correspondre à celle du voyage ou du compte.",
+          },
+        });
+      }
+      if (error.message === "Solde insuffisant.") {
+        return res.status(403).json({
+          error: {
+            message:
+              "Fonds insuffisants (Fonds bloqués atteints) sur le compte sélectionné.",
           },
         });
       }
