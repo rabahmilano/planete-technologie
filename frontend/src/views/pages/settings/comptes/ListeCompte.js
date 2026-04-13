@@ -13,16 +13,17 @@ import Typography from '@mui/material/Typography'
 
 import Icon from 'src/@core/components/icon'
 import { useCompte } from 'src/context/CompteContext'
-import { formatMontant } from 'src/@core/utils/format' // <-- L'import de la nouvelle fonction
+import { formatMontant } from 'src/@core/utils/format'
 
 const ListeComptes = () => {
-  const { comptes } = useCompte()
+  const { tousLesComptes } = useCompte()
 
   const getChipColor = type => {
     if (!type) return 'default'
     const lowerType = type.toLowerCase()
     if (lowerType === 'commun') return 'success'
     if (lowerType === 'personnel') return 'info'
+    if (lowerType === 'coffre') return 'warning'
     return 'primary'
   }
 
@@ -39,58 +40,97 @@ const ListeComptes = () => {
       <CardContent>
         <TableContainer>
           <Table sx={{ minWidth: 900 }}>
-            <TableHead>
+            <TableHead sx={{ backgroundColor: '#0d1b2a' }}>
               <TableRow>
                 <TableCell
                   sx={{
                     position: 'sticky',
                     left: 0,
-                    background: theme => theme.palette.background.paper,
+                    backgroundColor: '#0d1b2a',
+                    color: 'white',
+                    fontSize: '0.72rem',
+                    textTransform: 'uppercase',
+                    py: 2,
                     zIndex: 2,
-                    borderRight: '1px solid rgba(0, 0, 0, 0.12)' // Petite ligne pour séparer visuellement
+                    borderRight: '1px solid rgba(255, 255, 255, 0.12)'
                   }}
                 >
                   Compte
                 </TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell align='right'>Solde</TableCell>
-                <TableCell align='right'>Commission</TableCell>
-                <TableCell align='center'>Devise</TableCell>
-                <TableCell align='right'>Taux de change actuel</TableCell>
+                <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                  Type
+                </TableCell>
+                <TableCell
+                  align='right'
+                  sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}
+                >
+                  Solde
+                </TableCell>
+                <TableCell
+                  align='right'
+                  sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}
+                >
+                  Commission
+                </TableCell>
+                <TableCell
+                  align='center'
+                  sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}
+                >
+                  Devise
+                </TableCell>
+                <TableCell
+                  align='right'
+                  sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}
+                >
+                  Taux de change actuel
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {comptes?.map(compte => (
-                <TableRow key={compte.id_cpt} hover>
-                  <TableCell
-                    sx={{
-                      fontWeight: 500,
-                      position: 'sticky',
-                      left: 0,
-                      background: theme => theme.palette.background.paper,
-                      zIndex: 1,
-                      borderRight: '1px solid rgba(0, 0, 0, 0.12)'
-                    }}
-                  >
-                    {compte.designation_cpt}
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={compte.type_cpt}
-                      color={getChipColor(compte.type_cpt)}
-                      size='small'
-                      sx={{ textTransform: 'capitalize', fontWeight: 600 }}
-                    />
-                  </TableCell>
-                  <TableCell align='right' sx={{ fontWeight: 600 }}>
-                    {formatMontant(compte.solde_actuel)} {compte.devise?.symbole_dev || ''}
-                  </TableCell>
-                  <TableCell align='right'>{formatMontant(compte.commission_pct)} %</TableCell>
-                  <TableCell align='center'>{compte.dev_code}</TableCell>
-                  <TableCell align='right'>{formatMontant(compte.taux_change_actuel)} DZD</TableCell>
-                </TableRow>
-              ))}
-              {(!comptes || comptes.length === 0) && (
+              {tousLesComptes?.map(compte => {
+                const soldeTotal = parseFloat(compte.solde_actuel) || 0
+                const soldeBloque = parseFloat(compte.solde_bloque) || 0
+                const soldeDispo = soldeTotal - soldeBloque
+
+                return (
+                  <TableRow key={compte.id_cpt} hover>
+                    <TableCell
+                      sx={{
+                        fontWeight: 500,
+                        position: 'sticky',
+                        left: 0,
+                        background: theme => theme.palette.background.paper,
+                        zIndex: 1,
+                        borderRight: '1px solid rgba(0, 0, 0, 0.12)'
+                      }}
+                    >
+                      {compte.designation_cpt}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={compte.type_cpt}
+                        color={getChipColor(compte.type_cpt)}
+                        size='small'
+                        sx={{ textTransform: 'capitalize', fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell align='right'>
+                      <Typography variant='body2' fontWeight={600}>
+                        {formatMontant(soldeTotal)} {compte.devise?.symbole_dev || ''}
+                      </Typography>
+                      {soldeBloque > 0 && (
+                        <Typography variant='caption' color='textSecondary' display='block'>
+                          Dispo: {formatMontant(soldeDispo)} {compte.devise?.symbole_dev || ''}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align='right'>{formatMontant(compte.commission_pct)} %</TableCell>
+                    <TableCell align='center'>{compte.dev_code}</TableCell>
+                    <TableCell align='right'>{formatMontant(compte.taux_change_actuel)} DZD</TableCell>
+                  </TableRow>
+                )
+              })}
+              {(!tousLesComptes || tousLesComptes.length === 0) && (
                 <TableRow>
                   <TableCell colSpan={6} align='center'>
                     Aucun compte trouvé.

@@ -14,12 +14,14 @@ import { useForm, Controller } from 'react-hook-form'
 
 import { useCompte } from 'src/context/CompteContext'
 import { useDevises } from 'src/context/DeviseContext'
+import CleaveInput from 'src/components/CleaveInput'
 
 const defaultValues = {
   typeCpt: '',
   desCpt: '',
   devise: '',
-  commissionPct: ''
+  commissionPct: '',
+  soldeBloque: ''
 }
 
 const CreerCompte = () => {
@@ -29,9 +31,12 @@ const CreerCompte = () => {
   const {
     control,
     handleSubmit,
+    watch,
     formState: { errors },
     reset
   } = useForm({ defaultValues })
+
+  const watchDevise = watch('devise')
 
   const onSubmit = async data => {
     const isSuccess = await ajouterCompte(data)
@@ -53,7 +58,7 @@ const CreerCompte = () => {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={5} alignItems='flex-end'>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <Controller
                 name='typeCpt'
                 control={control}
@@ -70,12 +75,13 @@ const CreerCompte = () => {
                   >
                     <MenuItem value='commun'>Commun</MenuItem>
                     <MenuItem value='personnel'>Personnel</MenuItem>
+                    <MenuItem value='coffre'>Coffre-fort</MenuItem>
                   </CustomTextField>
                 )}
               />
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <Controller
                 name='desCpt'
                 control={control}
@@ -95,7 +101,7 @@ const CreerCompte = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <Controller
                 name='devise'
                 control={control}
@@ -120,19 +126,20 @@ const CreerCompte = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <Controller
                 name='commissionPct'
                 control={control}
                 render={({ field: { value, onChange } }) => (
                   <CustomTextField
                     fullWidth
-                    type='number'
                     label='Commission'
                     value={value}
                     onChange={onChange}
                     placeholder='0.00'
+                    autoComplete='off'
                     InputProps={{
+                      inputComponent: CleaveInput,
                       endAdornment: <InputAdornment position='end'>%</InputAdornment>
                     }}
                   />
@@ -140,7 +147,28 @@ const CreerCompte = () => {
               />
             </Grid>
 
-            <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Grid item xs={12} sm={6} md={4}>
+              <Controller
+                name='soldeBloque'
+                control={control}
+                render={({ field: { value, onChange } }) => (
+                  <CustomTextField
+                    fullWidth
+                    label='Solde minimum bloqué (Optionnel)'
+                    value={value}
+                    onChange={onChange}
+                    placeholder='0.00'
+                    autoComplete='off'
+                    InputProps={{
+                      inputComponent: CleaveInput,
+                      endAdornment: watchDevise ? <InputAdornment position='end'>{watchDevise}</InputAdornment> : null
+                    }}
+                  />
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: 'flex-end', pb: 1 }}>
               <Button type='submit' variant='contained' startIcon={<Icon icon='tabler:device-floppy' />}>
                 Enregistrer
               </Button>

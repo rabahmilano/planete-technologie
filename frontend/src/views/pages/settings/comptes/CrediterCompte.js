@@ -36,7 +36,7 @@ const defaultValues = {
 }
 
 const CrediterCompte = () => {
-  const { comptes, crediter } = useCompte()
+  const { tousLesComptes, crediter } = useCompte()
   const [devise, setDevise] = useState('')
   const [isTauxEnabled, setIsTauxEnabled] = useState(false)
   const [totalMontantDZD, setTotalMontantDZD] = useState(0)
@@ -50,7 +50,7 @@ const CrediterCompte = () => {
   } = useForm({ defaultValues })
 
   const handleCompteChange = newCompte => {
-    const selectedCompte = comptes.find(compte => compte.id_cpt === newCompte)
+    const selectedCompte = tousLesComptes?.find(compte => compte.id_cpt === newCompte)
     const newDevise = selectedCompte?.dev_code || ''
     setDevise(newDevise)
     updateTauxEnabled()
@@ -127,7 +127,7 @@ const CrediterCompte = () => {
                     error={Boolean(errors.cpt)}
                     {...(errors.cpt && { helperText: 'Ce champ est obligatoire' })}
                   >
-                    {comptes?.map(compte => (
+                    {tousLesComptes?.map(compte => (
                       <MenuItem key={compte.id_cpt} value={compte.id_cpt}>
                         {compte.designation_cpt} ({compte.dev_code})
                       </MenuItem>
@@ -148,12 +148,13 @@ const CrediterCompte = () => {
                       {...field}
                       maxDate={dayjs()}
                       label='Date'
+                      slots={{ textField: CustomTextField }}
                       slotProps={{
                         textField: {
-                          variant: 'outlined',
                           fullWidth: true,
                           error: !!error,
-                          helperText: error && 'Ce champ est obligatoire'
+                          helperText: error && 'Ce champ est obligatoire',
+                          autoComplete: 'off'
                         }
                       }}
                     />
@@ -197,7 +198,6 @@ const CrediterCompte = () => {
                   <CustomTextField
                     fullWidth
                     value={value}
-                    type='number'
                     label='Taux de change'
                     placeholder='1.00'
                     onChange={e => {
@@ -209,6 +209,7 @@ const CrediterCompte = () => {
                     error={Boolean(errors.taux)}
                     {...(errors.taux && { helperText: 'Doit être supérieur à 0' })}
                     InputProps={{
+                      inputComponent: CleaveInput,
                       endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
                     }}
                   />
