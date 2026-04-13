@@ -127,29 +127,37 @@ export const addColis = [
     try {
       const newColis = await prisma.$transaction(async (tx) => {
         const infoCpt = await tx.compte.findUnique({
-          where: { id_cpt: cpt },
+          where: { id_cpt: parseInt(cpt) },
           select: {
             solde_actuel: true,
             taux_change_actuel: true,
             commission_pct: true,
+            solde_bloque: true,
           },
         });
 
-        if (infoCpt.solde_actuel < mntTotDev) {
+        if (!infoCpt) {
+          throw new Error("COMPTE_NOT_FOUND");
+        }
+
+        const soldeDisponible = arrondir(
+          parseFloat(infoCpt.solde_actuel) -
+            parseFloat(infoCpt.solde_bloque || 0),
+        );
+        const montantSaisi = arrondir(parseFloat(mntTotDev));
+
+        if (soldeDisponible < montantSaisi) {
           throw new Error("INSUFFICIENT_FUNDS");
         }
 
         let id_colis, prd_id;
-        const tauxActuel = infoCpt.taux_change_actuel;
+        const tauxActuel = parseFloat(infoCpt.taux_change_actuel || 0);
         const commPct = parseFloat(infoCpt.commission_pct || 0);
 
-        const mnt_tot_dzd = parseFloat((mntTotDev * tauxActuel).toFixed(4));
-        const pu_dev = parseFloat((mntTotDev / qte).toFixed(2));
-        const pu_dzd = parseFloat((mnt_tot_dzd / qte).toFixed(4));
-
-        const montantCommission = parseFloat(
-          (mntTotDev * (commPct / 100)).toFixed(4),
-        );
+        const mnt_tot_dzd = arrondir(montantSaisi * tauxActuel);
+        const pu_dev = arrondir(montantSaisi / parseFloat(qte));
+        const pu_dzd = arrondir(mnt_tot_dzd / parseFloat(qte));
+        const montantCommission = arrondir(montantSaisi * (commPct / 100));
 
         const produitExist = await tx.produit.findFirst({
           where: { designation_prd: { equals: desPrd } },
@@ -169,15 +177,15 @@ export const addColis = [
         const colis = await tx.colis.create({
           data: {
             id_colis,
-            mnt_tot_dev: mntTotDev,
-            date_achat: dateAchat,
-            qte_achat: qte,
+            mnt_tot_dev: montantSaisi,
+            date_achat: new Date(dateAchat),
+            qte_achat: parseInt(qte),
             mnt_tot_dzd,
             pu_dev,
             pu_dzd,
-            cat_id: cat,
+            cat_id: parseInt(cat),
             prd_id,
-            cpt_id: cpt,
+            cpt_id: parseInt(cpt),
             pu_dzd_ttc: pu_dzd,
             colis_classique: {
               create: {
@@ -189,8 +197,8 @@ export const addColis = [
         });
 
         await tx.compte.update({
-          where: { id_cpt: cpt },
-          data: { solde_actuel: { decrement: mntTotDev } },
+          where: { id_cpt: parseInt(cpt) },
+          data: { solde_actuel: { decrement: montantSaisi } },
         });
 
         return colis;
@@ -199,7 +207,15 @@ export const addColis = [
       res.status(201).json(newColis);
     } catch (error) {
       if (error.message === "INSUFFICIENT_FUNDS") {
-        return res.status(405).json({ message: "Votre solde est insuffisant" });
+        return res
+          .status(403)
+          .json({
+            message:
+              "Fonds insuffisants (Fonds bloqués atteints) sur le compte sélectionné.",
+          });
+      }
+      if (error.message === "COMPTE_NOT_FOUND") {
+        return res.status(404).json({ message: "Compte introuvable." });
       }
 
       res
@@ -745,48 +761,48 @@ export const updateColisDetails = async (req, res) => {
 
         const compte = await tx.compte.findUnique({
           where: { id_cpt: colis.cpt_id },
+          select: {
+            solde_actuel: true,
+            taux_change_actuel: true,
+            solde_bloque: true,
+          },
         });
         if (!compte) throw new Error("COMPTE_NOT_FOUND");
 
-        const valeurActuelleDZD = parseFloat(
-          (
-            parseFloat(compte.solde_actuel) *
-            parseFloat(compte.taux_change_actuel)
-          ).toFixed(4),
+        const valeurActuelleDZD = arrondir(
+          parseFloat(compte.solde_actuel) *
+            parseFloat(compte.taux_change_actuel),
         );
-        const soldeDeviseApresRemboursement = parseFloat(
-          (
-            parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev)
-          ).toFixed(4),
+        const soldeDeviseApresRemboursement = arrondir(
+          parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev),
         );
-        const valeurDZDApresRemboursement = parseFloat(
-          (valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd)).toFixed(4),
+        const valeurDZDApresRemboursement = arrondir(
+          valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd),
         );
 
-        if (soldeDeviseApresRemboursement < newPriceDev) {
+        const soldeBloque = parseFloat(compte.solde_bloque || 0);
+        const soldeDisponibleApresRemboursement = arrondir(
+          soldeDeviseApresRemboursement - soldeBloque,
+        );
+
+        if (soldeDisponibleApresRemboursement < newPriceDev) {
           throw new Error("INSUFFICIENT_FUNDS");
         }
 
-        const tauxAchatOriginal = parseFloat(
-          (
-            parseFloat(colis.mnt_tot_dzd) / parseFloat(colis.mnt_tot_dev)
-          ).toFixed(4),
+        const tauxAchatOriginal = arrondir(
+          parseFloat(colis.mnt_tot_dzd) / parseFloat(colis.mnt_tot_dev),
         );
-        const newMntTotDZD = parseFloat(
-          (newPriceDev * tauxAchatOriginal).toFixed(4),
-        );
+        const newMntTotDZD = arrondir(newPriceDev * tauxAchatOriginal);
 
-        const nouveauSoldeDeviseFinal = parseFloat(
-          (soldeDeviseApresRemboursement - newPriceDev).toFixed(4),
+        const nouveauSoldeDeviseFinal = arrondir(
+          soldeDeviseApresRemboursement - newPriceDev,
         );
-        const nouvelleValeurDZDfinal = parseFloat(
-          (valeurDZDApresRemboursement - newMntTotDZD).toFixed(4),
+        const nouvelleValeurDZDfinal = arrondir(
+          valeurDZDApresRemboursement - newMntTotDZD,
         );
         const nouveauTauxChangeFinal =
           nouveauSoldeDeviseFinal > 0
-            ? parseFloat(
-                (nouvelleValeurDZDfinal / nouveauSoldeDeviseFinal).toFixed(4),
-              )
+            ? arrondir(nouvelleValeurDZDfinal / nouveauSoldeDeviseFinal)
             : 0;
 
         await tx.compte.update({
@@ -797,12 +813,10 @@ export const updateColisDetails = async (req, res) => {
           },
         });
 
-        const newPuDzdTtc = parseFloat(
-          (
-            parseFloat(colis.pu_dzd_ttc) -
+        const newPuDzdTtc = arrondir(
+          parseFloat(colis.pu_dzd_ttc) -
             parseFloat(colis.pu_dzd) +
-            newMntTotDZD / colis.qte_achat
-          ).toFixed(4),
+            newMntTotDZD / colis.qte_achat,
         );
 
         await tx.colis.update({
@@ -810,8 +824,8 @@ export const updateColisDetails = async (req, res) => {
           data: {
             mnt_tot_dev: newPriceDev,
             mnt_tot_dzd: newMntTotDZD,
-            pu_dev: parseFloat((newPriceDev / colis.qte_achat).toFixed(2)),
-            pu_dzd: parseFloat((newMntTotDZD / colis.qte_achat).toFixed(4)),
+            pu_dev: arrondir(newPriceDev / colis.qte_achat),
+            pu_dzd: arrondir(newMntTotDZD / colis.qte_achat),
             pu_dzd_ttc: newPuDzdTtc,
           },
         });
@@ -843,7 +857,7 @@ export const updateColisDetails = async (req, res) => {
     if (error.message === "INSUFFICIENT_FUNDS")
       return res.status(400).json({
         message:
-          "Solde insuffisant pour couvrir le nouveau prix après ajustement.",
+          "Solde insuffisant (Fonds bloqués atteints) pour couvrir le nouveau prix après ajustement.",
       });
 
     res

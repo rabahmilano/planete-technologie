@@ -11,6 +11,7 @@ import produitRoutes from "./routes/produitRouter.js";
 import commandeRoutes from "./routes/commandeRouter.js";
 import empruntRoutes from "./routes/empruntRoutes.js";
 import voyageRoutes from "./routes/voyageRouter.js";
+import transfertRoutes from "./routes/transfertRouter.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -76,6 +77,7 @@ app.use("/api/produits", produitRoutes);
 app.use("/api/commandes", commandeRoutes);
 app.use("/api/emprunts", empruntRoutes);
 app.use("/api/voyages", voyageRoutes);
+app.use("/api/transferts", transfertRoutes);
 
 // Gestion des erreurs 404
 app.use((req, res, next) => {
