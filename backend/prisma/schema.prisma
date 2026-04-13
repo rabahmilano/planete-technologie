@@ -113,6 +113,7 @@ model compte {
   designation_cpt    String  @db.VarChar(50)
   commission_pct     Decimal @default(0.00) @db.Decimal(5, 2)
   solde_actuel       Decimal @default(0.00) @db.Decimal(10, 2)
+  solde_bloque       Decimal? @default(0) @db.Decimal(10, 2)
   taux_change_actuel Decimal @default(0.00) @db.Decimal(10, 2)
 
   colis          colis[]
@@ -124,6 +125,8 @@ model compte {
   transactions_voyage transaction_voyage[]
 
   devise         devise     @relation(fields: [dev_code], references: [code_dev])
+  transferts_sortants transfert[] @relation("TransfertsSortants")
+  transferts_entrants transfert[] @relation("TransfertsEntrants")
 }
 
 model crediter {
@@ -242,4 +245,17 @@ model transaction_voyage {
   colis_voyage    colis_voyage[]
   compte          compte   @relation(fields: [cpt_id], references: [id_cpt])
   voyage          voyage   @relation(fields: [voyage_id], references: [id_voyage])
+}
+
+model transfert {
+  id_transfert    Int      @id
+  cpt_source_id   Int
+  cpt_dest_id     Int
+  montant         Decimal  @db.Decimal(10, 4)
+  date_transfert  DateTime @db.Date()
+  taux_source  Decimal  @db.Decimal(10, 4)
+  observation     String?  @db.VarChar(255)
+
+  compte_source   compte   @relation("TransfertsSortants", fields: [cpt_source_id], references: [id_cpt])
+  compte_dest     compte   @relation("TransfertsEntrants", fields: [cpt_dest_id], references: [id_cpt])
 }
