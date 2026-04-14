@@ -4,6 +4,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import prisma from "./config/dbConfig.js";
 
+import authRouter from "./routes/authRouter.js";
 import deviseRoutes from "./routes/deviseRouter.js";
 import compteRoutes from "./routes/compteRouter.js";
 import depenseRoutes from "./routes/depenseRouter.js";
@@ -70,6 +71,7 @@ app.get("/", (req, res) => {
 });
 
 // Routes
+app.use("/api/auth", authRouter);
 app.use("/api/devises", deviseRoutes);
 app.use("/api/comptes", compteRoutes);
 app.use("/api/depenses", depenseRoutes);
