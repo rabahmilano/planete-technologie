@@ -1,5 +1,7 @@
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import cors from "cors";
 import bodyParser from "body-parser";
 import prisma from "./config/dbConfig.js";
@@ -15,6 +17,19 @@ import voyageRoutes from "./routes/voyageRouter.js";
 import transfertRoutes from "./routes/transfertRouter.js";
 
 const app = express();
+
+app.use(helmet());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { message: "TOO_MANY_REQUESTS" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/api/", limiter);
+
 const PORT = process.env.PORT || 3000;
 
 // middleware
