@@ -259,3 +259,30 @@ model transfert {
   compte_source   compte   @relation("TransfertsSortants", fields: [cpt_source_id], references: [id_cpt])
   compte_dest     compte   @relation("TransfertsEntrants", fields: [cpt_dest_id], references: [id_cpt])
 }
+
+enum RoleUtilisateur {
+  ADMIN
+  MANAGER
+  USER
+}
+
+enum StatutUtilisateur {
+  ACTIF
+  SUSPENDU
+}
+
+model Utilisateur {
+  id_user       Int               @id
+  email         String            @unique
+  password      String
+  nom_complet   String
+  role          RoleUtilisateur   @default(USER)
+  statut        StatutUtilisateur @default(ACTIF)
+  avatar        String?
+  refresh_token String?           @db.Text
+  dernier_login DateTime?
+  cree_le       DateTime          @default(now())
+  mis_a_jour_le DateTime          @updatedAt
+
+  @@map("utilisateurs")
+}
