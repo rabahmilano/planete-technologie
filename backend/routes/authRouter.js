@@ -3,12 +3,15 @@ import {
   register,
   login,
   refreshToken,
+  getMe,
 } from "../controllers/authController.js";
+import { verifyToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
 router.post("/register", register);
 router.post("/login", login);
 router.post("/refresh-token", refreshToken);
+router.get("/me", verifyToken, getMe);
 
 export default router;

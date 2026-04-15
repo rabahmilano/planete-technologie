@@ -174,3 +174,27 @@ export const refreshToken = async (req, res) => {
       .json({ message: "INVALID_OR_EXPIRED_REFRESH_TOKEN" });
   }
 };
+
+export const getMe = async (req, res) => {
+  try {
+    const user = await prisma.utilisateur.findUnique({
+      where: { id_user: req.user.id },
+    });
+
+    if (!user || user.statut === "SUSPENDU") {
+      return res.status(404).json({ message: "USER_NOT_FOUND" });
+    }
+
+    const userObj = {
+      id: user.id_user,
+      email: user.email,
+      nom_complet: user.nom_complet,
+      role: user.role,
+      avatar: user.avatar,
+    };
+
+    res.status(200).json(userObj);
+  } catch (error) {
+    res.status(500).json({ message: "SERVER_ERROR", error: error.message });
+  }
+};

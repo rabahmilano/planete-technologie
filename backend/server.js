@@ -2,9 +2,10 @@ import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import cors from "cors";
 import bodyParser from "body-parser";
 import prisma from "./config/dbConfig.js";
+
+import { verifyToken } from "./middlewares/authMiddleware.js";
 
 import authRouter from "./routes/authRouter.js";
 import deviseRoutes from "./routes/deviseRouter.js";
@@ -22,7 +23,7 @@ app.use(helmet());
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 10000,
   message: { message: "TOO_MANY_REQUESTS" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -32,27 +33,15 @@ app.use("/api/", limiter);
 
 const PORT = process.env.PORT || 3000;
 
-// middleware
-// app.use(
-//   cors({
-//     //origin: "http://localhost:3000",
-// 	origin: true,
-//     credentials: true,
-//   })
-// );
-
-// Middleware CORS sécurisé avec Liste Blanche
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // Liste blanche : SEULES ces adresses peuvent parler à ton backend
   const allowedOrigins = [
-    "http://localhost:3000", // Ton Frontend local (PC Maison / Travail)
-    "http://127.0.0.1:3000", // Alternative locale courante
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "http://localhost:3001",
   ];
 
-  // Vérification stricte
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -66,9 +55,7 @@ app.use((req, res, next) => {
     );
   }
 
-  // Validation de la requête de pré-vérification (Preflight)
   if (req.method === "OPTIONS") {
-    // Si l'origine est autorisée, on renvoie 200, sinon le navigateur bloquera la suite
     return allowedOrigins.includes(origin)
       ? res.status(200).end()
       : res.status(403).end();
@@ -80,28 +67,25 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Test routes
 app.get("/", (req, res) => {
   res.status(200).send("Hello world");
 });
 
-// Routes
 app.use("/api/auth", authRouter);
-app.use("/api/devises", deviseRoutes);
-app.use("/api/comptes", compteRoutes);
-app.use("/api/depenses", depenseRoutes);
-app.use("/api/produits", produitRoutes);
-app.use("/api/commandes", commandeRoutes);
-app.use("/api/emprunts", empruntRoutes);
-app.use("/api/voyages", voyageRoutes);
-app.use("/api/transferts", transfertRoutes);
 
-// Gestion des erreurs 404
+app.use("/api/devises", verifyToken, deviseRoutes);
+app.use("/api/comptes", verifyToken, compteRoutes);
+app.use("/api/depenses", verifyToken, depenseRoutes);
+app.use("/api/produits", verifyToken, produitRoutes);
+app.use("/api/commandes", verifyToken, commandeRoutes);
+app.use("/api/emprunts", verifyToken, empruntRoutes);
+app.use("/api/voyages", verifyToken, voyageRoutes);
+app.use("/api/transferts", verifyToken, transfertRoutes);
+
 app.use((req, res, next) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-// Gestionnaire d'erreurs global
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: "Something went wrong" });
