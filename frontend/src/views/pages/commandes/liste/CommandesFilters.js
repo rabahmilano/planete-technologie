@@ -11,8 +11,8 @@ import {
   CircularProgress
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
-import axios from 'axios'
 import dayjs from 'dayjs'
+import { useProduit } from 'src/context/ProduitContext'
 
 const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setProduitFiltre, onReset }) => {
   const [optionsAnnee, setOptionsAnnee] = useState([])
@@ -20,6 +20,8 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
   const [inputValue, setInputValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [selectedProduit, setSelectedProduit] = useState(null)
+
+  const { searchAutocompleteProduits } = useProduit()
 
   useEffect(() => {
     const anneePremierAchat = 2023
@@ -44,17 +46,10 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
     setLoading(true)
 
     const timeoutId = setTimeout(async () => {
-      try {
-        const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/search-autocomplete`, {
-          params: { q: inputValue }
-        })
-        if (isActive) {
-          setOptions(response.data || [])
-        }
-      } catch (error) {
-        console.error('Erreur lors de la recherche des produits', error)
-      } finally {
-        if (isActive) setLoading(false)
+      const data = await searchAutocompleteProduits(inputValue)
+      if (isActive) {
+        setOptions(data)
+        setLoading(false)
       }
     }, 500)
 
@@ -62,7 +57,7 @@ const CommandesFilters = ({ periodeFiltre, setPeriodeFiltre, produitFiltre, setP
       isActive = false
       clearTimeout(timeoutId)
     }
-  }, [inputValue, selectedProduit])
+  }, [inputValue, selectedProduit, searchAutocompleteProduits])
 
   useEffect(() => {
     if (produitFiltre === 'all') {

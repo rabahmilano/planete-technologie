@@ -1,4 +1,4 @@
-import { useState, useContext } from 'react'
+import { useState } from 'react'
 import {
   Card,
   Grid,
@@ -15,20 +15,17 @@ import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
 import 'dayjs/locale/fr'
-dayjs.locale('fr')
 
 import CustomTextField from 'src/@core/components/mui/text-field'
 import Icon from 'src/@core/components/icon'
-import toast from 'react-hot-toast'
 import { useForm, Controller } from 'react-hook-form'
-import axios from 'axios'
 
-// Contexts
 import { useCompte } from 'src/context/CompteContext'
-import { VoyageContext } from 'src/context/VoyageContext'
+import { useVoyage } from 'src/context/VoyageContext'
 
-// Composant générique
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+
+dayjs.locale('fr')
 
 const defaultValues = {
   desVoyage: '',
@@ -43,9 +40,8 @@ const AjouterVoyage = () => {
   const [openModal, setOpenModal] = useState(false)
   const [formDataToSubmit, setFormDataToSubmit] = useState(null)
 
-  // Utilisation des contextes selon ton architecture
   const { comptes } = useCompte()
-  const { fetchVoyages } = useContext(VoyageContext)
+  const { addVoyage } = useVoyage()
 
   const {
     control,
@@ -54,13 +50,11 @@ const AjouterVoyage = () => {
     reset
   } = useForm({ defaultValues })
 
-  // Interception
   const onPreSubmit = data => {
     setFormDataToSubmit(data)
     setOpenModal(true)
   }
 
-  // Exécution de l'API
   const executeApiCall = async () => {
     setOpenModal(false)
 
@@ -73,15 +67,9 @@ const AjouterVoyage = () => {
       cptDefautId: formDataToSubmit.cptDefautId ? parseInt(formDataToSubmit.cptDefautId) : null
     }
 
-    try {
-      const url = `${process.env.NEXT_PUBLIC_BASE_URL}voyages`
-      await axios.post(url, formattedData)
-      toast.success('Voyage créé avec succès')
-
-      await fetchVoyages()
+    const success = await addVoyage(formattedData)
+    if (success) {
       reset()
-    } catch (error) {
-      toast.error('Erreur: ' + (error.response?.data?.error?.message || error.message))
     }
   }
 
@@ -158,6 +146,7 @@ const AjouterVoyage = () => {
                       <DatePicker
                         {...field}
                         label='Date de départ'
+                        slots={{ textField: CustomTextField }}
                         slotProps={{
                           textField: {
                             fullWidth: true,
@@ -188,6 +177,7 @@ const AjouterVoyage = () => {
                       <DatePicker
                         {...field}
                         label='Date de retour'
+                        slots={{ textField: CustomTextField }}
                         slotProps={{
                           textField: {
                             fullWidth: true,

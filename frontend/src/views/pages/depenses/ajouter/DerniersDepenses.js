@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   CardHeader,
@@ -16,7 +16,6 @@ import {
 } from '@mui/material'
 import dayjs from 'dayjs'
 import Icon from 'src/@core/components/icon'
-import axios from 'axios'
 
 import EditDepenseModal from '../liste/EditDepenseModal'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
@@ -26,30 +25,23 @@ import { formatMontant } from 'src/@core/utils/format'
 const DerniersDepenses = ({ refreshTrigger }) => {
   const [depenses, setDepenses] = useState([])
   const [loading, setLoading] = useState(true)
-  const { listNature, annulerDepense } = useDepense()
+  const { listNature, annulerDepense, getDernieresDepenses } = useDepense()
 
   const [openEditModal, setOpenEditModal] = useState(false)
   const [depenseToEdit, setDepenseToEdit] = useState(null)
   const [openDeleteModal, setOpenDeleteModal] = useState(false)
   const [depenseToDelete, setDepenseToDelete] = useState(null)
 
-  const fetchDernieresDepenses = async () => {
+  const fetchDernieresDepenses = useCallback(async () => {
     setLoading(true)
-    try {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}depenses`, {
-        params: { page: 1, limit: 5, excludeTimbres: true }
-      })
-      setDepenses(response.data.depenses || [])
-    } catch (error) {
-      console.error("Erreur lors du chargement de l'historique", error)
-    } finally {
-      setLoading(false)
-    }
-  }
+    const data = await getDernieresDepenses()
+    setDepenses(data)
+    setLoading(false)
+  }, [getDernieresDepenses])
 
   useEffect(() => {
     fetchDernieresDepenses()
-  }, [refreshTrigger])
+  }, [refreshTrigger, fetchDernieresDepenses])
 
   const handleEditClick = depense => {
     setDepenseToEdit(depense)
@@ -81,13 +73,23 @@ const DerniersDepenses = ({ refreshTrigger }) => {
       />
       <TableContainer>
         <Table size='small'>
-          <TableHead sx={{ backgroundColor: '#f8f9fa' }}>
+          <TableHead sx={{ backgroundColor: '#0d1b2a' }}>
             <TableRow>
-              <TableCell>Détails</TableCell>
-              <TableCell>Compte</TableCell>
-              <TableCell>Date</TableCell>
-              <TableCell align='right'>Montant</TableCell>
-              <TableCell align='center'>Actions</TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Détails
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Compte
+              </TableCell>
+              <TableCell sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Date
+              </TableCell>
+              <TableCell align='right' sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Montant
+              </TableCell>
+              <TableCell align='center' sx={{ color: 'white', fontSize: '0.72rem', textTransform: 'uppercase', py: 2 }}>
+                Actions
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
