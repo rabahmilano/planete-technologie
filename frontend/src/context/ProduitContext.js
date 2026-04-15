@@ -1,5 +1,5 @@
 import { createContext, useState, useContext, useEffect, useCallback } from 'react'
-import axios from 'axios'
+import axios from 'src/configs/axiosConfig'
 import toast from 'react-hot-toast'
 
 const ProduitContext = createContext()
@@ -35,6 +35,18 @@ export const ProduitProvider = ({ children }) => {
       return []
     }
   }
+
+  const searchAutocompleteProduits = useCallback(async query => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/search-autocomplete`, {
+        params: { q: query }
+      })
+      return data || []
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Erreur lors de la recherche des produits')
+      return []
+    }
+  }, [])
 
   const ajouterProduit = async data => {
     try {
@@ -85,6 +97,7 @@ export const ProduitProvider = ({ children }) => {
         fetchComptes,
         ajouterProduit,
         rechercherProduits,
+        searchAutocompleteProduits,
         ajouterCategorie
       }}
     >

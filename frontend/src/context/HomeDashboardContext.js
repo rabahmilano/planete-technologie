@@ -1,5 +1,5 @@
 import { createContext, useContext, useCallback } from 'react'
-import axios from 'axios'
+import axios from 'src/configs/axiosConfig'
 import toast from 'react-hot-toast'
 
 const HomeDashboardContext = createContext()

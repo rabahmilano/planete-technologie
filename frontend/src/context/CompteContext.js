@@ -1,5 +1,5 @@
 import { createContext, useState, useContext, useEffect } from 'react'
-import axios from 'axios'
+import axios from 'src/configs/axiosConfig'
 import toast from 'react-hot-toast'
 
 const CompteContext = createContext()

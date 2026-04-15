@@ -1,8 +1,9 @@
-import { createContext, useState, useCallback } from 'react'
-import axios from 'axios'
+import { createContext, useState, useCallback, useContext } from 'react'
+import axiosInstance from 'src/configs/axiosConfig'
 import toast from 'react-hot-toast'
 
 export const VoyageContext = createContext()
+export const useVoyage = () => useContext(VoyageContext)
 
 export const VoyageProvider = ({ children }) => {
   const [voyages, setVoyages] = useState([])
@@ -14,7 +15,7 @@ export const VoyageProvider = ({ children }) => {
   const fetchVoyages = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await axios.get(API_URL)
+      const { data } = await axiosInstance.get(API_URL)
       setVoyages(data)
       setError(null)
     } catch (err) {
@@ -27,7 +28,7 @@ export const VoyageProvider = ({ children }) => {
 
   const getVoyageById = async id => {
     try {
-      const { data } = await axios.get(`${API_URL}/${id}`)
+      const { data } = await axiosInstance.get(`${API_URL}/${id}`)
       return data
     } catch (err) {
       toast.error(err.response?.data?.message || 'Voyage introuvable')
@@ -37,7 +38,7 @@ export const VoyageProvider = ({ children }) => {
 
   const addVoyage = async voyageData => {
     try {
-      const { data } = await axios.post(API_URL, voyageData)
+      const { data } = await axiosInstance.post(API_URL, voyageData)
       toast.success('Voyage créé avec succès !')
       fetchVoyages()
       return data
@@ -45,25 +46,25 @@ export const VoyageProvider = ({ children }) => {
       const errorMsg =
         err.response?.data?.errors?.[0]?.msg || err.response?.data?.error?.message || 'Erreur de création'
       toast.error(errorMsg)
-      throw err
+      return false
     }
   }
 
   const updateVoyage = async (id, voyageData) => {
     try {
-      await axios.put(`${API_URL}/${id}`, voyageData)
+      await axiosInstance.put(`${API_URL}/${id}`, voyageData)
       toast.success('Voyage mis à jour !')
       fetchVoyages()
       return true
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erreur de mise à jour')
-      throw err
+      return false
     }
   }
 
   const deleteVoyage = async id => {
     try {
-      await axios.delete(`${API_URL}/${id}`)
+      await axiosInstance.delete(`${API_URL}/${id}`)
       toast.success('Voyage supprimé.')
       fetchVoyages()
       return true
@@ -75,26 +76,26 @@ export const VoyageProvider = ({ children }) => {
 
   const changerStatutVoyage = async (id, statut, tauxChange = null) => {
     try {
-      await axios.put(`${API_URL}/${id}/statut`, { statut, tauxChange })
+      await axiosInstance.put(`${API_URL}/${id}/statut`, { statut, tauxChange })
       const message = statut === 'CLOTURE' ? 'Voyage clôturé et prix calculés !' : 'Voyage réouvert avec succès.'
       toast.success(message)
       fetchVoyages()
       return true
     } catch (err) {
       toast.error(err.response?.data?.error?.message || 'Erreur statut', { duration: 5000 })
-      throw err
+      return false
     }
   }
 
   const addTransactionVoyage = async transactionData => {
     try {
-      await axios.post(`${API_URL}/${transactionData.idVoyage}/addTransaction`, transactionData)
+      await axiosInstance.post(`${API_URL}/${transactionData.idVoyage}/addTransaction`, transactionData)
       toast.success('Transaction enregistrée !')
       return true
     } catch (err) {
       const errorMsg = err.response?.data?.error?.message || 'Erreur transaction'
       toast.error(errorMsg, { duration: 6000 })
-      throw err
+      return false
     }
   }
 

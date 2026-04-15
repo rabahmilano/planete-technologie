@@ -1,5 +1,5 @@
-import { createContext, useState, useContext, useEffect } from 'react'
-import axios from 'axios'
+import { createContext, useState, useContext, useEffect, useCallback } from 'react'
+import axiosInstance from 'src/configs/axiosConfig'
 import toast from 'react-hot-toast'
 
 const DeviseContext = createContext()
@@ -9,18 +9,18 @@ export const useDevises = () => useContext(DeviseContext)
 export const DeviseProvider = ({ children }) => {
   const [devises, setDevises] = useState([])
 
-  const fetchDevises = async () => {
+  const fetchDevises = useCallback(async () => {
     try {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}devises/allDevises`)
+      const response = await axiosInstance.get(`${process.env.NEXT_PUBLIC_BASE_URL}devises/allDevises`)
       setDevises(response.data)
     } catch (error) {
-      console.error('Erreur lors de la récupération des devises:', error)
+      toast.error('Erreur lors de la récupération des devises')
     }
-  }
+  }, [])
 
   const ajouterDevise = async data => {
     try {
-      const response = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}devises/addDevise`, data)
+      const response = await axiosInstance.post(`${process.env.NEXT_PUBLIC_BASE_URL}devises/addDevise`, data)
       if (response.status === 201) {
         toast.success('Devise ajoutée avec succès')
         fetchDevises()
@@ -44,9 +44,27 @@ export const DeviseProvider = ({ children }) => {
     }
   }
 
+  const ajouterTauxChange = async data => {
+    try {
+      const response = await axiosInstance.post(`${process.env.NEXT_PUBLIC_BASE_URL}devises/addTauxChange`, data)
+      if (response.status === 200 || response.status === 201) {
+        toast.success('Le nouveau taux de change est appliqué')
+        fetchDevises()
+        return true
+      }
+    } catch (error) {
+      toast.error('Erreur: ' + (error.response?.data?.message || error.message))
+      return false
+    }
+  }
+
   useEffect(() => {
     fetchDevises()
-  }, [])
+  }, [fetchDevises])
 
-  return <DeviseContext.Provider value={{ devises, fetchDevises, ajouterDevise }}>{children}</DeviseContext.Provider>
+  return (
+    <DeviseContext.Provider value={{ devises, fetchDevises, ajouterDevise, ajouterTauxChange }}>
+      {children}
+    </DeviseContext.Provider>
+  )
 }
