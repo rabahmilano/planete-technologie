@@ -27,6 +27,7 @@ import BlankLayout from 'src/@core/layouts/BlankLayout'
 
 // ** Hooks
 import { useSettings } from 'src/@core/hooks/useSettings'
+import { useAuth } from 'src/hooks/useAuth' // <-- L'import crucial ajouté
 
 // ** Demo Imports
 import FooterIllustrationsV2 from 'src/views/pages/auth/FooterIllustrationsV2'
@@ -75,14 +76,36 @@ const Register = () => {
   // ** States
   const [showPassword, setShowPassword] = useState(false)
 
+  // NOUVEAUX ETATS POUR CAPTURER LES DONNEES
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [agreeTerms, setAgreeTerms] = useState(false)
+
   // ** Hooks
   const theme = useTheme()
   const { settings } = useSettings()
   const hidden = useMediaQuery(theme.breakpoints.down('md'))
+  const auth = useAuth() // <-- Utilisation du hook d'authentification
 
   // ** Vars
   const { skin } = settings
   const imageSource = skin === 'bordered' ? 'auth-v2-register-illustration-bordered' : 'auth-v2-register-illustration'
+
+  // ** Fonction de soumission
+  const onSubmit = e => {
+    e.preventDefault()
+
+    if (!agreeTerms) {
+      alert("Vous devez accepter les conditions d'utilisation.")
+      return
+    }
+
+    // Appel à notre moteur d'authentification
+    auth.register({ username, email, password }, err => {
+      console.error("Erreur lors de l'inscription", err)
+    })
+  }
 
   return (
     <Box className='content-right' sx={{ backgroundColor: 'background.paper' }}>
@@ -151,14 +174,33 @@ const Register = () => {
               </Typography>
               <Typography sx={{ color: 'text.secondary' }}>Make your app management easy and fun!</Typography>
             </Box>
-            <form noValidate autoComplete='off' onSubmit={e => e.preventDefault()}>
-              <CustomTextField autoFocus fullWidth sx={{ mb: 4 }} label='Username' placeholder='johndoe' />
-              <CustomTextField fullWidth label='Email' sx={{ mb: 4 }} placeholder='user@email.com' />
+
+            {/* LE FORMULAIRE MODIFIÉ EST ICI */}
+            <form noValidate autoComplete='off' onSubmit={onSubmit}>
+              <CustomTextField
+                autoFocus
+                fullWidth
+                sx={{ mb: 4 }}
+                label='Username'
+                placeholder='johndoe'
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+              />
+              <CustomTextField
+                fullWidth
+                label='Email'
+                sx={{ mb: 4 }}
+                placeholder='user@email.com'
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
               <CustomTextField
                 fullWidth
                 label='Password'
                 id='auth-login-v2-password'
                 type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position='end'>
@@ -174,7 +216,7 @@ const Register = () => {
                 }}
               />
               <FormControlLabel
-                control={<Checkbox />}
+                control={<Checkbox checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} />}
                 sx={{ mb: 4, mt: 1.5, '& .MuiFormControlLabel-label': { fontSize: theme.typography.body2.fontSize } }}
                 label={
                   <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
