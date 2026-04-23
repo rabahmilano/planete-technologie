@@ -44,8 +44,31 @@ export const HomeDashboardProvider = ({ children }) => {
     }
   }, [])
 
+  const fetchPeriodicPerformance = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/dashboard/analytics-all`)
+
+      return data
+    } catch (error) {
+      toast.error('Erreur lors de la récupération des statistiques périodiques')
+
+      return {
+        weeklyStats: {
+          ventes: { count: 0, income: 0, dailyData: [] },
+          achats: { count: 0, income: 0, dailyData: [] }
+        },
+        monthlyStats: {
+          ventes: [],
+          achats: []
+        }
+      }
+    }
+  }, [])
+
   return (
-    <HomeDashboardContext.Provider value={{ fetchArticlesChartData, fetchTransactionsChartData, fetchAllStats }}>
+    <HomeDashboardContext.Provider
+      value={{ fetchArticlesChartData, fetchTransactionsChartData, fetchAllStats, fetchPeriodicPerformance }}
+    >
       {children}
     </HomeDashboardContext.Provider>
   )

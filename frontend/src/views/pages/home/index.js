@@ -1,50 +1,73 @@
 import { useState, useEffect } from 'react'
 import Grid from '@mui/material/Grid'
-import Box from '@mui/material/Box'
-import Typography from '@mui/material/Typography'
+import Skeleton from '@mui/material/Skeleton'
 import { useHomeDashboard } from 'src/context/HomeDashboardContext'
 
 import KpiCards from './KpiCards'
 import TransactionsChart from './TransactionsChart'
 import ArticlesChart from './ArticlesChart'
+import WeeklyState from './WeeklyState'
+import MonthlyState from './MonthlyState'
 
 const HomeView = () => {
-  const [data, setData] = useState(null)
-  const { fetchAllStats } = useHomeDashboard()
+  const [stats, setStats] = useState(null)
+  const [analytics, setAnalytics] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Utilisation du nouveau nom de fonction : fetchPeriodicPerformance
+  const { fetchAllStats, fetchPeriodicPerformance } = useHomeDashboard()
 
   useEffect(() => {
     const loadData = async () => {
-      const res = await fetchAllStats()
-      setData(res)
+      setIsLoading(true)
+      const global = await fetchAllStats()
+      const periodic = await fetchPeriodicPerformance()
+
+      if (global) setStats(global)
+      if (periodic) setAnalytics(periodic)
+
+      setIsLoading(false)
     }
+
     loadData()
-  }, [fetchAllStats])
+  }, [fetchAllStats, fetchPeriodicPerformance])
 
   return (
-    <Grid container spacing={6}>
+    <Grid container spacing={6} className='match-height'>
       <Grid item xs={12}>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant='h5' sx={{ fontWeight: 600 }}>
-            Tableau de Bord 🚀
-          </Typography>
-          <Typography variant='body2' sx={{ color: 'text.secondary' }}>
-            Aperçu immédiat de votre activité commerciale et financière.
-          </Typography>
-        </Box>
+        {isLoading ? (
+          <Grid container spacing={6}>
+            {[1, 2, 3, 4].map(item => (
+              <Grid key={item} item xs={12} sm={6} md={3}>
+                <Skeleton variant='rounded' animation='wave' width='100%' height={160} />
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <KpiCards data={stats} />
+        )}
       </Grid>
 
-      {/* Ligne des 4 StatCards (KPIs) */}
-      <Grid item xs={12}>
-        <KpiCards data={data} />
+      <Grid item xs={12} md={8}>
+        {isLoading ? <Skeleton variant='rounded' animation='wave' width='100%' height={400} /> : <TransactionsChart />}
+      </Grid>
+      <Grid item xs={12} md={4}>
+        {isLoading ? (
+          <Skeleton variant='rounded' animation='wave' width='100%' height={400} />
+        ) : (
+          <WeeklyState data={analytics?.weeklyStats} />
+        )}
       </Grid>
 
-      {/* Graphiques côte à côte avec hauteur réduite pour éviter l'effet carré */}
-      <Grid item xs={12} lg={6}>
-        <TransactionsChart />
+      <Grid item xs={12} md={4}>
+        {isLoading ? (
+          <Skeleton variant='rounded' animation='wave' width='100%' height={400} />
+        ) : (
+          <MonthlyState data={analytics?.monthlyStats} />
+        )}
       </Grid>
-
-      <Grid item xs={12} lg={6}>
-        <ArticlesChart />
+      <Grid item xs={12} md={8}>
+        {isLoading ? <Skeleton variant='rounded' animation='wave' width='100%' height={400} /> : <ArticlesChart />}
       </Grid>
     </Grid>
   )
