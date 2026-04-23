@@ -207,12 +207,10 @@ export const addColis = [
       res.status(201).json(newColis);
     } catch (error) {
       if (error.message === "INSUFFICIENT_FUNDS") {
-        return res
-          .status(403)
-          .json({
-            message:
-              "Fonds insuffisants (Fonds bloqués atteints) sur le compte sélectionné.",
-          });
+        return res.status(403).json({
+          message:
+            "Fonds insuffisants (Fonds bloqués atteints) sur le compte sélectionné.",
+        });
       }
       if (error.message === "COMPTE_NOT_FOUND") {
         return res.status(404).json({ message: "Compte introuvable." });
@@ -1260,5 +1258,145 @@ export const searchProduits = async (req, res) => {
     res
       .status(500)
       .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const getAllAnalytics = async (req, res) => {
+  try {
+    const startOfWeek = dayjs().day(0).startOf("day");
+
+    const ordersThisWeek = await prisma.commande.findMany({
+      where: { date_cde: { gte: startOfWeek.toISOString() } },
+      include: { ligne_commande: true },
+    });
+
+    const achatsThisWeek = await prisma.colis.findMany({
+      where: { date_achat: { gte: startOfWeek.toISOString() } },
+    });
+
+    const dailyVentes = [];
+    const dailyAchats = [];
+
+    for (let i = 0; i < 7; i++) {
+      const currentDay = startOfWeek.add(i, "day");
+      const dayString = currentDay
+        .locale("fr")
+        .format("ddd")
+        .replace(".", "")
+        .toUpperCase();
+
+      const dayOrders = ordersThisWeek.filter((cmd) =>
+        dayjs(cmd.date_cde).isSame(currentDay, "day"),
+      );
+      const articlesVendus = dayOrders.reduce(
+        (acc, cmd) =>
+          acc +
+          cmd.ligne_commande.reduce(
+            (sum, ligne) => sum + Number(ligne.qte_cde || 0),
+            0,
+          ),
+        0,
+      );
+      dailyVentes.push({
+        day: dayString,
+        orders: dayOrders.length,
+        articles: -Math.abs(articlesVendus),
+      });
+
+      const dayAchats = achatsThisWeek.filter((c) =>
+        dayjs(c.date_achat).isSame(currentDay, "day"),
+      );
+      const articlesAchetes = dayAchats.reduce(
+        (sum, c) => sum + Number(c.qte_achat || 0),
+        0,
+      );
+      dailyAchats.push({
+        day: dayString,
+        orders: dayAchats.length,
+        articles: -Math.abs(articlesAchetes),
+      });
+    }
+
+    const weeklyStats = {
+      ventes: {
+        count: ordersThisWeek.length,
+        income: ordersThisWeek.reduce(
+          (sum, curr) => sum + Number(curr.mnt_cde || 0),
+          0,
+        ),
+        dailyData: dailyVentes,
+      },
+      achats: {
+        count: achatsThisWeek.length,
+        income: achatsThisWeek.reduce(
+          (sum, curr) => sum + Number(curr.mnt_tot_dzd || 0),
+          0,
+        ),
+        dailyData: dailyAchats,
+      },
+    };
+
+    const monthlyVentes = [];
+    const monthlyAchats = [];
+
+    for (let i = 0; i < 4; i++) {
+      const start = dayjs()
+        .subtract(i + 1, "week")
+        .endOf("week");
+      const end = dayjs().subtract(i, "week").endOf("week");
+
+      const weekOrders = await prisma.commande.findMany({
+        where: {
+          date_cde: { gte: start.toISOString(), lte: end.toISOString() },
+        },
+        include: { ligne_commande: true },
+      });
+      const articlesVendusMonth = weekOrders.reduce(
+        (acc, cmd) =>
+          acc +
+          cmd.ligne_commande.reduce(
+            (sum, ligne) => sum + Number(ligne.qte_cde || 0),
+            0,
+          ),
+        0,
+      );
+      monthlyVentes.push({
+        week: `S${4 - i}`,
+        orders: weekOrders.length,
+        articles: -Math.abs(articlesVendusMonth),
+        income: weekOrders.reduce(
+          (sum, curr) => sum + Number(curr.mnt_cde || 0),
+          0,
+        ),
+      });
+
+      const weekAchats = await prisma.colis.findMany({
+        where: {
+          date_achat: { gte: start.toISOString(), lte: end.toISOString() },
+        },
+      });
+      const articlesAchetesMonth = weekAchats.reduce(
+        (sum, c) => sum + Number(c.qte_achat || 0),
+        0,
+      );
+      monthlyAchats.push({
+        week: `S${4 - i}`,
+        orders: weekAchats.length,
+        articles: -Math.abs(articlesAchetesMonth),
+        income: weekAchats.reduce(
+          (sum, curr) => sum + Number(curr.mnt_tot_dzd || 0),
+          0,
+        ),
+      });
+    }
+
+    const monthlyStats = {
+      ventes: monthlyVentes.reverse(),
+      achats: monthlyAchats.reverse(),
+    };
+
+    res.status(200).json({ weeklyStats, monthlyStats });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };

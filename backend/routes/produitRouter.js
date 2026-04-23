@@ -23,6 +23,7 @@ import {
   getTransactionsChartData,
   getArticlesChartData,
   searchProduits,
+  getAllAnalytics,
 } from "../controllers/produitController.js";
 
 import { Router } from "express";
@@ -78,5 +79,6 @@ router.get("/historique-prix/:id/colis", getColisForProduit);
 // router.get("/dashboard/sales-purchases-chart", getDashboardChartData);
 router.get("/dashboard/chart-transactions", getTransactionsChartData);
 router.get("/dashboard/chart-articles", getArticlesChartData);
+router.get("/dashboard/analytics-all", getAllAnalytics);
 
 export default router;

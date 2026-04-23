@@ -1,4 +1,9 @@
-import { addCommande, getAllCommandes, deleteCommande, getCommandesStats } from "../controllers/commandeController.js";
+import {
+  addCommande,
+  getAllCommandes,
+  deleteCommande,
+  getCommandesStats,
+} from "../controllers/commandeController.js";
 
 import { Router } from "express";
 
