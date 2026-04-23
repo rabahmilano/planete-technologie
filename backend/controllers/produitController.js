@@ -1183,6 +1183,21 @@ export const getTransactionsChartData = async (req, res) => {
       .startOf("month")
       .toDate();
 
+    const ventes = await prisma.commande.findMany({
+      where: { date_cde: { gte: twelveMonthsAgo } },
+      include: {
+        ligne_commande: {
+          include: {
+            colis: {
+              include: {
+                colis: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
     const achats = await prisma.colis.findMany({
       where: {
         OR: [
@@ -1190,46 +1205,57 @@ export const getTransactionsChartData = async (req, res) => {
           { date_stock: { gte: twelveMonthsAgo } },
         ],
       },
-      select: { date_achat: true, date_stock: true },
-    });
-
-    const ventes = await prisma.commande.findMany({
-      where: { date_cde: { gte: twelveMonthsAgo } },
-      select: { date_cde: true },
     });
 
     const monthlyData = {};
     for (let i = 0; i < 13; i++) {
       const monthKey = dayjs().subtract(i, "month").format("YYYY-MM");
-      monthlyData[monthKey] = { colis: 0, commandes: 0 };
+      monthlyData[monthKey] = {
+        colis: 0,
+        commandes: 0,
+        revenus: 0,
+        marge: 0,
+        depenses: 0,
+      };
     }
+
+    ventes.forEach((cmd) => {
+      const monthKey = dayjs(cmd.date_cde).format("YYYY-MM");
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].commandes += 1;
+        monthlyData[monthKey].revenus += Number(cmd.mnt_cde || 0);
+
+        cmd.ligne_commande.forEach((ligne) => {
+          const pu_vente = Number(ligne.pu_vente || 0);
+          ligne.colis.forEach((liaison) => {
+            const pu_achat_ttc = Number(liaison.colis?.pu_dzd_ttc || 0);
+            const qte = Number(liaison.qte || 0);
+            monthlyData[monthKey].marge += (pu_vente - pu_achat_ttc) * qte;
+          });
+        });
+      }
+    });
 
     achats.forEach((item) => {
       const referenceDate = item.date_achat || item.date_stock;
       const monthKey = dayjs(referenceDate).format("YYYY-MM");
-      if (monthlyData[monthKey]) monthlyData[monthKey].colis += 1;
-    });
-
-    ventes.forEach((commande) => {
-      const monthKey = dayjs(commande.date_cde).format("YYYY-MM");
-      if (monthlyData[monthKey]) monthlyData[monthKey].commandes += 1;
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].colis += 1;
+      }
     });
 
     const sortedChartData = Object.keys(monthlyData)
       .sort()
-      .map((monthKey) => ({
-        month: monthKey,
-        colis: monthlyData[monthKey].colis,
-        commandes: monthlyData[monthKey].commandes,
+      .map((key) => ({
+        month: key,
+        ...monthlyData[key],
       }));
 
     if (sortedChartData.length > 12) sortedChartData.shift();
 
     res.status(200).json(sortedChartData);
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
+    res.status(500).json({ error: { message: error.message } });
   }
 };
 

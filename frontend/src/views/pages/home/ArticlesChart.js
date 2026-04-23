@@ -9,7 +9,7 @@ import { useTheme } from '@mui/material/styles'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useHomeDashboard } from 'src/context/HomeDashboardContext'
 import dayjs from 'dayjs'
-import 'dayjs/locale/fr' // Import obligatoire du dictionnaire français
+import 'dayjs/locale/fr'
 
 const ArticlesChart = () => {
   const [data, setData] = useState([])
@@ -27,7 +27,6 @@ const ArticlesChart = () => {
         if (result && result.length > 0) {
           const formattedData = result.map(item => ({
             ...item,
-            // Forçage strict de la locale française
             month: dayjs(item.month).locale('fr').format('MMM YY')
           }))
           setData(formattedData)
@@ -54,7 +53,7 @@ const ArticlesChart = () => {
     }
     return (
       <ResponsiveContainer width='100%' height='100%'>
-        <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 10, right: 10, left: -35, bottom: 0 }}>
           <defs>
             <linearGradient id='colorAchetes' x1='0' y1='0' x2='0' y2='1'>
               <stop offset='5%' stopColor={theme.palette.primary.main} stopOpacity={0.3} />
@@ -115,10 +114,18 @@ const ArticlesChart = () => {
   }
 
   return (
-    <Card>
-      <CardHeader title='Évolution des Volumes' subheader="Quantité d'articles achetés vs vendus sur 12 mois" />
-      <CardContent>
-        <Box sx={{ height: 400, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <CardHeader title='Flux des Articles' subheader='Entrées (achats) vs Sorties (ventes) sur 12 mois' />
+      <CardContent sx={{ pb: 0, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+        <Box
+          sx={{
+            height: 400,
+            width: '100%',
+            display: 'flex',
+            justifyContent: loading || error ? 'center' : 'flex-start',
+            alignItems: loading || error ? 'center' : 'stretch'
+          }}
+        >
           {renderContent()}
         </Box>
       </CardContent>
