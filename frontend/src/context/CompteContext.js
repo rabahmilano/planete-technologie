@@ -71,6 +71,16 @@ export const CompteProvider = ({ children }) => {
     }
   }
 
+  const getHistoriqueCredit = async id => {
+    try {
+      const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/historique-credit/${id}`)
+      return reponse.data
+    } catch (error) {
+      toast.error("Erreur lors de la récupération de l'historique")
+      return []
+    }
+  }
+
   useEffect(() => {
     fetchComptes()
   }, [])
@@ -83,6 +93,7 @@ export const CompteProvider = ({ children }) => {
     ajouterCompte,
     crediter,
     transferer,
+    getHistoriqueCredit,
     loading
   }
 

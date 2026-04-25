@@ -254,6 +254,19 @@ export const getAllComptes = async (req, res) => {
   }
 };
 
+export const getHistoriqueCredit = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const historique = await prisma.crediter.findMany({
+      where: { cpt_id: parseInt(id, 10) },
+      orderBy: { date_op: "desc" },
+    });
+    res.status(200).json(historique);
+  } catch (error) {
+    res.status(500).json({ error: { message: error.message } });
+  }
+};
+
 export const getBilanGlobal = async (req, res) => {
   try {
     const comptes = await prisma.compte.findMany();
