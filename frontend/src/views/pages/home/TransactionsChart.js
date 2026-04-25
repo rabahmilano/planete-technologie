@@ -66,9 +66,17 @@ const TransactionsChart = () => {
       areas: [{ key: 'marge', name: 'Marge Brute', color: theme.palette.info.main, id: 'colorMarge' }]
     },
     income: {
-      title: 'Flux Financier (Trésorerie)',
-      subheader: 'Encaissements vs Décaissements sur 12 mois',
-      areas: []
+      title: 'Trésorerie Globale',
+      subheader: 'Toutes les entrées (Ventes) VS Toutes les sorties (Stock + Frais)',
+      areas: [
+        { key: 'revenus', name: 'Entrées de Cash', color: theme.palette.success.main, id: 'colorRevenus' },
+        { key: 'sorties_globales', name: 'Sorties de Cash', color: theme.palette.error.main, id: 'colorSorties' }
+      ]
+    },
+    expenses: {
+      title: "Frais d'Exploitation",
+      subheader: 'Évolution des dépenses fixes et courantes (Hors achat de stock)',
+      areas: [{ key: 'frais_exploitation', name: 'Dépenses', color: theme.palette.warning.main, id: 'colorFrais' }]
     }
   }
 
@@ -106,7 +114,12 @@ const TransactionsChart = () => {
         {!isMobile && (
           <Typography
             variant='caption'
-            sx={{ fontWeight: 600, color: isActive ? activeColor : 'text.secondary', lineHeight: 1 }}
+            sx={{
+              fontWeight: 600,
+              color: isActive ? activeColor : 'text.secondary',
+              lineHeight: 1,
+              textAlign: 'center'
+            }}
           >
             {label}
           </Typography>
@@ -118,12 +131,6 @@ const TransactionsChart = () => {
   const renderContent = () => {
     if (loading) return <CircularProgress />
     if (error) return <Typography color='error'>Erreur de chargement</Typography>
-    if (view === 'income')
-      return (
-        <Typography sx={{ fontStyle: 'italic', color: 'text.disabled' }}>
-          Données de trésorerie indisponibles
-        </Typography>
-      )
 
     return (
       <ResponsiveContainer width='100%' height='100%'>
@@ -138,7 +145,17 @@ const TransactionsChart = () => {
           </defs>
           <CartesianGrid strokeDasharray='3 3' vertical={false} stroke={theme.palette.divider} />
           <XAxis dataKey='month' axisLine={false} tickLine={false} tick={{ fontSize: 12 }} dy={10} />
-          <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+          <YAxis
+            allowDecimals={false}
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 12 }}
+            tickFormatter={value =>
+              view !== 'volume'
+                ? new Intl.NumberFormat('fr-DZ', { notation: 'compact', compactDisplay: 'short' }).format(value)
+                : value
+            }
+          />
           <Tooltip
             contentStyle={{
               borderRadius: '8px',
@@ -146,7 +163,7 @@ const TransactionsChart = () => {
               boxShadow: theme.shadows[3],
               backgroundColor: theme.palette.background.paper
             }}
-            formatter={val => (view === 'profit' ? `${formatMontant(val)} DA` : val)}
+            formatter={val => (view !== 'volume' ? `${formatMontant(val)} DA` : val)}
           />
           <Legend wrapperStyle={{ paddingTop: 20 }} iconType='circle' />
           {config.areas.map(area => (
@@ -172,7 +189,7 @@ const TransactionsChart = () => {
         title={config.title}
         subheader={config.subheader}
         action={
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <NavButton
               targetView='volume'
               icon='tabler:box'
@@ -180,16 +197,22 @@ const TransactionsChart = () => {
               activeColor={theme.palette.primary.main}
             />
             <NavButton
+              targetView='income'
+              icon='tabler:scale'
+              label='Trésorerie'
+              activeColor={theme.palette.error.main}
+            />
+            <NavButton
               targetView='profit'
               icon='tabler:chart-line'
-              label='Rentabilité'
+              label='Marge'
               activeColor={theme.palette.info.main}
             />
             <NavButton
-              targetView='income'
-              icon='tabler:currency-dollar'
-              label='Trésorerie'
-              activeColor={theme.palette.success.main}
+              targetView='expenses'
+              icon='tabler:receipt'
+              label='Frais'
+              activeColor={theme.palette.warning.main}
             />
           </Box>
         }

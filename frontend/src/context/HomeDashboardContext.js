@@ -7,6 +7,16 @@ const HomeDashboardContext = createContext()
 export const useHomeDashboard = () => useContext(HomeDashboardContext)
 
 export const HomeDashboardProvider = ({ children }) => {
+  const fetchRollingKpis = useCallback(async () => {
+    try {
+      const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/dashboard/rolling-kpis`)
+
+      return response.data
+    } catch (error) {
+      return null
+    }
+  }, [])
+
   const fetchArticlesChartData = useCallback(async () => {
     try {
       const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/dashboard/chart-articles`)
@@ -27,19 +37,13 @@ export const HomeDashboardProvider = ({ children }) => {
 
   const fetchAllStats = useCallback(async () => {
     try {
-      const [depenses, commandes, colisEnRoute] = await Promise.all([
-        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}depenses/stats/global`),
-        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}commandes/stats`),
-        axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/colisEnRoute/stats`)
-      ])
+      const colisEnRoute = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/colisEnRoute/stats`)
 
       return {
-        depenses: depenses.data,
-        commandes: commandes.data,
         colis: colisEnRoute.data
       }
     } catch (error) {
-      toast.error('Erreur lors de la récupération des chiffres clés')
+      toast.error('Erreur lors de la récupération des colis en route')
       return null
     }
   }, [])
@@ -65,9 +69,27 @@ export const HomeDashboardProvider = ({ children }) => {
     }
   }, [])
 
+  const fetchVentesRecentesEtTopProduits = useCallback(async () => {
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_BASE_URL}produits/dashboard/ventes-recentes-top-produits`
+      )
+      return response.data
+    } catch (error) {
+      return { dernieresCommandes: [], topProduits: [] }
+    }
+  }, [])
+
   return (
     <HomeDashboardContext.Provider
-      value={{ fetchArticlesChartData, fetchTransactionsChartData, fetchAllStats, fetchPeriodicPerformance }}
+      value={{
+        fetchArticlesChartData,
+        fetchTransactionsChartData,
+        fetchAllStats,
+        fetchPeriodicPerformance,
+        fetchVentesRecentesEtTopProduits,
+        fetchRollingKpis
+      }}
     >
       {children}
     </HomeDashboardContext.Provider>

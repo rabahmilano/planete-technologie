@@ -1,6 +1,7 @@
 import prisma from "../config/dbConfig.js";
 import { body, validationResult } from "express-validator";
 import dayjs from "dayjs";
+import "dayjs/locale/fr.js";
 
 dayjs.locale("fr");
 
@@ -1183,27 +1184,29 @@ export const getTransactionsChartData = async (req, res) => {
       .startOf("month")
       .toDate();
 
+    // Récupération des ventes
     const ventes = await prisma.commande.findMany({
       where: { date_cde: { gte: twelveMonthsAgo } },
       include: {
         ligne_commande: {
           include: {
-            colis: {
-              include: {
-                colis: true,
-              },
-            },
+            colis: { include: { colis: true } },
           },
         },
       },
     });
 
+    // Récupération des achats de stock (Basé UNIQUEMENT sur date_achat pour la trésorerie)
     const achats = await prisma.colis.findMany({
+      where: { date_achat: { gte: twelveMonthsAgo } },
+      include: { colis_classique: true },
+    });
+
+    // Récupération des dépenses (Le Coffre-Fort étant exclu du flux par architecture)
+    const depenses = await prisma.depense.findMany({
       where: {
-        OR: [
-          { date_achat: { gte: twelveMonthsAgo } },
-          { date_stock: { gte: twelveMonthsAgo } },
-        ],
+        date_dep: { gte: twelveMonthsAgo },
+        isAnnule: false,
       },
     });
 
@@ -1215,10 +1218,12 @@ export const getTransactionsChartData = async (req, res) => {
         commandes: 0,
         revenus: 0,
         marge: 0,
-        depenses: 0,
+        sorties_globales: 0,
+        frais_exploitation: 0,
       };
     }
 
+    // 1. Traitement des Ventes (Encaissements et Marge Brute)
     ventes.forEach((cmd) => {
       const monthKey = dayjs(cmd.date_cde).format("YYYY-MM");
       if (monthlyData[monthKey]) {
@@ -1236,11 +1241,35 @@ export const getTransactionsChartData = async (req, res) => {
       }
     });
 
+    // 2. Traitement des Achats (Décaissements : Prix + Commission + Timbres)
     achats.forEach((item) => {
-      const referenceDate = item.date_achat || item.date_stock;
-      const monthKey = dayjs(referenceDate).format("YYYY-MM");
+      const monthKey = dayjs(item.date_achat).format("YYYY-MM");
       if (monthlyData[monthKey]) {
         monthlyData[monthKey].colis += 1;
+
+        let coutStockTotal = Number(item.mnt_tot_dzd || 0);
+
+        if (item.colis_classique?.mnt_comm_bancaire) {
+          coutStockTotal += Number(item.colis_classique.mnt_comm_bancaire);
+        }
+
+        if (item.droits_timbre || item.colis_classique?.droits_timbre) {
+          coutStockTotal += 130;
+        }
+
+        monthlyData[monthKey].sorties_globales += coutStockTotal;
+      }
+    });
+
+    // 3. Traitement des Frais d'Exploitation
+    depenses.forEach((dep) => {
+      const monthKey = dayjs(dep.date_dep).format("YYYY-MM");
+      if (monthlyData[monthKey]) {
+        const montantDepense = Number(dep.mnt_dep_dzd || 0);
+        monthlyData[monthKey].sorties_globales += montantDepense;
+        if (!dep.voyage_id) {
+          monthlyData[monthKey].frais_exploitation += montantDepense;
+        }
       }
     });
 
@@ -1258,7 +1287,6 @@ export const getTransactionsChartData = async (req, res) => {
     res.status(500).json({ error: { message: error.message } });
   }
 };
-
 export const searchProduits = async (req, res) => {
   const q = req.query.q?.trim();
 
@@ -1424,5 +1452,105 @@ export const getAllAnalytics = async (req, res) => {
     res.status(200).json({ weeklyStats, monthlyStats });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const getVentesRecentesEtTopProduits = async (req, res) => {
+  try {
+    const dernieresCommandesRaw = await prisma.commande.findMany({
+      take: 5,
+      orderBy: { id_cde: "desc" },
+    });
+
+    const dernieresCommandes = dernieresCommandesRaw.map((c) => ({
+      id: `#${c.id_cde}`,
+      date: c.date_cde,
+      montant: parseFloat(c.mnt_cde || 0),
+    }));
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    const lignesDuMois = await prisma.ligne_commande.findMany({
+      where: {
+        commande: { date_cde: { gte: thirtyDaysAgo } },
+      },
+      include: {
+        produit: {
+          select: { designation_prd: true },
+        },
+      },
+    });
+
+    const produitsMap = {};
+
+    lignesDuMois.forEach((ligne) => {
+      const prdId = ligne.prd_id;
+      if (!produitsMap[prdId]) {
+        produitsMap[prdId] = {
+          nom: ligne.produit?.designation_prd || "Produit inconnu",
+          qte: 0,
+          ca: 0,
+        };
+      }
+      produitsMap[prdId].qte += ligne.qte_cde;
+      produitsMap[prdId].ca += ligne.qte_cde * parseFloat(ligne.pu_vente || 0);
+    });
+
+    const topProduits = Object.values(produitsMap)
+      .sort((a, b) => b.qte - a.qte)
+      .slice(0, 5);
+
+    res.status(200).json({ dernieresCommandes, topProduits });
+  } catch (error) {
+    res.status(500).json({ error: { message: error.message } });
+  }
+};
+
+export const getRollingKpis = async (req, res) => {
+  try {
+    const aujourdhui = new Date();
+    const trenteJoursAvant = new Date();
+    trenteJoursAvant.setDate(aujourdhui.getDate() - 30);
+    const soixanteJoursAvant = new Date();
+    soixanteJoursAvant.setDate(aujourdhui.getDate() - 60);
+
+    const [caActuel, depActuel, caPrecedent, depPrecedent] = await Promise.all([
+      prisma.commande.aggregate({
+        _sum: { mnt_cde: true },
+        where: { date_cde: { gte: trenteJoursAvant, lte: aujourdhui } },
+      }),
+      prisma.depense.aggregate({
+        _sum: { mnt_dep_dzd: true },
+        where: {
+          date_dep: { gte: trenteJoursAvant, lte: aujourdhui },
+          isAnnule: false,
+        },
+      }),
+      prisma.commande.aggregate({
+        _sum: { mnt_cde: true },
+        where: { date_cde: { gte: soixanteJoursAvant, lt: trenteJoursAvant } },
+      }),
+      prisma.depense.aggregate({
+        _sum: { mnt_dep_dzd: true },
+        where: {
+          date_dep: { gte: soixanteJoursAvant, lt: trenteJoursAvant },
+          isAnnule: false,
+        },
+      }),
+    ]);
+
+    const revA = parseFloat(caActuel._sum.mnt_cde || 0);
+    const depA = parseFloat(depActuel._sum.mnt_dep_dzd || 0);
+    const revP = parseFloat(caPrecedent._sum.mnt_cde || 0);
+    const depP = parseFloat(depPrecedent._sum.mnt_dep_dzd || 0);
+
+    res.status(200).json({
+      actuel: { revenus: revA, sorties_globales: depA, marge: revA - depA },
+      precedent: { revenus: revP, sorties_globales: depP, marge: revP - depP },
+    });
+  } catch (error) {
+    res.status(500).json({ error: { message: error.message } });
   }
 };

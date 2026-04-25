@@ -24,6 +24,8 @@ import {
   getArticlesChartData,
   searchProduits,
   getAllAnalytics,
+  getVentesRecentesEtTopProduits,
+  getRollingKpis,
 } from "../controllers/produitController.js";
 
 import { Router } from "express";
@@ -80,5 +82,9 @@ router.get("/historique-prix/:id/colis", getColisForProduit);
 router.get("/dashboard/chart-transactions", getTransactionsChartData);
 router.get("/dashboard/chart-articles", getArticlesChartData);
 router.get("/dashboard/analytics-all", getAllAnalytics);
-
+router.get("/dashboard/rolling-kpis", getRollingKpis);
+router.get(
+  "/dashboard/ventes-recentes-top-produits",
+  getVentesRecentesEtTopProduits,
+);
 export default router;
