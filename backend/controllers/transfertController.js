@@ -131,6 +131,7 @@ export const deleteTransfert = [
         });
 
         if (!transfert) throw new Error("NOT_FOUND");
+        if (transfert.isAnnule) throw new Error("ALREADY_CANCELED");
 
         const infoDest = await tx.compte.findUnique({
           where: { id_cpt: transfert.cpt_dest_id },
@@ -157,7 +158,6 @@ export const deleteTransfert = [
 
         const tauxTransfertInitial = parseFloat(transfert.taux_source);
 
-        // 1. RECALCUL DU TAUX DE LA SOURCE (Réintégration de la valeur)
         const soldeSourceAncien = parseFloat(infoSource.solde_actuel || 0);
         const tauxSourceAncien = parseFloat(infoSource.taux_change_actuel || 0);
 
@@ -167,7 +167,6 @@ export const deleteTransfert = [
             (soldeSourceAncien + montantARendre),
         );
 
-        // 2. RECALCUL DU TAUX DE LA DESTINATION (Extraction de la valeur / PMP Inversé)
         const soldeDestAncien = parseFloat(infoDest.solde_actuel || 0);
         const tauxDestAncien = parseFloat(infoDest.taux_change_actuel || 0);
         const nouveauSoldeDest = arrondir(soldeDestAncien - montantARendre);
@@ -181,12 +180,11 @@ export const deleteTransfert = [
           );
         }
 
-        // 3. MISES À JOUR EN BASE
         await tx.compte.update({
           where: { id_cpt: transfert.cpt_dest_id },
           data: {
             solde_actuel: { decrement: montantARendre },
-            taux_change_actuel: nouveauTauxDest, // La correction est ici
+            taux_change_actuel: nouveauTauxDest,
           },
         });
 
@@ -198,19 +196,19 @@ export const deleteTransfert = [
           },
         });
 
-        await tx.transfert.delete({
+        await tx.transfert.update({
           where: { id_transfert: transfert.id_transfert },
+          data: { isAnnule: true },
         });
       });
 
-      res
-        .status(200)
-        .json({
-          message: "Transfert annulé et soldes restaurés avec précision.",
-        });
+      res.status(200).json({
+        message: "Transfert annulé et soldes restaurés avec précision.",
+      });
     } catch (error) {
       const messages = {
         NOT_FOUND: "Transfert introuvable.",
+        ALREADY_CANCELED: "Ce transfert est déjà annulé.",
         DEST_INSUFFICIENT_FUNDS:
           "Le compte de destination n'a plus assez de fonds pour annuler.",
       };

@@ -11,9 +11,11 @@ import CreerCompte from 'src/views/pages/settings/comptes/CreerCompte.js'
 import ListeComptes from 'src/views/pages/settings/comptes/ListeCompte.js'
 import CrediterCompte from 'src/views/pages/settings/comptes/CrediterCompte.js'
 import TransfertDrawer from 'src/views/pages/settings/comptes/TransfertDrawer'
+import HistoriqueTransfertsDialog from 'src/views/pages/settings/comptes/HistoriqueTransfertsDialog'
 
 const Comptes = () => {
   const [transfertOpen, setTransfertOpen] = useState(false)
+  const [historiqueOpen, setHistoriqueOpen] = useState(false)
 
   return (
     <CompteProvider>
@@ -22,13 +24,21 @@ const Comptes = () => {
           <PageHeader
             title={<Typography variant='h4'>Paramètres / Comptes</Typography>}
             subtitle={
-              <Box sx={{ mt: 2 }}>
+              <Box sx={{ mt: 2, display: 'flex', gap: 3 }}>
                 <Button
                   variant='contained'
                   startIcon={<Icon icon='tabler:arrows-transfer-down' />}
                   onClick={() => setTransfertOpen(true)}
                 >
                   Nouveau Transfert
+                </Button>
+                <Button
+                  variant='outlined'
+                  color='info'
+                  startIcon={<Icon icon='tabler:history' />}
+                  onClick={() => setHistoriqueOpen(true)}
+                >
+                  Historique
                 </Button>
               </Box>
             }
@@ -48,6 +58,7 @@ const Comptes = () => {
         </Grid>
 
         <TransfertDrawer open={transfertOpen} toggle={() => setTransfertOpen(!transfertOpen)} />
+        <HistoriqueTransfertsDialog open={historiqueOpen} handleClose={() => setHistoriqueOpen(false)} />
       </DeviseProvider>
     </CompteProvider>
   )

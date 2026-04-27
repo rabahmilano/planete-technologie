@@ -57,6 +57,16 @@ export const CompteProvider = ({ children }) => {
     }
   }
 
+  const getHistoriqueCredit = async id => {
+    try {
+      const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/historique-credit/${id}`)
+      return reponse.data
+    } catch (error) {
+      toast.error("Erreur lors de la récupération de l'historique")
+      return []
+    }
+  }
+
   const transferer = async data => {
     try {
       const reponse = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}transferts/createTransfert`, data)
@@ -71,13 +81,27 @@ export const CompteProvider = ({ children }) => {
     }
   }
 
-  const getHistoriqueCredit = async id => {
+  const getTransferts = async () => {
     try {
-      const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/historique-credit/${id}`)
+      const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}transferts/getAllTransferts`)
       return reponse.data
     } catch (error) {
-      toast.error("Erreur lors de la récupération de l'historique")
+      toast.error('Erreur lors de la récupération des transferts')
       return []
+    }
+  }
+
+  const annulerTransfert = async id => {
+    try {
+      const reponse = await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}transferts/deleteTransfert/${id}`)
+      if (reponse.status === 200) {
+        toast.success(reponse.data.message)
+        fetchComptes()
+        return true
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Erreur lors de l'annulation")
+      return false
     }
   }
 
@@ -94,6 +118,8 @@ export const CompteProvider = ({ children }) => {
     crediter,
     transferer,
     getHistoriqueCredit,
+    getTransferts,
+    annulerTransfert,
     loading
   }
 

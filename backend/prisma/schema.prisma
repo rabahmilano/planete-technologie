@@ -255,6 +255,7 @@ model transfert {
   date_transfert  DateTime @db.Date()
   taux_source  Decimal  @db.Decimal(10, 4)
   observation     String?  @db.VarChar(255)
+  isAnnule Boolean @default(false)
 
   compte_source   compte   @relation("TransfertsSortants", fields: [cpt_source_id], references: [id_cpt])
   compte_dest     compte   @relation("TransfertsEntrants", fields: [cpt_dest_id], references: [id_cpt])
