@@ -12,6 +12,7 @@ import WeeklyState from './WeeklyState'
 import MonthlyState from './MonthlyState'
 import TopProduits from './TopProduits'
 import DernieresCommandes from './DernieresCommandes'
+import KpiCardsSkeleton from './KpiCardsSkeleton'
 
 const HomeView = () => {
   const [stats, setStats] = useState(null)
@@ -60,17 +61,14 @@ const HomeView = () => {
     <Grid container spacing={6} alignItems='stretch'>
       <Grid item xs={12} md={4} sx={{ display: 'flex' }}>
         <Box sx={{ width: '100%' }}>
-          {isLoading ? <Skeleton variant='rounded' width='100%' height='100%' /> : <WelcomeCard />}
+          {/* Correction ici : ajout animation='wave' et height={180} */}
+          {isLoading ? <Skeleton variant='rounded' animation='wave' width='100%' height={180} /> : <WelcomeCard />}
         </Box>
       </Grid>
 
       <Grid item xs={12} md={8} sx={{ display: 'flex' }}>
         <Box sx={{ width: '100%' }}>
-          {isLoading ? (
-            <Skeleton variant='rounded' width='100%' height='100%' />
-          ) : (
-            <KpiCards rollingData={rollingKpis} globalStats={stats} />
-          )}
+          {isLoading ? <KpiCardsSkeleton /> : <KpiCards rollingData={rollingKpis} globalStats={stats} />}
         </Box>
       </Grid>
 
