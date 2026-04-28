@@ -21,10 +21,9 @@ async function migrateCoffreToTransfert() {
     }
 
     console.log(
-      `⚠️ ${depensesCoffre.length} dépense(s) trouvée(s). Début de la migration et de la suppression...`,
+      `⚠️ ${depensesCoffre.length} dépense(s) trouvée(s). Début de la migration, suppression et mise à jour des soldes...`,
     );
 
-    // Récupérer le plus grand id_transfert actuel pour simuler l'auto-incrément
     const maxTransfert = await prisma.transfert.aggregate({
       _max: {
         id_transfert: true,
@@ -35,7 +34,6 @@ async function migrateCoffreToTransfert() {
 
     await prisma.$transaction(async (tx) => {
       for (const depense of depensesCoffre) {
-        // 1. Création du transfert
         await tx.transfert.create({
           data: {
             id_transfert: nextTransfertId,
@@ -48,22 +46,28 @@ async function migrateCoffreToTransfert() {
           },
         });
 
-        // 2. Suppression de la dépense d'origine
         await tx.depense.delete({
           where: {
             id_op_dep: depense.id_op_dep,
           },
         });
 
+        await tx.compte.update({
+          where: { id_cpt: 5 },
+          data: {
+            solde_actuel: { increment: depense.mnt_dep },
+          },
+        });
+
         console.log(
-          `✔️ Transfert ID ${nextTransfertId} créé ET Dépense ID ${depense.id_op_dep} supprimée (Montant: ${depense.mnt_dep}).`,
+          `✔️ Transfert ID ${nextTransfertId} créé, Dépense supprimée et Coffre crédité de ${depense.mnt_dep}.`,
         );
 
-        nextTransfertId++; // On incrémente pour le prochain passage dans la boucle
+        nextTransfertId++;
       }
     });
 
-    console.log("🎉 Migration et nettoyage terminés à 100%.");
+    console.log("🎉 Migration et mise à jour des soldes terminées à 100%.");
   } catch (error) {
     console.error("❌ Erreur critique lors de la migration :", error);
   } finally {
