@@ -7,8 +7,20 @@ import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
-import Avatar from '@mui/material/Avatar'
 import { formatMontant } from 'src/@core/utils/format'
+
+const getRankStyle = index => {
+  switch (index) {
+    case 0:
+      return { bgcolor: 'rgba(255, 171, 0, 0.15)', color: '#FFAB00', border: 'none' }
+    case 1:
+      return { bgcolor: 'rgba(130, 134, 139, 0.15)', color: '#82868B', border: 'none' }
+    case 2:
+      return { bgcolor: 'rgba(216, 121, 60, 0.15)', color: '#D8793C', border: 'none' }
+    default:
+      return { bgcolor: 'transparent', color: 'text.disabled', border: '1px dashed' }
+  }
+}
 
 const TopProduits = ({ data }) => {
   return (
@@ -18,43 +30,53 @@ const TopProduits = ({ data }) => {
         <Table>
           <TableBody>
             {data && data.length > 0 ? (
-              data.map((row, index) => (
-                <TableRow key={index} sx={{ '&:last-child td': { border: 0 } }}>
-                  <TableCell sx={{ py: 3 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Avatar
-                        variant='rounded'
-                        sx={{
-                          width: 34,
-                          height: 34,
-                          mr: 3,
-                          fontSize: '1rem',
-                          bgcolor: 'primary.light',
-                          color: 'primary.main'
-                        }}
-                      >
-                        {index + 1}
-                      </Avatar>
-                      <Typography variant='body2' sx={{ fontWeight: 600, color: 'text.primary' }}>
-                        {row.nom}
+              data.map((row, index) => {
+                const rankStyle = getRankStyle(index)
+
+                return (
+                  <TableRow key={index} sx={{ height: 75, '&:last-child td': { border: 0 } }}>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Box
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: '50%',
+                            mr: 3,
+                            fontSize: '0.85rem',
+                            fontWeight: 800,
+                            bgcolor: rankStyle.bgcolor,
+                            color: rankStyle.color,
+                            border: rankStyle.border,
+                            borderColor: 'divider'
+                          }}
+                        >
+                          {index + 1}
+                        </Box>
+                        <Typography variant='body2' sx={{ fontWeight: 600, color: 'text.primary' }}>
+                          {row.nom}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell align='right'>
+                      <Typography variant='body2' sx={{ fontWeight: 600 }}>
+                        {row.qte} ventes
                       </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell align='right' sx={{ py: 3 }}>
-                    <Typography variant='body2' sx={{ fontWeight: 600 }}>
-                      {row.qte} ventes
-                    </Typography>
-                  </TableCell>
-                  <TableCell align='right' sx={{ py: 3 }}>
-                    <Typography variant='body2' sx={{ fontWeight: 600, color: 'success.main' }}>
-                      {formatMontant(row.ca)} DA
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell align='right'>
+                      <Typography variant='body2' sx={{ fontWeight: 600, color: 'success.main' }}>
+                        {formatMontant(row.ca)} DA
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             ) : (
-              <TableRow>
-                <TableCell colSpan={3} align='center' sx={{ py: 5 }}>
+              <TableRow sx={{ height: 375 }}>
+                <TableCell colSpan={3} align='center'>
                   <Typography variant='body2' color='text.secondary'>
                     Aucune vente ce mois-ci
                   </Typography>
