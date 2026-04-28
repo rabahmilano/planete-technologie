@@ -18,7 +18,14 @@ const MonthlyState = ({ data }) => {
 
   const totalOrders = chartData.reduce((sum, week) => sum + (week.orders || 0), 0)
   const totalIncome = chartData.reduce((sum, week) => sum + (week.income || 0), 0)
-  const maxVal = Math.max(...chartData.map(d => Math.max(d.orders || 0, Math.abs(d.articles || 0))), 1)
+
+  const transformedData = chartData.map(d => ({
+    ...d,
+    displayArticles: Math.abs(d.articles || 0),
+    displayOrders: -Math.abs(d.orders || 0)
+  }))
+
+  const maxVal = Math.max(...transformedData.map(d => Math.max(d.displayArticles, Math.abs(d.displayOrders))), 1)
 
   return (
     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -51,26 +58,27 @@ const MonthlyState = ({ data }) => {
         <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, height: 260 }}>
           <Box sx={{ flex: 1, width: '100%' }}>
             <ResponsiveContainer width='100%' height='100%'>
-              <BarChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+              <BarChart data={transformedData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                 <XAxis dataKey='week' hide />
                 <YAxis domain={[0, maxVal]} hide />
                 <Tooltip
                   cursor={{ fill: theme.palette.action.hover }}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: theme.shadows[3] }}
                   labelFormatter={label => (label ? label.replace('S', 'Semaine ') : label)}
-                  formatter={value => [value, isSales ? 'Commandes' : 'Colis']}
+                  formatter={value => [value, 'Articles']}
                 />
                 <Bar
-                  dataKey='orders'
-                  fill={isSales ? theme.palette.primary.main : theme.palette.info.main}
+                  dataKey='displayArticles'
+                  fill={isSales ? theme.palette.success.main : theme.palette.warning.main}
                   radius={[10, 10, 10, 10]}
                   barSize={18}
                 />
               </BarChart>
             </ResponsiveContainer>
           </Box>
+
           <Box sx={{ display: 'flex', width: '100%', py: 1 }}>
-            {chartData.map((d, index) => (
+            {transformedData.map((d, index) => (
               <Box key={index} sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
                 <Typography variant='caption' sx={{ fontWeight: 700, color: 'text.primary', fontSize: '0.65rem' }}>
                   {d.week}
@@ -78,20 +86,21 @@ const MonthlyState = ({ data }) => {
               </Box>
             ))}
           </Box>
+
           <Box sx={{ flex: 1, width: '100%' }}>
             <ResponsiveContainer width='100%' height='100%'>
-              <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 10 }}>
+              <BarChart data={transformedData} margin={{ top: 0, right: 0, left: 0, bottom: 10 }}>
                 <XAxis dataKey='week' hide />
                 <YAxis domain={[-maxVal, 0]} hide />
                 <Tooltip
                   cursor={{ fill: theme.palette.action.hover }}
                   contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: theme.shadows[3] }}
                   labelFormatter={label => (label ? label.replace('S', 'Semaine ') : label)}
-                  formatter={value => [Math.abs(value), 'Articles']}
+                  formatter={value => [Math.abs(value), isSales ? 'Commandes' : 'Colis']}
                 />
                 <Bar
-                  dataKey='articles'
-                  fill={isSales ? theme.palette.success.main : theme.palette.warning.main}
+                  dataKey='displayOrders'
+                  fill={isSales ? theme.palette.primary.main : theme.palette.info.main}
                   radius={[10, 10, 10, 10]}
                   barSize={18}
                 />
