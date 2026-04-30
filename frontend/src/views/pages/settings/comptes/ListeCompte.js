@@ -140,11 +140,11 @@ const ListeComptes = () => {
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='body2' fontWeight={600}>
-                          {formatMontant(soldeTotal)} {compte.devise?.symbole_dev || ''}
+                          {formatMontant(soldeDispo)} {compte.devise?.symbole_dev || ''}
                         </Typography>
                         {soldeBloque > 0 && (
-                          <Typography variant='caption' color='textSecondary' display='block'>
-                            Dispo: {formatMontant(soldeDispo)} {compte.devise?.symbole_dev || ''}
+                          <Typography variant='caption' sx={{ color: 'error.main', display: 'block', mt: 0.5 }}>
+                            Bloqué : {formatMontant(soldeBloque)} {compte.devise?.symbole_dev || ''}
                           </Typography>
                         )}
                       </TableCell>

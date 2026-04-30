@@ -27,6 +27,82 @@ export const getAllVoyages = async (req, res) => {
   }
 };
 
+// export const getVoyageById = async (req, res) => {
+//   const id = parseInt(req.params.id, 10);
+//   if (isNaN(id))
+//     return res.status(400).json({ message: "Identifiant de voyage invalide." });
+
+//   try {
+//     const voyage = await prisma.voyage.findUnique({
+//       where: { id_voyage: id },
+//       include: {
+//         compte_defaut: { select: { designation_cpt: true, dev_code: true } },
+//         depenses: {
+//           where: { isAnnule: false },
+//           include: { nature_dep: true, compte: true },
+//           orderBy: { date_dep: "desc" },
+//         },
+//         transactions: {
+//           include: {
+//             compte: true,
+//             _count: { select: { colis_voyage: true } },
+//           },
+//           orderBy: { id_trans: "desc" },
+//         },
+//       },
+//     });
+
+//     if (!voyage)
+//       return res.status(404).json({ message: "Voyage introuvable." });
+
+//     const totalDepensesDZD = arrondir(
+//       voyage.depenses.reduce((sum, d) => sum + parseFloat(d.mnt_dep_dzd), 0),
+//     );
+
+//     const totalAchatsDZD = arrondir(
+//       voyage.transactions.reduce(
+//         (sum, t) => sum + parseFloat(t.mnt_tot_fact) * parseFloat(t.taux_trans),
+//         0,
+//       ),
+//     );
+
+//     const totalCommPaieDZD = arrondir(
+//       voyage.transactions.reduce(
+//         (sum, t) =>
+//           sum + parseFloat(t.mnt_comm_paie || 0) * parseFloat(t.taux_trans),
+//         0,
+//       ),
+//     );
+
+//     const totalCommBanqueDZD = arrondir(
+//       voyage.transactions.reduce(
+//         (sum, t) =>
+//           sum + parseFloat(t.mnt_comm_banque || 0) * parseFloat(t.taux_trans),
+//         0,
+//       ),
+//     );
+
+//     const coutTotalDZD = arrondir(
+//       totalDepensesDZD + totalAchatsDZD + totalCommPaieDZD + totalCommBanqueDZD,
+//     );
+
+//     res.status(200).json({
+//       ...voyage,
+//       kpis: {
+//         totalDepensesDZD,
+//         totalAchatsDZD,
+//         totalCommPaieDZD,
+//         totalCommBanqueDZD,
+//         coutTotalDZD,
+//       },
+//     });
+//   } catch (error) {
+//     res
+//       .status(500)
+//       .json({ error: { code: error.code, message: error.message } });
+//   }
+// };
+
 export const getVoyageById = async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id))
@@ -45,6 +121,16 @@ export const getVoyageById = async (req, res) => {
         transactions: {
           include: {
             compte: true,
+            colis_voyage: {
+              include: {
+                colis: {
+                  include: {
+                    produit: true,
+                    categorie: true,
+                  },
+                },
+              },
+            },
             _count: { select: { colis_voyage: true } },
           },
           orderBy: { id_trans: "desc" },
@@ -467,11 +553,20 @@ export const addTransactionVoyage = [
           throw new Error("Solde insuffisant.");
         }
 
-        const idTransaction = await getMaxValue(
-          "transaction_voyage",
-          "id_trans",
-          null,
-        );
+        const maxTrans = await tx.transaction_voyage.aggregate({
+          _max: { id_trans: true },
+        });
+        const idTransaction = (maxTrans._max.id_trans || 0) + 1;
+
+        const maxPrd = await tx.produit.aggregate({
+          _max: { id_prd: true },
+        });
+        let nextPrdId = (maxPrd._max.id_prd || 0) + 1;
+
+        const maxColis = await tx.colis.aggregate({
+          _max: { id_colis: true },
+        });
+        let nextColisId = (maxColis._max.id_colis || 0) + 1;
 
         await tx.transaction_voyage.create({
           data: {
@@ -507,19 +602,18 @@ export const addTransactionVoyage = [
           });
 
           if (!produitExist) {
-            prd_id = await getMaxValue("produit", "id_prd", null);
+            prd_id = nextPrdId;
             await tx.produit.create({
               data: { id_prd: prd_id, designation_prd: article.desPrd.trim() },
             });
+            nextPrdId++;
           } else {
             prd_id = produitExist.id_prd;
           }
 
-          const idColis = await getMaxValue("colis", "id_colis", null);
-
           await tx.colis.create({
             data: {
-              id_colis: idColis,
+              id_colis: nextColisId,
               cat_id: parseInt(article.catId, 10),
               prd_id: prd_id,
               cpt_id: parseInt(cptPaiementId, 10),
@@ -541,6 +635,7 @@ export const addTransactionVoyage = [
               },
             },
           });
+          nextColisId++;
         }
 
         await tx.compte.update({

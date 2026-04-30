@@ -58,7 +58,12 @@ export const ProduitProvider = ({ children }) => {
 
       return true
     } catch (error) {
-      toast.error(error.response?.data?.error?.message || "Erreur lors de l'enregistrement de l'achat")
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error?.message ||
+        "Erreur lors de l'enregistrement de l'achat"
+
+      toast.error(errorMessage)
       return false
     }
   }

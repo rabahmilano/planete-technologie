@@ -5,7 +5,7 @@ import "dayjs/locale/fr.js";
 
 dayjs.locale("fr");
 
-import { getMaxValue } from "../config/utils.js";
+import { getMaxValue, arrondir } from "../config/utils.js";
 
 export const addCatProduit = [
   body("desCat")
