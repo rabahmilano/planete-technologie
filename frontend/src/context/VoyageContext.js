@@ -99,6 +99,19 @@ export const VoyageProvider = ({ children }) => {
     }
   }
 
+  const deleteTransactionVoyage = async idTrans => {
+    try {
+      await axiosInstance.delete(`${API_URL}/transaction/${idTrans}`)
+      toast.success('Transaction supprimée et fonds restitués.')
+      fetchVoyages()
+      return true
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Erreur lors de la suppression'
+      toast.error(errorMsg)
+      return false
+    }
+  }
+
   return (
     <VoyageContext.Provider
       value={{
@@ -111,7 +124,8 @@ export const VoyageProvider = ({ children }) => {
         updateVoyage,
         deleteVoyage,
         changerStatutVoyage,
-        addTransactionVoyage
+        addTransactionVoyage,
+        deleteTransactionVoyage
       }}
     >
       {children}

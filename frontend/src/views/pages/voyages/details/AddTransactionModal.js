@@ -22,7 +22,7 @@ const defaultValues = {
   cptPaiementId: '',
   deviseFacture: '',
   tauxChange: '',
-  fraisIntermediaire: '',
+  fraisIntermediaire: '', // Chaîne vide par défaut, donc bloquante tant qu'elle n'est pas remplie
   articles: []
 }
 
@@ -45,9 +45,10 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
       setValue('deviseFacture', voyage.dev_dest || '')
       setValue('tauxChange', voyage.taux_change || '')
 
-      if (voyage.date_dep) setMinDate(dayjs(voyage.date_dep))
+      // La date commence obligatoirement à Date Voyage + 1
+      if (voyage.date_dep) setMinDate(dayjs(voyage.date_dep).add(1, 'day'))
       if (voyage.date_ret) setMaxDate(dayjs(voyage.date_ret))
-      setValue('dateAchat', voyage.date_dep ? dayjs(voyage.date_dep) : dayjs())
+      setValue('dateAchat', voyage.date_dep ? dayjs(voyage.date_dep).add(1, 'day') : dayjs())
     }
   }, [open, voyage, setValue])
 
@@ -57,7 +58,12 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
   const watchTauxChange = watch('tauxChange')
   const watchFraisInt = watch('fraisIntermediaire')
 
+  // isLocked sert à bloquer les champs globaux (Devise, etc.) dès qu'un produit est ajouté
   const isLocked = watchArticles && watchArticles.length > 0
+
+  // canSubmit vérifie qu'on a des articles ET que les frais intermédiaires sont explicitement saisis (même "0")
+  const canSubmit = isLocked && watchFraisInt !== '' && watchFraisInt !== null && watchFraisInt !== undefined
+
   const selectedCpt = comptes.find(c => c.id_cpt === watchCptId)
 
   const handleCompteChange = newCptId => {
@@ -165,14 +171,20 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
             alignItems: 'center',
             justifyContent: 'space-between',
             p: 4,
-            backgroundColor: '#ffffff',
+            backgroundColor: '#28c76f',
             borderBottom: '1px solid #e0e0e0'
           }}
         >
-          <Typography variant='h5' fontWeight={700} color='primary.main'>
+          <Typography
+            variant='h5'
+            fontWeight={700}
+            color='white'
+            sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
+          >
+            <Icon icon='tabler:basket-plus' color='white' />
             Nouvel Achat (Facture)
           </Typography>
-          <IconButton onClick={onClose}>
+          <IconButton onClick={onClose} sx={{ color: 'white' }}>
             <Icon icon='tabler:x' />
           </IconButton>
         </Box>
@@ -265,7 +277,7 @@ const AddTransactionModal = ({ open, handleClose, voyage, onSuccess }) => {
             <Button variant='outlined' color='secondary' onClick={onClose}>
               Annuler
             </Button>
-            <Button type='submit' variant='contained' color='primary' size='large' disabled={!isLocked}>
+            <Button type='submit' variant='contained' color='primary' size='large' disabled={!canSubmit}>
               Confirmer la transaction
             </Button>
           </Box>

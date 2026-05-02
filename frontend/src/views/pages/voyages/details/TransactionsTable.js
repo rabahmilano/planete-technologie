@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useContext } from 'react'
 import {
   Card,
   CardHeader,
@@ -17,10 +17,85 @@ import {
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import { formatMontant } from 'src/@core/utils/format'
+import { VoyageContext } from 'src/context/VoyageContext'
+
 import ArticlesVoyageModal from './ArticlesVoyageModal'
+import TransactionDetailModal from './TransactionDetailModal'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
-  const [modalOpen, setModalOpen] = useState(false)
+  const { deleteTransactionVoyage } = useContext(VoyageContext)
+
+  const [modalGlobalOpen, setModalGlobalOpen] = useState(false)
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [selectedTransaction, setSelectedTransaction] = useState(null)
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [transactionToDelete, setTransactionToDelete] = useState(null)
+
+  const handleOpenDetail = transaction => {
+    setSelectedTransaction(transaction)
+    setDetailModalOpen(true)
+  }
+
+  const handleEditTransaction = transaction => {
+    console.log('Action: Modifier la transaction', transaction)
+  }
+
+  const handleDeleteTransaction = transaction => {
+    setTransactionToDelete(transaction)
+    setConfirmOpen(true)
+  }
+
+  const executeDelete = async () => {
+    if (!transactionToDelete) return
+
+    const success = await deleteTransactionVoyage(transactionToDelete.id_trans)
+
+    if (success) {
+      setConfirmOpen(false)
+      setDetailModalOpen(false)
+      setTransactionToDelete(null)
+    }
+  }
+
+  const renderDeleteContent = () => {
+    if (!transactionToDelete) return null
+
+    const totalFacture = parseFloat(transactionToDelete.mnt_tot_fact || 0)
+    const commBnk = parseFloat(transactionToDelete.mnt_comm_banque || 0)
+    const commPaie = parseFloat(transactionToDelete.mnt_comm_paie || 0)
+    const totalPreleve = totalFacture + commBnk + commPaie
+
+    return (
+      <Box>
+        <Typography variant='body1' sx={{ mb: 4, color: 'text.secondary' }}>
+          Êtes-vous sûr de vouloir annuler cette facture ? Cette action supprimera la transaction de vos statistiques et
+          restituera l'argent sur le compte source.
+        </Typography>
+
+        <Box
+          sx={{
+            p: 4,
+            borderRadius: 1,
+            border: '1px dashed',
+            borderColor: 'error.main',
+            backgroundColor: 'rgba(234, 84, 85, 0.08)'
+          }}
+        >
+          <Typography variant='body2' sx={{ mb: 1, color: 'text.secondary' }}>
+            <strong>Fournisseur :</strong> {transactionToDelete.fournisseur}
+          </Typography>
+          <Typography variant='body2' sx={{ mb: 2, color: 'text.secondary' }}>
+            <strong>Articles associés :</strong> {transactionToDelete._count?.colis_voyage || 0}
+          </Typography>
+          <Typography variant='h6' sx={{ color: 'error.main', fontWeight: 700, fontSize: '1rem' }}>
+            Montant à restituer : {formatMontant(totalPreleve)} {transactionToDelete.dev_trans}
+          </Typography>
+        </Box>
+      </Box>
+    )
+  }
 
   return (
     <>
@@ -36,7 +111,7 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
           />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Tooltip title='Voir tous les articles du voyage'>
-              <IconButton color='primary' onClick={() => setModalOpen(true)}>
+              <IconButton color='#0d1b2a' onClick={() => setModalGlobalOpen(true)}>
                 <Icon icon='tabler:packages' />
               </IconButton>
             </Tooltip>
@@ -99,7 +174,7 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
                     py: 2
                   }}
                 >
-                  Total DZD
+                  Total DA
                 </TableCell>
                 <TableCell
                   align='center'
@@ -113,12 +188,24 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
                 >
                   Articles
                 </TableCell>
+                <TableCell
+                  align='center'
+                  sx={{
+                    backgroundColor: '#0d1b2a',
+                    color: 'white',
+                    fontSize: '0.72rem',
+                    textTransform: 'uppercase',
+                    py: 2
+                  }}
+                >
+                  Actions
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {transactions?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align='center' sx={{ py: 4 }}>
+                  <TableCell colSpan={6} align='center' sx={{ py: 4 }}>
                     Aucun achat enregistré.
                   </TableCell>
                 </TableRow>
@@ -150,6 +237,13 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
                     <TableCell align='center'>
                       <Chip label={`${t._count?.colis_voyage || 0} lots`} variant='outlined' size='small' />
                     </TableCell>
+                    <TableCell align='center'>
+                      <Tooltip title='Inspecter cette facture'>
+                        <IconButton color='info' onClick={() => handleOpenDetail(t)} size='small'>
+                          <Icon icon='tabler:receipt-2' />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -158,7 +252,31 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
         </TableContainer>
       </Card>
 
-      <ArticlesVoyageModal open={modalOpen} onClose={() => setModalOpen(false)} transactions={transactions} />
+      <ArticlesVoyageModal
+        open={modalGlobalOpen}
+        onClose={() => setModalGlobalOpen(false)}
+        transactions={transactions}
+      />
+
+      <TransactionDetailModal
+        open={detailModalOpen}
+        onClose={() => setDetailModalOpen(false)}
+        transaction={selectedTransaction}
+        statutVoyage={statut}
+        onEdit={handleEditTransaction}
+        onDelete={handleDeleteTransaction}
+      />
+
+      <ConfirmDialog
+        open={confirmOpen}
+        handleClose={() => setConfirmOpen(false)}
+        handleConfirm={executeDelete}
+        title='Annuler cette facture ?'
+        content={renderDeleteContent()}
+        actionType='delete'
+        confirmText="Oui, restituer l'argent"
+        cancelText='Annuler'
+      />
     </>
   )
 }

@@ -676,3 +676,105 @@ export const addTransactionVoyage = [
     }
   },
 ];
+
+export const deleteTransactionVoyage = async (req, res) => {
+  try {
+    const idTrans = parseInt(req.params.id);
+
+    if (isNaN(idTrans)) {
+      return res.status(400).json({ message: "ID de transaction invalide." });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const transaction = await tx.transaction_voyage.findUnique({
+        where: { id_trans: idTrans },
+        include: {
+          colis_voyage: {
+            include: { colis: true },
+          },
+        },
+      });
+
+      if (!transaction) throw new Error("Transaction non trouvée.");
+
+      if (transaction.colis_voyage.length > 0) {
+        const premierColis = transaction.colis_voyage[0].colis;
+        const cptId = premierColis.cpt_id;
+
+        const compte = await tx.compte.findUnique({
+          where: { id_cpt: cptId },
+          select: { solde_actuel: true, taux_change_actuel: true },
+        });
+
+        if (!compte) throw new Error("Compte associé non trouvé.");
+
+        const totalFactureDeviseDest = parseFloat(
+          transaction.mnt_tot_fact || 0,
+        );
+        const commBanqueDest = parseFloat(transaction.mnt_comm_banque || 0);
+        const commPaieDest = parseFloat(transaction.mnt_comm_paie || 0);
+        const tauxTrans = parseFloat(transaction.taux_trans || 1);
+
+        const totalRemboursementDeviseDest =
+          totalFactureDeviseDest + commBanqueDest + commPaieDest;
+        const totalRemboursementDZD = totalRemboursementDeviseDest * tauxTrans;
+
+        const mntTotDzdColis = parseFloat(premierColis.mnt_tot_dzd);
+        const mntTotDevColis = parseFloat(premierColis.mnt_tot_dev);
+        const tauxCarteHistorique = parseFloat(
+          (mntTotDzdColis / mntTotDevColis).toFixed(4),
+        );
+
+        const montantARembourserCarte = parseFloat(
+          (totalRemboursementDZD / tauxCarteHistorique).toFixed(2),
+        );
+
+        const valeurActuelleDZD =
+          parseFloat(compte.solde_actuel) *
+          parseFloat(compte.taux_change_actuel);
+        const nouveauSoldeDevise =
+          parseFloat(compte.solde_actuel) + montantARembourserCarte;
+        const nouvelleValeurTotaleDZD =
+          valeurActuelleDZD + totalRemboursementDZD;
+
+        const nouveauTauxChange =
+          nouveauSoldeDevise > 0
+            ? nouvelleValeurTotaleDZD / nouveauSoldeDevise
+            : 0;
+
+        await tx.compte.update({
+          where: { id_cpt: cptId },
+          data: {
+            solde_actuel: parseFloat(nouveauSoldeDevise.toFixed(2)),
+            taux_change_actuel: parseFloat(nouveauTauxChange.toFixed(2)),
+          },
+        });
+
+        const colisIds = transaction.colis_voyage.map(
+          (cv) => cv.colis.id_colis,
+        );
+
+        await tx.colis_voyage.deleteMany({
+          where: { trans_id: idTrans },
+        });
+
+        await tx.colis.deleteMany({
+          where: { id_colis: { in: colisIds } },
+        });
+      }
+
+      await tx.transaction_voyage.delete({
+        where: { id_trans: idTrans },
+      });
+    });
+
+    res.status(200).json({ message: "Transaction supprimée avec succès." });
+  } catch (error) {
+    if (error.message.includes("non trouv")) {
+      return res.status(404).json({ message: error.message });
+    }
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};

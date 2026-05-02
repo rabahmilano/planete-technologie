@@ -6,6 +6,7 @@ import {
   deleteVoyage,
   changerStatutVoyage,
   addTransactionVoyage,
+  deleteTransactionVoyage,
 } from "../controllers/voyageController.js";
 
 import { Router } from "express";
@@ -25,5 +26,7 @@ router.delete("/:id", deleteVoyage);
 router.put("/:id/statut", changerStatutVoyage);
 
 router.post("/:id/addTransaction", addTransactionVoyage);
+
+router.delete("/transaction/:id", deleteTransactionVoyage);
 
 export default router;
