@@ -401,10 +401,35 @@ export const cancelColis = async (req, res) => {
     await prisma.$transaction(async (tx) => {
       const colis = await tx.colis.findUnique({
         where: { id_colis: idColis },
-        select: { mnt_tot_dev: true, mnt_tot_dzd: true, cpt_id: true },
+        include: {
+          colis_classique: true,
+          colis_voyage: true,
+        },
       });
 
       if (!colis) throw new Error("Colis non trouvé.");
+
+      if (colis.colis_voyage) {
+        throw new Error(
+          "Les colis de voyage doivent être annulés via la transaction globale.",
+        );
+      }
+
+      let deviseARembourser = parseFloat(colis.mnt_tot_dev);
+      let dzdARembourser = parseFloat(colis.mnt_tot_dzd);
+
+      if (colis.colis_classique) {
+        const commBancaire = parseFloat(
+          colis.colis_classique.mnt_comm_bancaire || 0,
+        );
+        deviseARembourser += commBancaire;
+
+        const tauxHistorique =
+          deviseARembourser > 0
+            ? parseFloat(colis.mnt_tot_dzd) / parseFloat(colis.mnt_tot_dev)
+            : 1;
+        dzdARembourser += commBancaire * tauxHistorique;
+      }
 
       const compte = await tx.compte.findUnique({
         where: { id_cpt: colis.cpt_id },
@@ -421,13 +446,11 @@ export const cancelColis = async (req, res) => {
       );
 
       const nouveauSoldeDevise = parseFloat(
-        (
-          parseFloat(compte.solde_actuel) + parseFloat(colis.mnt_tot_dev)
-        ).toFixed(4),
+        (parseFloat(compte.solde_actuel) + deviseARembourser).toFixed(4),
       );
 
       const nouvelleValeurTotaleDZD = parseFloat(
-        (valeurActuelleDZD + parseFloat(colis.mnt_tot_dzd)).toFixed(4),
+        (valeurActuelleDZD + dzdARembourser).toFixed(4),
       );
 
       const nouveauTauxChange =
@@ -445,10 +468,9 @@ export const cancelColis = async (req, res) => {
         },
       });
 
-      await tx.colis_classique.deleteMany({
-        where: { id_colis_class: idColis },
-      });
-      await tx.colis_voyage.deleteMany({ where: { id_colis_voy: idColis } });
+      if (colis.colis_classique) {
+        await tx.colis_classique.delete({ where: { id_colis_class: idColis } });
+      }
 
       await tx.colis.delete({
         where: { id_colis: idColis },
@@ -459,6 +481,12 @@ export const cancelColis = async (req, res) => {
       message: "Colis annulé, compte remboursé et taux de change mis à jour.",
     });
   } catch (error) {
+    if (
+      error.message ===
+      "Les colis de voyage doivent être annulés via la transaction globale."
+    ) {
+      return res.status(403).json({ message: error.message });
+    }
     if (error.message.includes("non trouvé")) {
       return res.status(404).json({ message: error.message });
     }
