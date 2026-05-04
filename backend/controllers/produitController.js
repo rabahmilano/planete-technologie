@@ -145,20 +145,28 @@ export const addColis = [
           parseFloat(infoCpt.solde_actuel) -
             parseFloat(infoCpt.solde_bloque || 0),
         );
-        const montantSaisi = arrondir(parseFloat(mntTotDev));
 
-        if (soldeDisponible < montantSaisi) {
+        const montantSaisi = arrondir(parseFloat(mntTotDev));
+        const commPct = parseFloat(infoCpt.commission_pct || 0);
+
+        const montantCommission = arrondir(montantSaisi * (commPct / 100));
+        const montantTotalADeduire = arrondir(montantSaisi + montantCommission);
+
+        if (soldeDisponible < montantTotalADeduire) {
           throw new Error("INSUFFICIENT_FUNDS");
         }
 
         let id_colis, prd_id;
         const tauxActuel = parseFloat(infoCpt.taux_change_actuel || 0);
-        const commPct = parseFloat(infoCpt.commission_pct || 0);
 
         const mnt_tot_dzd = arrondir(montantSaisi * tauxActuel);
         const pu_dev = arrondir(montantSaisi / parseFloat(qte));
         const pu_dzd = arrondir(mnt_tot_dzd / parseFloat(qte));
-        const montantCommission = arrondir(montantSaisi * (commPct / 100));
+
+        const montantCommissionDzd = montantCommission * tauxActuel;
+        const pu_dzd_ttc = arrondir(
+          (mnt_tot_dzd + montantCommissionDzd) / parseFloat(qte),
+        );
 
         const produitExist = await tx.produit.findFirst({
           where: { designation_prd: { equals: desPrd } },
@@ -167,10 +175,18 @@ export const addColis = [
         if (!produitExist) {
           prd_id = await getMaxValue("produit", "id_prd", null);
           await tx.produit.create({
-            data: { id_prd: prd_id, designation_prd: desPrd },
+            data: {
+              id_prd: prd_id,
+              designation_prd: desPrd,
+              qte_dispo: parseInt(qte),
+            },
           });
         } else {
           prd_id = produitExist.id_prd;
+          await tx.produit.update({
+            where: { id_prd: prd_id },
+            data: { qte_dispo: { increment: parseInt(qte) } },
+          });
         }
 
         id_colis = await getMaxValue("colis", "id_colis", null);
@@ -181,13 +197,14 @@ export const addColis = [
             mnt_tot_dev: montantSaisi,
             date_achat: new Date(dateAchat),
             qte_achat: parseInt(qte),
+            qte_stock: parseInt(qte),
             mnt_tot_dzd,
             pu_dev,
             pu_dzd,
             cat_id: parseInt(cat),
             prd_id,
             cpt_id: parseInt(cpt),
-            pu_dzd_ttc: pu_dzd,
+            pu_dzd_ttc,
             colis_classique: {
               create: {
                 droits_timbre: false,
@@ -199,7 +216,7 @@ export const addColis = [
 
         await tx.compte.update({
           where: { id_cpt: parseInt(cpt) },
-          data: { solde_actuel: { decrement: montantSaisi } },
+          data: { solde_actuel: { decrement: montantTotalADeduire } },
         });
 
         return colis;
