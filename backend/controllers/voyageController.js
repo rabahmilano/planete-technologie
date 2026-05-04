@@ -604,11 +604,19 @@ export const addTransactionVoyage = [
           if (!produitExist) {
             prd_id = nextPrdId;
             await tx.produit.create({
-              data: { id_prd: prd_id, designation_prd: article.desPrd.trim() },
+              data: {
+                id_prd: prd_id,
+                designation_prd: article.desPrd.trim(),
+                qte_dispo: qte,
+              },
             });
             nextPrdId++;
           } else {
             prd_id = produitExist.id_prd;
+            await tx.produit.update({
+              where: { id_prd: prd_id },
+              data: { qte_dispo: { increment: qte } },
+            });
           }
 
           await tx.colis.create({
@@ -698,6 +706,22 @@ export const deleteTransactionVoyage = async (req, res) => {
       if (!transaction) throw new Error("Transaction non trouvée.");
 
       if (transaction.colis_voyage.length > 0) {
+        const colisIds = transaction.colis_voyage.map(
+          (cv) => cv.colis.id_colis,
+        );
+
+        const venteExistante = await tx.ligne_commande_colis.findFirst({
+          where: {
+            colis_id: { in: colisIds },
+          },
+        });
+
+        if (venteExistante) {
+          throw new Error(
+            "Impossible de supprimer : des articles de cette facture ont déjà été vendus.",
+          );
+        }
+
         const premierColis = transaction.colis_voyage[0].colis;
         const cptId = premierColis.cpt_id;
 
@@ -750,9 +774,12 @@ export const deleteTransactionVoyage = async (req, res) => {
           },
         });
 
-        const colisIds = transaction.colis_voyage.map(
-          (cv) => cv.colis.id_colis,
-        );
+        for (const cv of transaction.colis_voyage) {
+          await tx.produit.update({
+            where: { id_prd: cv.colis.prd_id },
+            data: { qte_dispo: { decrement: cv.colis.qte_achat } },
+          });
+        }
 
         await tx.colis_voyage.deleteMany({
           where: { trans_id: idTrans },
@@ -770,6 +797,9 @@ export const deleteTransactionVoyage = async (req, res) => {
 
     res.status(200).json({ message: "Transaction supprimée avec succès." });
   } catch (error) {
+    if (error.message.includes("déjà été vendus")) {
+      return res.status(403).json({ message: error.message });
+    }
     if (error.message.includes("non trouv")) {
       return res.status(404).json({ message: error.message });
     }
