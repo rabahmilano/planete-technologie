@@ -61,7 +61,6 @@ const HomeView = () => {
     <Grid container spacing={6} alignItems='stretch'>
       <Grid item xs={12} md={4} sx={{ display: 'flex' }}>
         <Box sx={{ width: '100%' }}>
-          {/* Correction ici : ajout animation='wave' et height={180} */}
           {isLoading ? <Skeleton variant='rounded' animation='wave' width='100%' height={180} /> : <WelcomeCard />}
         </Box>
       </Grid>

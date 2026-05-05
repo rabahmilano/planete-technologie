@@ -9,6 +9,13 @@ import Icon from 'src/@core/components/icon'
 import { formatMontant } from 'src/@core/utils/format'
 import { hexToRGBA } from 'src/@core/utils/hex-to-rgba'
 
+const formatCompact = number => {
+  return new Intl.NumberFormat('fr-FR', {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(number)
+}
+
 const KpiCards = ({ rollingData, globalStats }) => {
   const theme = useTheme()
 
@@ -62,22 +69,15 @@ const KpiCards = ({ rollingData, globalStats }) => {
   ]
 
   return (
-    <Grid container spacing={6} sx={{ height: '100%', m: 0, width: '100%' }}>
+    <Grid container spacing={6} sx={{ height: '100%' }}>
       {kpis.map((item, index) => (
-        <Grid
-          item
-          xs={12}
-          sm={6}
-          md={3}
-          key={index}
-          sx={{ pt: '0 !important', pb: '0 !important', pl: index === 0 ? '0 !important' : undefined }}
-        >
+        <Grid item xs={12} sm={6} md={3} key={index}>
           <Card sx={{ boxShadow: 3, height: '100%' }}>
             <CardContent
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                p: theme => `${theme.spacing(4)} !important`,
+                p: theme => `${theme.spacing(5)} !important`,
                 height: '100%'
               }}
             >
@@ -105,6 +105,9 @@ const KpiCards = ({ rollingData, globalStats }) => {
                 sx={{
                   display: 'flex',
                   alignItems: 'center',
+                  flexWrap: 'wrap',
+                  columnGap: 1.5,
+                  rowGap: 0.5,
                   width: '100%',
                   pt: 2,
                   mt: 'auto',
@@ -116,11 +119,11 @@ const KpiCards = ({ rollingData, globalStats }) => {
                     <Typography
                       variant='caption'
                       sx={{
-                        mr: 1,
                         display: 'flex',
                         alignItems: 'center',
                         fontWeight: 600,
-                        color: item.trend.isGood ? 'success.main' : 'error.main'
+                        color: item.trend.isGood ? 'success.main' : 'error.main',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       <Icon
@@ -131,12 +134,29 @@ const KpiCards = ({ rollingData, globalStats }) => {
                       {item.trend.actualChange >= 0 ? '+' : '-'}
                       {item.trend.percent}%
                     </Typography>
-                    <Typography variant='caption' sx={{ color: 'text.disabled' }}>
-                      vs {formatMontant(item.trend.rawPrevious)} DA
+
+                    <Typography
+                      variant='caption'
+                      sx={{
+                        color: 'text.disabled',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      vs {formatCompact(item.trend.rawPrevious)} DA
                     </Typography>
                   </>
                 ) : (
-                  <Typography variant='caption' sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                  <Typography
+                    variant='caption'
+                    sx={{
+                      color: 'text.secondary',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <Icon icon='tabler:box' fontSize='1rem' style={{ marginRight: 4 }} />
                     {item.bottomText}
                   </Typography>
                 )}
