@@ -3,7 +3,7 @@ import { Box, CircularProgress, Typography, alpha, useTheme } from '@mui/materia
 
 const StockGauge = ({ quantity }) => {
   const theme = useTheme()
-  const isHealthy = quantity > 10
+  const isHealthy = quantity >= 5
 
   const stockColor = isHealthy ? theme.palette.success.main : theme.palette.error.main
   const stockBgColor = alpha(stockColor, 0.1)
