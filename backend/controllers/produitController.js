@@ -105,7 +105,9 @@ export const addColis = [
     .notEmpty()
     .withMessage("La catégorie est obligatoire"),
   body("cpt").isNumeric().notEmpty().withMessage("Le compte est obligatoire"),
-  body("dateAchat").notEmpty().withMessage("La date d'achat est obligatoire"),
+  body("dateAchat")
+    .isISO8601()
+    .withMessage("La date d'achat doit être une date valide"),
   body("desPrd")
     .isString()
     .trim()
@@ -115,7 +117,10 @@ export const addColis = [
     .isDecimal()
     .notEmpty()
     .withMessage("Le montant total est obligatoire"),
-  body("qte").isNumeric().notEmpty().withMessage("La quantité est obligatoire"),
+  body("qte")
+    .isNumeric()
+    .custom((value) => parseFloat(value) > 0)
+    .withMessage("La quantité est obligatoire et doit être supérieure à 0"),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -178,15 +183,10 @@ export const addColis = [
             data: {
               id_prd: prd_id,
               designation_prd: desPrd,
-              qte_dispo: parseInt(qte),
             },
           });
         } else {
           prd_id = produitExist.id_prd;
-          await tx.produit.update({
-            where: { id_prd: prd_id },
-            data: { qte_dispo: { increment: parseInt(qte) } },
-          });
         }
 
         id_colis = await getMaxValue("colis", "id_colis", null);
@@ -197,7 +197,6 @@ export const addColis = [
             mnt_tot_dev: montantSaisi,
             date_achat: new Date(dateAchat),
             qte_achat: parseInt(qte),
-            qte_stock: parseInt(qte),
             mnt_tot_dzd,
             pu_dev,
             pu_dzd,
@@ -207,7 +206,6 @@ export const addColis = [
             pu_dzd_ttc,
             colis_classique: {
               create: {
-                droits_timbre: false,
                 mnt_comm_bancaire: montantCommission,
               },
             },
