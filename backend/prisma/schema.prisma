@@ -38,6 +38,7 @@ model colis {
   pu_dzd_ttc    Decimal   @db.Decimal(10, 4)
 
   lignes    ligne_commande_colis[]
+  sorties_exceptionnelles sortie_exceptionnelle[]
   categorie categorie              @relation(fields: [cat_id], references: [id_cat])
   produit   produit                @relation(fields: [prd_id], references: [id_prd])
   compte    compte                 @relation(fields: [cpt_id], references: [id_cpt])
@@ -71,6 +72,7 @@ model produit {
 
   colis          colis[]
   ligne_commande ligne_commande[]
+  sorties_exceptionnelles sortie_exceptionnelle[]
 }
 
 model commande {
@@ -137,6 +139,7 @@ model crediter {
   taux_change Decimal  @db.Decimal(10, 2)
 
   compte compte @relation(fields: [cpt_id], references: [id_cpt])
+  sorties_remboursees sortie_exceptionnelle[]
 }
 
 model devise {
@@ -286,4 +289,36 @@ model Utilisateur {
   mis_a_jour_le DateTime          @updatedAt
 
   @@map("utilisateurs")
+}
+
+enum MotifSortie {
+  UTILISATION_PERSONNELLE
+  PERTE_LIVRAISON
+  CASSE_DEFECTUEUX
+  VENTE_A_CREDIT
+}
+
+enum StatutRemboursement {
+  NON_APPLICABLE
+  EN_ATTENTE
+  REMBOURSE
+  REFUSE
+}
+
+model sortie_exceptionnelle {
+  id_sortie    Int                 @id
+  prd_id       Int
+  colis_id     Int
+  qte          Int
+  date_sortie  DateTime            @db.Date()
+  motif        MotifSortie
+  observation  String?             @db.VarChar(255)
+  statut_remb  StatutRemboursement @default(NON_APPLICABLE)
+  mnt_attendu  Decimal?            @db.Decimal(10, 2)
+  
+  op_crd_id    Int?                
+
+  produit          produit         @relation(fields: [prd_id], references: [id_prd])
+  colis            colis           @relation(fields: [colis_id], references: [id_colis])
+  operation_credit crediter?       @relation(fields: [op_crd_id], references: [id_op_crd])
 }
