@@ -16,6 +16,7 @@ import commandeRoutes from "./routes/commandeRouter.js";
 import empruntRoutes from "./routes/empruntRoutes.js";
 import voyageRoutes from "./routes/voyageRouter.js";
 import transfertRoutes from "./routes/transfertRouter.js";
+import sortieExceptionnelleRoutes from "./routes/sortieExceptionnelleRouter.js";
 
 const app = express();
 
@@ -82,7 +83,11 @@ app.use("/api/commandes", verifyToken, commandeRoutes);
 app.use("/api/emprunts", verifyToken, empruntRoutes);
 app.use("/api/voyages", verifyToken, voyageRoutes);
 app.use("/api/transferts", verifyToken, transfertRoutes);
-
+app.use(
+  "/api/sorties-exceptionnelles",
+  verifyToken,
+  sortieExceptionnelleRoutes,
+);
 app.use((req, res, next) => {
   res.status(404).json({ message: "Route not found" });
 });

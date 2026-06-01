@@ -1,19 +1,38 @@
 import { PrismaClient } from "@prisma/client";
 import { body, validationResult } from "express-validator";
-import { getMaxValue } from "../config/utils.js";
+import { getMaxValue, arrondir } from "../config/utils.js";
 
 const prisma = new PrismaClient();
 
-// ==========================================
-// 1. DÉCLARER UNE SORTIE EXCEPTIONNELLE
-// ==========================================
 export const declarerSortie = [
-  body("prd_id").isInt().withMessage("Le produit est obligatoire"),
-  body("colis_id").isInt().withMessage("Le colis est obligatoire"),
-  body("qte").isInt({ gt: 0 }).withMessage("La quantité doit être > 0"),
-  body("date_sortie").isISO8601().withMessage("Date invalide"),
-  body("motif").isString().notEmpty().withMessage("Le motif est obligatoire"),
-  body("mnt_attendu").optional().isDecimal(),
+  body("prd_id")
+    .isInt()
+    .notEmpty()
+    .withMessage("L'ID du produit est obligatoire"),
+  body("qte")
+    .isInt({ gt: 0 })
+    .notEmpty()
+    .withMessage("La quantité doit être supérieure à 0"),
+  body("date_sortie")
+    .isISO8601()
+    .notEmpty()
+    .withMessage("La date de sortie est obligatoire et doit être valide"),
+  body("motif")
+    .isString()
+    .notEmpty()
+    .isIn([
+      "UTILISATION_PERSONNELLE",
+      "PERTE_LIVRAISON",
+      "CASSE_DEFECTUEUX",
+      "VENTE_A_CREDIT",
+      "SAISIE_DOUANE",
+    ])
+    .withMessage("Le motif est invalide ou manquant"),
+  body("mnt_attendu")
+    .optional({ checkFalsy: true })
+    .isFloat({ gt: 0 })
+    .withMessage("Le montant attendu doit être valide"),
+  body("observation").optional({ checkFalsy: true }).isString(),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -21,69 +40,89 @@ export const declarerSortie = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const {
-      prd_id,
-      colis_id,
-      qte,
-      date_sortie,
-      motif,
-      mnt_attendu,
-      observation,
-    } = req.body;
+    const { prd_id, qte, date_sortie, motif, mnt_attendu, observation } =
+      req.body;
 
     try {
       const nouvelleSortie = await prisma.$transaction(async (tx) => {
-        // 1. Vérifier si le produit et le colis existent
-        const produit = await tx.produit.findUnique({
-          where: { id_prd: parseInt(prd_id) },
-        });
-        const colis = await tx.colis.findUnique({
-          where: { id_colis: parseInt(colis_id) },
-        });
-
-        if (!produit || !colis) {
-          throw new Error("Produit ou Colis introuvable");
-        }
-        if (
-          produit.qte_dispo < parseInt(qte) ||
-          colis.qte_stock < parseInt(qte)
-        ) {
-          throw new Error("Quantité en stock insuffisante pour cette sortie");
-        }
-
-        // 2. Définir le statut par défaut en fonction du motif
-        let statut = "NON_APPLICABLE";
-        if (
-          motif === "PERTE_LIVRAISON" ||
-          motif === "CASSE_DEFECTUEUX" ||
-          motif === "VENTE_A_CREDIT"
-        ) {
-          statut = "EN_ATTENTE";
-        }
-
-        // 3. Créer la ligne de sortie (id_sortie est en autoincrement dans le schéma)
-        const sortie = await tx.sortie_exceptionnelle.create({
-          data: {
-            prd_id: parseInt(prd_id),
-            colis_id: parseInt(colis_id),
-            qte: parseInt(qte),
-            date_sortie: new Date(date_sortie),
-            motif: motif,
-            statut_remb: statut,
-            mnt_attendu: mnt_attendu ? parseFloat(mnt_attendu) : null,
-            observation: observation || null,
-          },
-        });
-
-        // 4. Décrémenter les stocks (Logique FIFO stricte respectée)
-        await tx.produit.update({
+        const updatedProduit = await tx.produit.update({
           where: { id_prd: parseInt(prd_id) },
           data: { qte_dispo: { decrement: parseInt(qte) } },
         });
 
-        await tx.colis.update({
-          where: { id_colis: parseInt(colis_id) },
-          data: { qte_stock: { decrement: parseInt(qte) } },
+        if (updatedProduit.qte_dispo < 0) {
+          throw new Error(
+            `Stock global insuffisant pour le produit ID: ${prd_id}.`,
+          );
+        }
+
+        let quantityToDeduct = parseInt(qte);
+        const lignesSortieData = [];
+
+        const colisDisponibles = await tx.colis.findMany({
+          where: {
+            prd_id: parseInt(prd_id),
+            qte_stock: { gt: 0 },
+            date_stock: { not: null },
+          },
+          orderBy: [{ date_achat: "asc" }, { date_stock: "asc" }],
+        });
+
+        for (const colis of colisDisponibles) {
+          if (quantityToDeduct <= 0) break;
+
+          const deduction = Math.min(quantityToDeduct, colis.qte_stock);
+
+          const updatedColis = await tx.colis.update({
+            where: { id_colis: colis.id_colis },
+            data: { qte_stock: { decrement: deduction } },
+          });
+
+          if (updatedColis.qte_stock < 0) {
+            throw new Error(
+              `Conflit d'inventaire détecté sur le lot ${colis.id_colis}.`,
+            );
+          }
+
+          lignesSortieData.push({
+            colis_id: colis.id_colis,
+            qte: deduction,
+          });
+
+          quantityToDeduct -= deduction;
+        }
+
+        if (quantityToDeduct > 0) {
+          throw new Error(
+            `Incohérence des stocks pour le produit ID: ${prd_id}. Les lots détaillés ne suffisent pas.`,
+          );
+        }
+
+        let statutFinal = "NON_APPLICABLE";
+        let montantFinal = mnt_attendu ? parseFloat(mnt_attendu) : null;
+
+        if (motif === "UTILISATION_PERSONNELLE") {
+          montantFinal = null;
+        } else if (montantFinal > 0) {
+          statutFinal = "EN_ATTENTE";
+        }
+
+        const sortie = await tx.sortie_exceptionnelle.create({
+          data: {
+            prd_id: parseInt(prd_id),
+            qte_totale: parseInt(qte),
+            date_sortie: new Date(date_sortie),
+            motif: motif,
+            statut_remb: statutFinal,
+            mnt_attendu: montantFinal,
+            observation: observation || null,
+            lignes_colis: {
+              create: lignesSortieData,
+            },
+          },
+          include: {
+            lignes_colis: true,
+          },
         });
 
         return sortie;
@@ -91,19 +130,33 @@ export const declarerSortie = [
 
       res.status(201).json(nouvelleSortie);
     } catch (error) {
-      res.status(500).json({ error: { message: error.message } });
+      if (
+        error.message.includes("insuffisant") ||
+        error.message.includes("Conflit") ||
+        error.message.includes("Incohérence")
+      ) {
+        return res.status(409).json({ message: error.message });
+      }
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
     }
   },
 ];
 
-// ==========================================
-// 2. MARQUER COMME REMBOURSÉ (Encaissement)
-// ==========================================
 export const rembourserSortie = [
   body("cpt_id")
     .isInt()
+    .notEmpty()
     .withMessage("Le compte de destination est obligatoire"),
-  body("date_remb").isISO8601().withMessage("Date de remboursement invalide"),
+  body("date_remb")
+    .isISO8601()
+    .notEmpty()
+    .withMessage("La date de remboursement doit être valide"),
+  body("montant_encaisse")
+    .isFloat({ gt: 0 })
+    .notEmpty()
+    .withMessage("Le montant encaissé est obligatoire et doit être > 0"),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -111,11 +164,10 @@ export const rembourserSortie = [
       return res.status(400).json({ errors: errors.array() });
 
     const id_sortie = parseInt(req.params.id);
-    const { cpt_id, date_remb } = req.body;
+    const { cpt_id, date_remb, montant_encaisse } = req.body;
 
     try {
       const resultat = await prisma.$transaction(async (tx) => {
-        // 1. Récupérer la sortie
         const sortie = await tx.sortie_exceptionnelle.findUnique({
           where: { id_sortie: id_sortie },
         });
@@ -123,43 +175,38 @@ export const rembourserSortie = [
         if (!sortie) throw new Error("Sortie introuvable");
         if (sortie.statut_remb === "REMBOURSE")
           throw new Error("Cette sortie a déjà été remboursée");
-        if (!sortie.mnt_attendu)
-          throw new Error("Aucun montant n'est attendu pour cette sortie");
+        if (sortie.statut_remb === "NON_APPLICABLE")
+          throw new Error("Cette sortie n'est pas éligible à un remboursement");
 
-        const montant = parseFloat(sortie.mnt_attendu);
+        const montantReel = arrondir(parseFloat(montant_encaisse));
 
-        // 2. Générer l'ID manuel pour la table crediter (car pas d'autoincrement dans ton schéma)
-        const op_crd_id = await getMaxValue("crediter", "id_op_crd", null);
-
-        // 3. Récupérer le compte pour le taux de change
         const compte = await tx.compte.findUnique({
           where: { id_cpt: parseInt(cpt_id) },
         });
         if (!compte) throw new Error("Compte introuvable");
 
-        // 4. Créer l'opération de crédit (Entrée d'argent)
+        const id_op_crd = await getMaxValue("crediter", "id_op_crd", null);
+
         const operation = await tx.crediter.create({
           data: {
-            id_op_crd: op_crd_id,
+            id_op_crd: id_op_crd,
             cpt_id: parseInt(cpt_id),
             date_op: new Date(date_remb),
-            montant_op: montant,
+            montant_op: montantReel,
             taux_change: compte.taux_change_actuel,
           },
         });
 
-        // 5. Augmenter le solde du compte
         await tx.compte.update({
           where: { id_cpt: parseInt(cpt_id) },
-          data: { solde_actuel: { increment: montant } },
+          data: { solde_actuel: { increment: montantReel } },
         });
 
-        // 6. Mettre à jour la sortie (Liaison avec le crédit)
         const sortieMaj = await tx.sortie_exceptionnelle.update({
           where: { id_sortie: id_sortie },
           data: {
             statut_remb: "REMBOURSE",
-            op_crd_id: op_crd_id, // L'ID généré à l'étape 2
+            op_crd_id: id_op_crd,
           },
         });
 
@@ -168,24 +215,40 @@ export const rembourserSortie = [
 
       res.status(200).json(resultat);
     } catch (error) {
-      res.status(500).json({ error: { message: error.message } });
+      if (
+        error.message.includes("déjà") ||
+        error.message.includes("éligible")
+      ) {
+        return res.status(409).json({ message: error.message });
+      }
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
     }
   },
 ];
 
-// ==========================================
-// 3. RÉCUPÉRER LA LISTE DES SORTIES
-// ==========================================
 export const getSorties = async (req, res) => {
   try {
-    const sorties = await prisma.sortie_exceptionnelle.findMany({
+    const { page, limit, motif, statut, startDate, endDate } = req.query;
+
+    const where = {};
+
+    if (motif) where.motif = motif;
+    if (statut) where.statut_remb = statut;
+    if (startDate || endDate) {
+      where.date_sortie = {};
+      if (startDate) where.date_sortie.gte = new Date(startDate);
+      if (endDate) where.date_sortie.lte = new Date(endDate);
+    }
+
+    const queryOptions = {
+      where,
       orderBy: { date_sortie: "desc" },
       include: {
-        produit: {
-          select: { designation_prd: true },
-        },
-        colis: {
-          select: { mnt_tot_dzd: true, pu_dzd: true },
+        produit: { select: { designation_prd: true } },
+        lignes_colis: {
+          include: { colis: { select: { pu_dzd: true, mnt_tot_dzd: true } } },
         },
         operation_credit: {
           select: {
@@ -195,9 +258,28 @@ export const getSorties = async (req, res) => {
           },
         },
       },
-    });
+    };
 
-    res.status(200).json(sorties);
+    if (limit) {
+      queryOptions.take = parseInt(limit);
+      if (page) {
+        queryOptions.skip = (parseInt(page) - 1) * parseInt(limit);
+      }
+    }
+
+    const [sorties, totalCount] = await prisma.$transaction([
+      prisma.sortie_exceptionnelle.findMany(queryOptions),
+      prisma.sortie_exceptionnelle.count({ where }),
+    ]);
+
+    res.status(200).json({
+      data: sorties,
+      meta: {
+        total: totalCount,
+        page: page ? parseInt(page) : 1,
+        limit: limit ? parseInt(limit) : totalCount,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: { message: error.message } });
   }

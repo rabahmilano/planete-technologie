@@ -22,6 +22,16 @@ const navigation = () => {
           title: 'Ajouter un produit',
           path: '/produits/ajouter',
           icon: 'tabler:circle-plus'
+        },
+        {
+          title: 'Sorties exceptionnelles',
+          path: '/produits/sorties-exceptionnelles',
+          icon: 'tabler:alert-triangle'
+        },
+        {
+          title: 'Déclarer une sortie',
+          path: '/produits/declarer-sortie',
+          icon: 'tabler:truck-off'
         }
       ]
     },

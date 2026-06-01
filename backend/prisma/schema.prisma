@@ -38,7 +38,7 @@ model colis {
   pu_dzd_ttc    Decimal   @db.Decimal(10, 4)
 
   lignes    ligne_commande_colis[]
-  sorties_exceptionnelles sortie_exceptionnelle[]
+  lignes_sorties ligne_sortie_colis[]
   categorie categorie              @relation(fields: [cat_id], references: [id_cat])
   produit   produit                @relation(fields: [prd_id], references: [id_prd])
   compte    compte                 @relation(fields: [cpt_id], references: [id_cpt])
@@ -139,7 +139,7 @@ model crediter {
   taux_change Decimal  @db.Decimal(10, 2)
 
   compte compte @relation(fields: [cpt_id], references: [id_cpt])
-  sorties_remboursees sortie_exceptionnelle[]
+  sortie_remboursee sortie_exceptionnelle?
 }
 
 model devise {
@@ -296,6 +296,7 @@ enum MotifSortie {
   PERTE_LIVRAISON
   CASSE_DEFECTUEUX
   VENTE_A_CREDIT
+  SAISIE_DOUANE
 }
 
 enum StatutRemboursement {
@@ -308,17 +309,26 @@ enum StatutRemboursement {
 model sortie_exceptionnelle {
   id_sortie    Int                 @id
   prd_id       Int
-  colis_id     Int
-  qte          Int
+  qte_totale   Int                 
   date_sortie  DateTime            @db.Date()
   motif        MotifSortie
   observation  String?             @db.VarChar(255)
   statut_remb  StatutRemboursement @default(NON_APPLICABLE)
   mnt_attendu  Decimal?            @db.Decimal(10, 2)
-  
-  op_crd_id    Int?                
+  op_crd_id    Int?                @unique
 
-  produit          produit         @relation(fields: [prd_id], references: [id_prd])
-  colis            colis           @relation(fields: [colis_id], references: [id_colis])
-  operation_credit crediter?       @relation(fields: [op_crd_id], references: [id_op_crd])
+  produit          produit              @relation(fields: [prd_id], references: [id_prd])
+  operation_credit crediter?            @relation(fields: [op_crd_id], references: [id_op_crd])
+  lignes_colis     ligne_sortie_colis[] 
+}
+
+model ligne_sortie_colis {
+  sortie_id  Int
+  colis_id   Int
+  qte        Int                   
+
+  sortie     sortie_exceptionnelle @relation(fields: [sortie_id], references: [id_sortie])
+  colis      colis                 @relation(fields: [colis_id], references: [id_colis])
+
+  @@id([sortie_id, colis_id])
 }
