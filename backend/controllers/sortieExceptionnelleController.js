@@ -101,14 +101,21 @@ export const declarerSortie = [
         let statutFinal = "NON_APPLICABLE";
         let montantFinal = mnt_attendu ? parseFloat(mnt_attendu) : null;
 
-        if (motif === "UTILISATION_PERSONNELLE") {
+        if (motif === "UTILISATION_PERSONNELLE" || motif === "SAISIE_DOUANE") {
           montantFinal = null;
         } else if (montantFinal > 0) {
           statutFinal = "EN_ATTENTE";
         }
 
+        const id_sortie = await getMaxValue(
+          "sortie_exceptionnelle",
+          "id_sortie",
+          null,
+        );
+
         const sortie = await tx.sortie_exceptionnelle.create({
           data: {
+            id_sortie: id_sortie,
             prd_id: parseInt(prd_id),
             qte_totale: parseInt(qte),
             date_sortie: new Date(date_sortie),
@@ -227,6 +234,44 @@ export const rembourserSortie = [
     }
   },
 ];
+
+export const refuserRemboursement = async (req, res) => {
+  try {
+    const id_sortie = parseInt(req.params.id, 10);
+
+    const resultat = await prisma.$transaction(async (tx) => {
+      const sortie = await tx.sortie_exceptionnelle.findUnique({
+        where: { id_sortie: id_sortie },
+      });
+
+      if (!sortie) {
+        throw new Error("Sortie introuvable");
+      }
+      if (sortie.statut_remb !== "EN_ATTENTE") {
+        throw new Error("Seules les sorties en attente peuvent être refusées");
+      }
+
+      const sortieMaj = await tx.sortie_exceptionnelle.update({
+        where: { id_sortie: id_sortie },
+        data: {
+          statut_remb: "REFUSE",
+          date_refus: new Date(),
+        },
+      });
+
+      return sortieMaj;
+    });
+
+    res.status(200).json(resultat);
+  } catch (error) {
+    if (error.message.includes("Seules les sorties")) {
+      return res.status(409).json({ message: error.message });
+    }
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
 
 export const getSorties = async (req, res) => {
   try {

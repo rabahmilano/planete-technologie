@@ -316,6 +316,7 @@ model sortie_exceptionnelle {
   statut_remb  StatutRemboursement @default(NON_APPLICABLE)
   mnt_attendu  Decimal?            @db.Decimal(10, 2)
   op_crd_id    Int?                @unique
+  date_refus   DateTime?           @db.Date()
 
   produit          produit              @relation(fields: [prd_id], references: [id_prd])
   operation_credit crediter?            @relation(fields: [op_crd_id], references: [id_op_crd])
