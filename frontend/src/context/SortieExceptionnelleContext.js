@@ -54,6 +54,19 @@ export const SortieExceptionnelleProvider = ({ children }) => {
     }
   }
 
+  const refuserRemboursement = async id => {
+    try {
+      await axiosInstance.patch(`${API_URL}/refuserRemboursement/${id}`)
+      toast.success('Le remboursement a été marqué comme refusé')
+      fetchSorties()
+      return true
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Erreur lors du refus'
+      toast.error(errorMsg)
+      return false
+    }
+  }
+
   return (
     <SortieExceptionnelleContext.Provider
       value={{
@@ -61,7 +74,8 @@ export const SortieExceptionnelleProvider = ({ children }) => {
         loading,
         fetchSorties,
         declarerSortie,
-        rembourserSortie
+        rembourserSortie,
+        refuserRemboursement
       }}
     >
       {children}

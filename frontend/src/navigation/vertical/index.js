@@ -30,7 +30,7 @@ const navigation = () => {
         },
         {
           title: 'Déclarer une sortie',
-          path: '/produits/declarer-sortie',
+          path: '/produits/declarerSortie',
           icon: 'tabler:truck-off'
         }
       ]
