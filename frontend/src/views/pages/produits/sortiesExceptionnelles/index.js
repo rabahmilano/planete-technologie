@@ -1,330 +1,231 @@
-import { useState, useEffect } from 'react'
-import { Grid, Card, CardContent, CardHeader, MenuItem, Typography, Box, Divider, Avatar } from '@mui/material'
-import { DataGrid } from '@mui/x-data-grid'
-import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Grid, Menu, MenuItem, Typography } from '@mui/material'
 import dayjs from 'dayjs'
 import 'dayjs/locale/fr'
 
-import CustomTextField from 'src/@core/components/mui/text-field'
-import CustomChip from 'src/@core/components/mui/chip'
 import Icon from 'src/@core/components/icon'
 import { useSortieExceptionnelle } from 'src/context/SortieExceptionnelleContext'
-import { formatMontant } from 'src/@core/utils/format'
+
+import KpiCards from './KpiCards'
+import FiltresSorties from './FiltresSorties'
+import TableauSorties from './TableauSorties'
+import RembourserModal from './RembourserModal'
+import DetailsModal from './DetailsModal'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+import SortiesSkeleton from './SortiesSkeleton'
+import ChartsSlider from './ChartsSlider'
 
 dayjs.locale('fr')
 
-const statutColors = {
-  NON_APPLICABLE: 'secondary',
-  EN_ATTENTE: 'warning',
-  REMBOURSE: 'success',
-  REFUSE: 'error'
-}
+const SortiesExceptionnellesView = () => {
+  const { fetchSorties, refuserRemboursement } = useSortieExceptionnelle()
 
-const statutLabels = {
-  NON_APPLICABLE: 'Non Applicable',
-  EN_ATTENTE: 'En Attente',
-  REMBOURSE: 'Remboursé',
-  REFUSE: 'Refusé'
-}
+  const [pageLoading, setPageLoading] = useState(true)
+  const [sorties, setSorties] = useState([])
+  const [allSortiesForCharts, setAllSortiesForCharts] = useState([])
+  const [totalItems, setTotalItems] = useState(0)
+  const [stats, setStats] = useState({ totalSorties: 0, perteFinanciere: 0, montantEnAttente: 0, montantRecupere: 0 })
 
-const motifLabels = {
-  UTILISATION_PERSONNELLE: 'Utilisation Personnelle',
-  PERTE_LIVRAISON: 'Perte Livraison',
-  CASSE_DEFECTUEUX: 'Casse / Défectueux',
-  VENTE_A_CREDIT: 'Vente à Crédit',
-  SAISIE_DOUANE: 'Saisie Douane'
-}
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(25)
+  const [motifFilter, setMotifFilter] = useState('')
+  const [statutFilter, setStatutFilter] = useState('')
+  const [dateRange, setDateRange] = useState([null, null])
 
-// ==========================================
-// COMPOSANT: TABLEAU VIDE PROFESSIONNEL
-// ==========================================
-const CustomNoRowsOverlay = () => (
-  <Box
-    sx={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%',
-      p: 4
-    }}
-  >
-    <Icon icon='tabler:clipboard-x' fontSize='4rem' color='#a8aaae' />
-    <Typography variant='h6' sx={{ mt: 2, color: 'text.secondary' }}>
-      Aucun résultat trouvé
-    </Typography>
-    <Typography variant='body2' sx={{ color: 'text.disabled' }}>
-      Essayez de modifier vos filtres ou déclarez une nouvelle sortie.
-    </Typography>
-  </Box>
-)
+  const [anchorEl, setAnchorEl] = useState(null)
+  const [selectedSortie, setSelectedSortie] = useState(null)
 
-const ListeSortiesExceptionnelles = () => {
-  const { sorties, loading, fetchSorties } = useSortieExceptionnelle()
+  const [isRembourserModalOpen, setRembourserModalOpen] = useState(false)
+  const [isDetailsModalOpen, setDetailsModalOpen] = useState(false)
+  const [isConfirmRefuserOpen, setConfirmRefuserOpen] = useState(false)
 
-  // States pour les filtres avancés
-  const [motif, setMotif] = useState('')
-  const [statut, setStatut] = useState('')
-  const [startDate, setStartDate] = useState(null)
-  const [endDate, setEndDate] = useState(null)
+  const filters = useMemo(
+    () => ({
+      motif: motifFilter,
+      statut: statutFilter,
+      dateDebut: dateRange[0] ? dayjs(dateRange[0]).startOf('day').toISOString() : '',
+      dateFin: dateRange[1] ? dayjs(dateRange[1]).endOf('day').toISOString() : ''
+    }),
+    [motifFilter, statutFilter, dateRange]
+  )
+
+  const loadTableData = useCallback(async () => {
+    const params = { page: page + 1, limit: rowsPerPage, ...filters }
+    const data = await fetchSorties(params)
+
+    if (data) {
+      setSorties(data.data)
+      setTotalItems(data.meta?.total || data.total || 0)
+
+      const allSorties = data.data || []
+      setAllSortiesForCharts(allSorties)
+
+      const perteFinanciereBrute = allSorties.reduce((acc, sortie) => {
+        const coutLignes =
+          sortie.lignes_colis?.reduce((sum, ligne) => {
+            return sum + ligne.qte * parseFloat(ligne.colis?.pu_dzd || 0)
+          }, 0) || 0
+        return acc + coutLignes
+      }, 0)
+
+      setStats({
+        totalSorties: allSorties.length,
+        perteFinanciere: perteFinanciereBrute,
+        montantEnAttente: allSorties
+          .filter(s => s.statut_remb === 'EN_ATTENTE')
+          .reduce((acc, curr) => acc + parseFloat(curr.mnt_attendu || 0), 0),
+        montantRecupere: allSorties
+          .filter(s => s.statut_remb === 'REMBOURSE')
+          .reduce((acc, curr) => acc + parseFloat(curr.operation_credit?.montant_op || 0), 0)
+      })
+    }
+
+    setPageLoading(false)
+  }, [fetchSorties, page, rowsPerPage, filters])
 
   useEffect(() => {
-    // Préparation des paramètres pour le backend
-    const params = {}
-    if (motif) params.motif = motif
-    if (statut) params.statut = statut
-    if (startDate) params.startDate = startDate.toISOString()
-    if (endDate) params.endDate = endDate.toISOString()
+    loadTableData()
+  }, [loadTableData])
 
-    fetchSorties(params)
-  }, [motif, statut, startDate, endDate, fetchSorties])
+  const handleResetFilters = () => {
+    setMotifFilter('')
+    setStatutFilter('')
+    setDateRange([null, null])
+    setPage(0)
+  }
 
-  // ==========================================
-  // CALCUL DES KPIS
-  // ==========================================
-  const totalSorties = sorties?.length || 0
-  const articlesImpactes = sorties?.reduce((acc, curr) => acc + curr.qte_totale, 0) || 0
-  const montantEnAttente =
-    sorties
-      ?.filter(s => s.statut_remb === 'EN_ATTENTE')
-      ?.reduce((acc, curr) => acc + parseFloat(curr.mnt_attendu || 0), 0) || 0
-  const montantRecupere =
-    sorties
-      ?.filter(s => s.statut_remb === 'REMBOURSE')
-      ?.reduce((acc, curr) => acc + parseFloat(curr.operation_credit?.montant_op || 0), 0) || 0
+  const handleMenuOpen = (event, sortieItem) => {
+    setAnchorEl(event.currentTarget)
+    setSelectedSortie(sortieItem)
+  }
 
-  const columns = [
-    {
-      field: 'date_sortie',
-      headerName: 'Date',
-      flex: 0.15,
-      minWidth: 120,
-      renderCell: params => (
-        <Typography variant='body2'>{dayjs(params.row.date_sortie).format('DD/MM/YYYY')}</Typography>
-      )
-    },
-    {
-      field: 'produit',
-      headerName: 'Produit',
-      flex: 0.25,
-      minWidth: 200,
-      renderCell: params => (
-        <Typography variant='body2' sx={{ fontWeight: 600, color: 'text.primary' }}>
-          {params.row.produit?.designation_prd}
-        </Typography>
-      )
-    },
-    {
-      field: 'motif',
-      headerName: 'Motif',
-      flex: 0.2,
-      minWidth: 180,
-      renderCell: params => <Typography variant='body2'>{motifLabels[params.row.motif] || params.row.motif}</Typography>
-    },
-    {
-      field: 'qte_totale',
-      headerName: 'Qté',
-      flex: 0.1,
-      minWidth: 80,
-      align: 'center',
-      headerAlign: 'center',
-      renderCell: params => (
-        <CustomChip rounded size='small' skin='light' color='secondary' label={params.row.qte_totale} />
-      )
-    },
-    {
-      field: 'mnt_attendu',
-      headerName: 'Montant Attendu',
-      flex: 0.15,
-      minWidth: 150,
-      renderCell: params => (
-        <Typography variant='body2' sx={{ fontWeight: 600 }}>
-          {params.row.mnt_attendu ? `${formatMontant(params.row.mnt_attendu)} DZD` : '-'}
-        </Typography>
-      )
-    },
-    {
-      field: 'statut_remb',
-      headerName: 'Statut',
-      flex: 0.15,
-      minWidth: 140,
-      renderCell: params => (
-        <CustomChip
-          rounded
-          size='small'
-          skin='light'
-          color={statutColors[params.row.statut_remb]}
-          label={statutLabels[params.row.statut_remb]}
-        />
-      )
+  const handleMenuClose = () => {
+    setAnchorEl(null)
+  }
+
+  const handleConfirmRefuser = async () => {
+    if (selectedSortie) {
+      const success = await refuserRemboursement(selectedSortie.id_sortie)
+      if (success) {
+        loadTableData()
+      }
     }
-  ]
+    setConfirmRefuserOpen(false)
+  }
+
+  const handleSuccess = () => {
+    loadTableData()
+    setRembourserModalOpen(false)
+    setDetailsModalOpen(false)
+    setSelectedSortie(null)
+  }
+
+  if (pageLoading) {
+    return <SortiesSkeleton />
+  }
 
   return (
-    <>
-      {/* ========================================== */}
-      {/* SECTION KPIS (VUE GLOBALE DU BUSINESS) */}
-      {/* ========================================== */}
-      <Grid container spacing={5} sx={{ mb: 6 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar variant='rounded' sx={{ mr: 3, width: 44, height: 44, bgcolor: 'primary.light' }}>
-                <Icon icon='tabler:file-invoice' fontSize='1.5rem' color='white' />
-              </Avatar>
-              <div>
-                <Typography variant='h6'>{totalSorties}</Typography>
-                <Typography variant='body2' sx={{ color: 'text.disabled' }}>
-                  Dossiers déclarés
-                </Typography>
-              </div>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar variant='rounded' sx={{ mr: 3, width: 44, height: 44, bgcolor: 'error.light' }}>
-                <Icon icon='tabler:box-off' fontSize='1.5rem' color='white' />
-              </Avatar>
-              <div>
-                <Typography variant='h6'>{articlesImpactes}</Typography>
-                <Typography variant='body2' sx={{ color: 'text.disabled' }}>
-                  Articles impactés
-                </Typography>
-              </div>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar variant='rounded' sx={{ mr: 3, width: 44, height: 44, bgcolor: 'warning.light' }}>
-                <Icon icon='tabler:clock-dollar' fontSize='1.5rem' color='white' />
-              </Avatar>
-              <div>
-                <Typography variant='h6'>{formatMontant(montantEnAttente)}</Typography>
-                <Typography variant='body2' sx={{ color: 'text.disabled' }}>
-                  DZD en attente
-                </Typography>
-              </div>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-              <Avatar variant='rounded' sx={{ mr: 3, width: 44, height: 44, bgcolor: 'success.light' }}>
-                <Icon icon='tabler:cash' fontSize='1.5rem' color='white' />
-              </Avatar>
-              <div>
-                <Typography variant='h6'>{formatMontant(montantRecupere)}</Typography>
-                <Typography variant='body2' sx={{ color: 'text.disabled' }}>
-                  DZD récupérés
-                </Typography>
-              </div>
-            </CardContent>
-          </Card>
-        </Grid>
+    <Grid container spacing={6}>
+      <Grid item xs={12} md={4} sx={{ height: 320 }}>
+        <ChartsSlider sorties={allSortiesForCharts} stats={stats} />
       </Grid>
 
-      {/* ========================================== */}
-      {/* SECTION FILTRES ET TABLEAU */}
-      {/* ========================================== */}
-      <Card>
-        <CardHeader title='Filtres de recherche' />
-        <Divider sx={{ m: '0 !important' }} />
-        <CardContent>
-          <Grid container spacing={5}>
-            <Grid item xs={12} sm={6} md={3}>
-              <CustomTextField
-                select
-                fullWidth
-                label='Motif de sortie'
-                value={motif}
-                onChange={e => setMotif(e.target.value)}
-              >
-                <MenuItem value=''>Tous les motifs</MenuItem>
-                {Object.entries(motifLabels).map(([key, label]) => (
-                  <MenuItem key={key} value={key}>
-                    {label}
-                  </MenuItem>
-                ))}
-              </CustomTextField>
-            </Grid>
+      <Grid item xs={12} md={4} sx={{ height: 320 }}>
+        <FiltresSorties
+          motifFilter={motifFilter}
+          setMotifFilter={setMotifFilter}
+          statutFilter={statutFilter}
+          setStatutFilter={setStatutFilter}
+          dateRange={dateRange}
+          setDateRange={setDateRange}
+          handleResetFilters={handleResetFilters}
+        />
+      </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
-              <CustomTextField
-                select
-                fullWidth
-                label='Statut du remboursement'
-                value={statut}
-                onChange={e => setStatut(e.target.value)}
-              >
-                <MenuItem value=''>Tous les statuts</MenuItem>
-                {Object.entries(statutLabels).map(([key, label]) => (
-                  <MenuItem key={key} value={key}>
-                    {label}
-                  </MenuItem>
-                ))}
-              </CustomTextField>
-            </Grid>
+      <Grid item xs={12} md={4} sx={{ height: 320 }}>
+        <KpiCards stats={stats} />
+      </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
-              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
-                <DatePicker
-                  label='Date de début'
-                  value={startDate}
-                  onChange={newValue => setStartDate(newValue)}
-                  slotProps={{ textField: { fullWidth: true }, field: { clearable: true } }}
-                />
-              </LocalizationProvider>
-            </Grid>
+      <Grid item xs={12}>
+        <TableauSorties
+          sorties={sorties}
+          totalItems={totalItems}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={(e, newPage) => setPage(newPage)}
+          onRowsPerPageChange={e => {
+            setRowsPerPage(parseInt(e.target.value, 10))
+            setPage(0)
+          }}
+          onMenuOpen={handleMenuOpen}
+        />
+      </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
-              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
-                <DatePicker
-                  label='Date de fin'
-                  value={endDate}
-                  onChange={newValue => setEndDate(newValue)}
-                  slotProps={{ textField: { fullWidth: true }, field: { clearable: true } }}
-                />
-              </LocalizationProvider>
-            </Grid>
-          </Grid>
-        </CardContent>
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+        <MenuItem
+          onClick={() => {
+            setDetailsModalOpen(true)
+            handleMenuClose()
+          }}
+        >
+          <Icon icon='tabler:eye' style={{ marginRight: 8 }} /> Voir les détails
+        </MenuItem>
 
-        <Divider sx={{ m: '0 !important' }} />
-
-        <Box sx={{ height: 500, width: '100%' }}>
-          <DataGrid
-            rows={sorties}
-            columns={columns}
-            loading={loading}
-            getRowId={row => row.id_sortie}
-            disableRowSelectionOnClick
-            pageSizeOptions={[10, 25, 50]}
-            initialState={{
-              pagination: { paginationModel: { pageSize: 10 } }
+        {selectedSortie?.statut_remb === 'EN_ATTENTE' && [
+          <MenuItem
+            key='rembourser'
+            onClick={() => {
+              setRembourserModalOpen(true)
+              handleMenuClose()
             }}
-            slots={{
-              noRowsOverlay: CustomNoRowsOverlay
+          >
+            <Icon icon='tabler:cash' style={{ marginRight: 8, color: '#28c76f' }} /> Rembourser
+          </MenuItem>,
+          <MenuItem
+            key='refuser'
+            onClick={() => {
+              setConfirmRefuserOpen(true)
+              handleMenuClose()
             }}
-            sx={{
-              '& .MuiDataGrid-columnHeaders': {
-                backgroundColor: 'customColors.tableHeaderBg'
-              },
-              border: 0
-            }}
-          />
-        </Box>
-      </Card>
-    </>
+          >
+            <Icon icon='tabler:circle-x' style={{ marginRight: 8, color: '#ea5455' }} /> Refuser le remboursement
+          </MenuItem>
+        ]}
+      </Menu>
+
+      <RembourserModal
+        open={isRembourserModalOpen}
+        onClose={() => setRembourserModalOpen(false)}
+        sortie={selectedSortie}
+        onSuccess={handleSuccess}
+      />
+
+      <DetailsModal open={isDetailsModalOpen} onClose={() => setDetailsModalOpen(false)} sortie={selectedSortie} />
+
+      <ConfirmDialog
+        open={isConfirmRefuserOpen}
+        handleClose={() => setConfirmRefuserOpen(false)}
+        handleConfirm={handleConfirmRefuser}
+        title='Refus définitif du remboursement'
+        content={
+          <Typography variant='body1'>
+            Êtes-vous sûr de vouloir <strong>refuser définitivement</strong> le remboursement pour la perte de{' '}
+            <strong>
+              {selectedSortie?.qte_totale} {selectedSortie?.produit?.designation_prd}
+            </strong>{' '}
+            ?<br />
+            <br />
+            Cette action est <strong>strictement irréversible</strong>. Le dossier sera clôturé et le montant de{' '}
+            <strong>{selectedSortie?.mnt_attendu ? `${selectedSortie.mnt_attendu} DA` : '0 DA'}</strong> sera acté comme
+            une perte financière définitive pour l'entreprise.
+          </Typography>
+        }
+        confirmText='Oui, acter la perte'
+        cancelText='Annuler'
+        actionType='warning'
+      />
+    </Grid>
   )
 }
 
-export default ListeSortiesExceptionnelles
+export default SortiesExceptionnellesView

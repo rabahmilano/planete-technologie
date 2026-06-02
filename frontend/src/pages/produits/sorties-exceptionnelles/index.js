@@ -1,31 +1,25 @@
-import Card from '@mui/material/Card'
-import Grid from '@mui/material/Grid'
-import Typography from '@mui/material/Typography'
-import Divider from '@mui/material/Divider'
-import CardHeader from '@mui/material/CardHeader'
-
+import { Grid, Typography } from '@mui/material'
 import PageHeader from 'src/@core/components/page-header'
 import { SortieExceptionnelleProvider } from 'src/context/SortieExceptionnelleContext'
-import ListeSortiesExceptionnelles from 'src/views/pages/produits/sortiesExceptionnelles'
+import { ProduitProvider } from 'src/context/ProduitContext'
+import SortiesExceptionnellesView from 'src/views/pages/produits/sortiesExceptionnelles'
 
-const SortiesExceptionnelles = () => {
+const SortiesExceptionnellesPage = () => {
   return (
-    <SortieExceptionnelleProvider>
-      <Grid container spacing={5}>
-        <Grid item xs={12}>
-          <PageHeader title={<Typography variant='h4'>Sorties Exceptionnelles</Typography>} />
-        </Grid>
+    <ProduitProvider>
+      <SortieExceptionnelleProvider>
+        <Grid container spacing={6}>
+          <Grid item xs={12}>
+            <PageHeader title={<Typography variant='h4'>Sorties Exceptionnelles</Typography>} />
+          </Grid>
 
-        <Grid item xs={12}>
-          <Card>
-            <CardHeader title='Liste et suivi des sorties exceptionnelles' />
-            <Divider sx={{ m: '0 !important' }} />
-            <ListeSortiesExceptionnelles />
-          </Card>
+          <Grid item xs={12}>
+            <SortiesExceptionnellesView />
+          </Grid>
         </Grid>
-      </Grid>
-    </SortieExceptionnelleProvider>
+      </SortieExceptionnelleProvider>
+    </ProduitProvider>
   )
 }
 
-export default SortiesExceptionnelles
+export default SortiesExceptionnellesPage
