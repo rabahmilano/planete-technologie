@@ -273,6 +273,193 @@ export const refuserRemboursement = async (req, res) => {
   }
 };
 
+export const annulerDecision = async (req, res) => {
+  try {
+    const id_sortie = parseInt(req.params.id, 10);
+
+    const resultat = await prisma.$transaction(async (tx) => {
+      const sortie = await tx.sortie_exceptionnelle.findUnique({
+        where: { id_sortie: id_sortie },
+        include: { operation_credit: true },
+      });
+
+      if (!sortie) throw new Error("Sortie introuvable");
+      if (
+        sortie.statut_remb === "EN_ATTENTE" ||
+        sortie.statut_remb === "NON_APPLICABLE"
+      ) {
+        throw new Error("Cette sortie n'a aucune décision finale à annuler");
+      }
+
+      const sortieMaj = await tx.sortie_exceptionnelle.update({
+        where: { id_sortie: id_sortie },
+        data: {
+          statut_remb: "EN_ATTENTE",
+          date_refus: null,
+          op_crd_id: null,
+        },
+      });
+
+      if (sortie.statut_remb === "REMBOURSE" && sortie.op_crd_id) {
+        const operation = sortie.operation_credit;
+
+        await tx.compte.update({
+          where: { id_cpt: operation.cpt_id },
+          data: {
+            solde: { decrement: operation.montant_op },
+          },
+        });
+
+        await tx.crediter.delete({
+          where: { id_op_crd: sortie.op_crd_id },
+        });
+      }
+
+      return sortieMaj;
+    });
+
+    res.status(200).json(resultat);
+  } catch (error) {
+    if (error.message.includes("aucune décision")) {
+      return res.status(409).json({ message: error.message });
+    }
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const supprimerSortie = async (req, res) => {
+  try {
+    const id_sortie = parseInt(req.params.id, 10);
+
+    await prisma.$transaction(async (tx) => {
+      const sortie = await tx.sortie_exceptionnelle.findUnique({
+        where: { id_sortie: id_sortie },
+        include: { lignes_colis: true },
+      });
+
+      if (!sortie) throw new Error("Sortie introuvable");
+      if (
+        sortie.statut_remb === "REMBOURSE" ||
+        sortie.statut_remb === "REFUSE"
+      ) {
+        throw new Error(
+          "Impossible de supprimer un dossier déjà clôturé (Annulez d'abord la décision)",
+        );
+      }
+
+      for (const ligne of sortie.lignes_colis) {
+        await tx.colis.update({
+          where: { id_colis: ligne.colis_id },
+          data: {
+            qte_stock: { increment: ligne.qte },
+          },
+        });
+      }
+
+      await tx.produit.update({
+        where: { id_prd: sortie.prd_id },
+        data: {
+          qte_dispo: { increment: sortie.qte_totale },
+        },
+      });
+
+      await tx.ligne_sortie_colis.deleteMany({
+        where: { sortie_id: id_sortie },
+      });
+
+      await tx.sortie_exceptionnelle.delete({
+        where: { id_sortie: id_sortie },
+      });
+    });
+
+    res.status(200).json({ message: "Déclaration supprimée avec succès" });
+  } catch (error) {
+    if (error.message.includes("Impossible de supprimer")) {
+      return res.status(409).json({ message: error.message });
+    }
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const modifierSortie = [
+  body("motif")
+    .isString()
+    .notEmpty()
+    .isIn([
+      "UTILISATION_PERSONNELLE",
+      "PERTE_LIVRAISON",
+      "CASSE_DEFECTUEUX",
+      "VENTE_A_CREDIT",
+      "SAISIE_DOUANE",
+    ])
+    .withMessage("Le motif est invalide ou manquant"),
+  body("mnt_attendu")
+    .optional({ checkFalsy: true })
+    .isFloat({ gt: 0 })
+    .withMessage("Le montant attendu doit être valide"),
+  body("observation").optional({ checkFalsy: true }).isString(),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const id_sortie = parseInt(req.params.id, 10);
+      const { motif, mnt_attendu, observation } = req.body;
+
+      const resultat = await prisma.$transaction(async (tx) => {
+        const sortie = await tx.sortie_exceptionnelle.findUnique({
+          where: { id_sortie: id_sortie },
+        });
+
+        if (!sortie) throw new Error("Sortie introuvable");
+        if (
+          sortie.statut_remb === "REMBOURSE" ||
+          sortie.statut_remb === "REFUSE"
+        ) {
+          throw new Error("Impossible de modifier un dossier déjà clôturé");
+        }
+
+        let statutFinal = "NON_APPLICABLE";
+        let montantFinal = mnt_attendu ? parseFloat(mnt_attendu) : null;
+
+        if (motif === "UTILISATION_PERSONNELLE" || motif === "SAISIE_DOUANE") {
+          montantFinal = null;
+        } else if (montantFinal > 0) {
+          statutFinal = "EN_ATTENTE";
+        }
+
+        const sortieMaj = await tx.sortie_exceptionnelle.update({
+          where: { id_sortie: id_sortie },
+          data: {
+            motif: motif,
+            statut_remb: statutFinal,
+            mnt_attendu: montantFinal,
+            observation: observation || null,
+          },
+        });
+
+        return sortieMaj;
+      });
+
+      res.status(200).json(resultat);
+    } catch (error) {
+      if (error.message.includes("Impossible de modifier")) {
+        return res.status(409).json({ message: error.message });
+      }
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
 export const getSorties = async (req, res) => {
   try {
     const { page, limit, motif, statut, startDate, endDate } = req.query;
