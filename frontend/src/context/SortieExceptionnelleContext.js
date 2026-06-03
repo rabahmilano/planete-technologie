@@ -67,6 +67,45 @@ export const SortieExceptionnelleProvider = ({ children }) => {
     }
   }
 
+  const annulerDecision = async id => {
+    try {
+      await axiosInstance.patch(`${API_URL}/annulerDecision/${id}`)
+      toast.success('La décision a été annulée avec succès')
+      fetchSorties()
+      return true
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || "Erreur lors de l'annulation"
+      toast.error(errorMsg)
+      return false
+    }
+  }
+
+  const modifierSortie = async (id, data) => {
+    try {
+      await axiosInstance.patch(`${API_URL}/modifierSortie/${id}`, data)
+      toast.success('La déclaration a été modifiée avec succès')
+      fetchSorties()
+      return true
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Erreur lors de la modification'
+      toast.error(errorMsg)
+      return false
+    }
+  }
+
+  const supprimerSortie = async id => {
+    try {
+      await axiosInstance.delete(`${API_URL}/supprimerSortie/${id}`)
+      toast.success('La déclaration a été supprimée et les stocks restitués')
+      fetchSorties()
+      return true
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || 'Erreur lors de la suppression'
+      toast.error(errorMsg)
+      return false
+    }
+  }
+
   return (
     <SortieExceptionnelleContext.Provider
       value={{
@@ -75,7 +114,10 @@ export const SortieExceptionnelleProvider = ({ children }) => {
         fetchSorties,
         declarerSortie,
         rembourserSortie,
-        refuserRemboursement
+        refuserRemboursement,
+        annulerDecision,
+        modifierSortie,
+        supprimerSortie
       }}
     >
       {children}
