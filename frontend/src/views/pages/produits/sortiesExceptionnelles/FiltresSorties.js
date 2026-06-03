@@ -1,8 +1,7 @@
-import { Card, CardContent, Grid, MenuItem, Button } from '@mui/material'
+import { Card, CardContent, Grid, MenuItem, Button, FormControl, InputLabel, Select } from '@mui/material'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs from 'dayjs'
-import CustomTextField from 'src/@core/components/mui/text-field'
 import Icon from 'src/@core/components/icon'
 
 const motifLabels = {
@@ -34,37 +33,41 @@ const FiltresSorties = ({
       <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <Grid container spacing={4}>
           <Grid item xs={6}>
-            <CustomTextField
-              select
-              fullWidth
-              label='Motif'
-              value={motifFilter}
-              onChange={e => setMotifFilter(e.target.value)}
-            >
-              <MenuItem value=''>Tous</MenuItem>
-              {Object.entries(motifLabels).map(([key, label]) => (
-                <MenuItem key={key} value={key}>
-                  {label}
-                </MenuItem>
-              ))}
-            </CustomTextField>
+            <FormControl fullWidth>
+              <InputLabel id='motif-label'>Motif</InputLabel>
+              <Select
+                labelId='motif-label'
+                label='Motif'
+                value={motifFilter}
+                onChange={e => setMotifFilter(e.target.value)}
+              >
+                <MenuItem value=''>Tous</MenuItem>
+                {Object.entries(motifLabels).map(([key, label]) => (
+                  <MenuItem key={key} value={key}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
 
           <Grid item xs={6}>
-            <CustomTextField
-              select
-              fullWidth
-              label='Statut'
-              value={statutFilter}
-              onChange={e => setStatutFilter(e.target.value)}
-            >
-              <MenuItem value=''>Tous</MenuItem>
-              {Object.entries(statutLabels).map(([key, label]) => (
-                <MenuItem key={key} value={key}>
-                  {label}
-                </MenuItem>
-              ))}
-            </CustomTextField>
+            <FormControl fullWidth>
+              <InputLabel id='statut-label'>Statut</InputLabel>
+              <Select
+                labelId='statut-label'
+                label='Statut'
+                value={statutFilter}
+                onChange={e => setStatutFilter(e.target.value)}
+              >
+                <MenuItem value=''>Tous</MenuItem>
+                {Object.entries(statutLabels).map(([key, label]) => (
+                  <MenuItem key={key} value={key}>
+                    {label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
 
           <Grid item xs={6}>

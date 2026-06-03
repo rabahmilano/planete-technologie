@@ -49,7 +49,16 @@ const CustomNoRowsOverlay = () => (
   </Box>
 )
 
-const TableauSorties = ({ sorties, totalItems, page, rowsPerPage, onPageChange, onRowsPerPageChange, onMenuOpen }) => {
+const TableauSorties = ({
+  sorties,
+  totalItems,
+  page,
+  rowsPerPage,
+  onPageChange,
+  onRowsPerPageChange,
+  onMenuOpen,
+  onDetailsClick
+}) => {
   const columns = [
     {
       field: 'date_sortie',
@@ -98,7 +107,7 @@ const TableauSorties = ({ sorties, totalItems, page, rowsPerPage, onPageChange, 
       minWidth: 150,
       renderCell: params => (
         <Typography variant='body2' sx={{ fontWeight: 600 }}>
-          {params.row.mnt_attendu ? `${formatMontant(params.row.mnt_attendu)} DZD` : '-'}
+          {params.row.mnt_attendu ? `${formatMontant(params.row.mnt_attendu)} DA` : '-'}
         </Typography>
       )
     },
@@ -120,14 +129,19 @@ const TableauSorties = ({ sorties, totalItems, page, rowsPerPage, onPageChange, 
     {
       field: 'actions',
       headerName: 'Actions',
-      flex: 0.1,
-      minWidth: 100,
+      flex: 0.15,
+      minWidth: 120,
       align: 'center',
       sortable: false,
       renderCell: params => (
-        <IconButton onClick={e => onMenuOpen(e, params.row)}>
-          <Icon icon='tabler:dots-vertical' />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <IconButton size='small' onClick={() => onDetailsClick(params.row)} sx={{ mr: 1 }}>
+            <Icon icon='tabler:eye' />
+          </IconButton>
+          <IconButton size='small' onClick={e => onMenuOpen(e, params.row)}>
+            <Icon icon='tabler:dots-vertical' />
+          </IconButton>
+        </Box>
       )
     }
   ]
@@ -151,22 +165,10 @@ const TableauSorties = ({ sorties, totalItems, page, rowsPerPage, onPageChange, 
           slots={{ noRowsOverlay: CustomNoRowsOverlay }}
           sx={{
             border: 0,
-            '& .MuiDataGrid-columnHeaders': {
-              backgroundColor: '#0d1b2a',
-              color: 'white',
-              borderRadius: 0
-            },
-            '& .MuiDataGrid-columnHeaderTitle': {
-              fontWeight: 'bold',
-              color: 'white'
-            },
-            '& .MuiIconButton-root': {
-              color: 'white'
-            },
-            '& .MuiDataGrid-cell .MuiIconButton-root': {
-              color: 'text.secondary'
-            },
-            // Force la bordure de la dernière ligne
+            '& .MuiDataGrid-columnHeaders': { backgroundColor: '#0d1b2a', color: 'white', borderRadius: 0 },
+            '& .MuiDataGrid-columnHeaderTitle': { fontWeight: 'bold', color: 'white' },
+            '& .MuiIconButton-root': { color: 'white' },
+            '& .MuiDataGrid-cell .MuiIconButton-root': { color: 'text.secondary' },
             '& .MuiDataGrid-row:last-child .MuiDataGrid-cell': {
               borderBottom: '1px solid rgba(58, 53, 65, 0.12) !important'
             }

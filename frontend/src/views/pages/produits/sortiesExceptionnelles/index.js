@@ -11,6 +11,7 @@ import FiltresSorties from './FiltresSorties'
 import TableauSorties from './TableauSorties'
 import RembourserModal from './RembourserModal'
 import DetailsModal from './DetailsModal'
+import ModifierModal from './ModifierModal'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import SortiesSkeleton from './SortiesSkeleton'
 import ChartsSlider from './ChartsSlider'
@@ -18,7 +19,7 @@ import ChartsSlider from './ChartsSlider'
 dayjs.locale('fr')
 
 const SortiesExceptionnellesView = () => {
-  const { fetchSorties, refuserRemboursement } = useSortieExceptionnelle()
+  const { fetchSorties, refuserRemboursement, annulerDecision, supprimerSortie } = useSortieExceptionnelle()
 
   const [pageLoading, setPageLoading] = useState(true)
   const [sorties, setSorties] = useState([])
@@ -37,7 +38,11 @@ const SortiesExceptionnellesView = () => {
 
   const [isRembourserModalOpen, setRembourserModalOpen] = useState(false)
   const [isDetailsModalOpen, setDetailsModalOpen] = useState(false)
+  const [isModifierModalOpen, setModifierModalOpen] = useState(false)
+
   const [isConfirmRefuserOpen, setConfirmRefuserOpen] = useState(false)
+  const [isConfirmAnnulerOpen, setConfirmAnnulerOpen] = useState(false)
+  const [isConfirmSupprimerOpen, setConfirmSupprimerOpen] = useState(false)
 
   const filters = useMemo(
     () => ({
@@ -106,17 +111,32 @@ const SortiesExceptionnellesView = () => {
   const handleConfirmRefuser = async () => {
     if (selectedSortie) {
       const success = await refuserRemboursement(selectedSortie.id_sortie)
-      if (success) {
-        loadTableData()
-      }
+      if (success) loadTableData()
     }
     setConfirmRefuserOpen(false)
+  }
+
+  const handleConfirmAnnuler = async () => {
+    if (selectedSortie) {
+      const success = await annulerDecision(selectedSortie.id_sortie)
+      if (success) loadTableData()
+    }
+    setConfirmAnnulerOpen(false)
+  }
+
+  const handleConfirmSupprimer = async () => {
+    if (selectedSortie) {
+      const success = await supprimerSortie(selectedSortie.id_sortie)
+      if (success) loadTableData()
+    }
+    setConfirmSupprimerOpen(false)
   }
 
   const handleSuccess = () => {
     loadTableData()
     setRembourserModalOpen(false)
     setDetailsModalOpen(false)
+    setModifierModalOpen(false)
     setSelectedSortie(null)
   }
 
@@ -157,20 +177,38 @@ const SortiesExceptionnellesView = () => {
             setRowsPerPage(parseInt(e.target.value, 10))
             setPage(0)
           }}
+          onDetailsClick={row => {
+            setSelectedSortie(row)
+            setDetailsModalOpen(true)
+          }}
           onMenuOpen={handleMenuOpen}
         />
       </Grid>
 
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-        <MenuItem
-          onClick={() => {
-            setDetailsModalOpen(true)
-            handleMenuClose()
-          }}
-        >
-          <Icon icon='tabler:eye' style={{ marginRight: 8 }} /> Voir les détails
-        </MenuItem>
+        {/* Actions pour les dossiers NON traités (Modifiables/Supprimables) */}
+        {(selectedSortie?.statut_remb === 'EN_ATTENTE' || selectedSortie?.statut_remb === 'NON_APPLICABLE') && [
+          <MenuItem
+            key='modifier'
+            onClick={() => {
+              setModifierModalOpen(true)
+              handleMenuClose()
+            }}
+          >
+            <Icon icon='tabler:edit' style={{ marginRight: 8, color: '#ff9f43' }} /> Modifier
+          </MenuItem>,
+          <MenuItem
+            key='supprimer'
+            onClick={() => {
+              setConfirmSupprimerOpen(true)
+              handleMenuClose()
+            }}
+          >
+            <Icon icon='tabler:trash' style={{ marginRight: 8, color: '#ea5455' }} /> Supprimer
+          </MenuItem>
+        ]}
 
+        {/* Actions de décision pour les dossiers EN_ATTENTE */}
         {selectedSortie?.statut_remb === 'EN_ATTENTE' && [
           <MenuItem
             key='rembourser'
@@ -191,11 +229,31 @@ const SortiesExceptionnellesView = () => {
             <Icon icon='tabler:circle-x' style={{ marginRight: 8, color: '#ea5455' }} /> Refuser le remboursement
           </MenuItem>
         ]}
+
+        {/* Action d'annulation pour les dossiers CLÔTURÉS */}
+        {(selectedSortie?.statut_remb === 'REMBOURSE' || selectedSortie?.statut_remb === 'REFUSE') && (
+          <MenuItem
+            key='annuler'
+            onClick={() => {
+              setConfirmAnnulerOpen(true)
+              handleMenuClose()
+            }}
+          >
+            <Icon icon='tabler:arrow-back-up' style={{ marginRight: 8, color: '#7367f0' }} /> Annuler la décision
+          </MenuItem>
+        )}
       </Menu>
 
       <RembourserModal
         open={isRembourserModalOpen}
         onClose={() => setRembourserModalOpen(false)}
+        sortie={selectedSortie}
+        onSuccess={handleSuccess}
+      />
+
+      <ModifierModal
+        open={isModifierModalOpen}
+        onClose={() => setModifierModalOpen(false)}
         sortie={selectedSortie}
         onSuccess={handleSuccess}
       />
@@ -223,6 +281,42 @@ const SortiesExceptionnellesView = () => {
         confirmText='Oui, acter la perte'
         cancelText='Annuler'
         actionType='warning'
+      />
+
+      <ConfirmDialog
+        open={isConfirmAnnulerOpen}
+        handleClose={() => setConfirmAnnulerOpen(false)}
+        handleConfirm={handleConfirmAnnuler}
+        title='Annuler la décision'
+        content={
+          <Typography variant='body1'>
+            Êtes-vous sûr de vouloir <strong>annuler cette décision</strong> ?<br />
+            <br />
+            Si cette déclaration avait été remboursée, l'opération financière sera supprimée de la caisse et le montant
+            sera déduit. Le dossier repassera "En attente".
+          </Typography>
+        }
+        confirmText='Oui, annuler la décision'
+        cancelText='Retour'
+        actionType='warning'
+      />
+
+      <ConfirmDialog
+        open={isConfirmSupprimerOpen}
+        handleClose={() => setConfirmSupprimerOpen(false)}
+        handleConfirm={handleConfirmSupprimer}
+        title='Supprimer la déclaration'
+        content={
+          <Typography variant='body1'>
+            Êtes-vous sûr de vouloir <strong>supprimer définitivement</strong> cette déclaration ?<br />
+            <br />
+            Cette action annulera la sortie. Les <strong>{selectedSortie?.qte_totale} unités</strong> seront
+            physiquement restituées dans le stock global et dans les lots concernés.
+          </Typography>
+        }
+        confirmText='Oui, supprimer et restituer le stock'
+        cancelText='Annuler'
+        actionType='error'
       />
     </Grid>
   )
