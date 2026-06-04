@@ -8,6 +8,7 @@ import TransactionsTable from './TransactionsTable'
 import DepensesTable from './DepensesTable'
 import AddTransactionModal from './AddTransactionModal'
 import AddDepenseModal from './AddDepenseModal'
+import DepensesVoyageModal from './DepensesVoyageModal'
 
 const VoyageDetails = () => {
   const router = useRouter()
@@ -19,6 +20,7 @@ const VoyageDetails = () => {
   const [initialLoading, setInitialLoading] = useState(true)
   const [openTransactionModal, setOpenTransactionModal] = useState(false)
   const [openDepenseModal, setOpenDepenseModal] = useState(false)
+  const [openDepensesDetailsModal, setOpenDepensesDetailsModal] = useState(false)
 
   const fetchDetails = useCallback(
     async (isSilentRefresh = false) => {
@@ -99,6 +101,7 @@ const VoyageDetails = () => {
           depenses={voyage.depenses}
           statut={voyage.statut_voy}
           onAddFrais={() => setOpenDepenseModal(true)}
+          onViewDetails={() => setOpenDepensesDetailsModal(true)}
         />
       </Grid>
 
@@ -114,6 +117,12 @@ const VoyageDetails = () => {
         handleClose={() => setOpenDepenseModal(false)}
         voyageId={id}
         onSuccess={handleSilentRefresh}
+      />
+
+      <DepensesVoyageModal
+        open={openDepensesDetailsModal}
+        onClose={() => setOpenDepensesDetailsModal(false)}
+        depenses={voyage.depenses}
       />
     </Grid>
   )

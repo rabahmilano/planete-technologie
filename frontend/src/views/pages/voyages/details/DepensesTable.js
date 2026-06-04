@@ -10,14 +10,14 @@ import {
   TableHead,
   TableRow,
   Typography,
-  Button,
-  Tooltip
+  Tooltip,
+  IconButton
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import dayjs from 'dayjs'
 import { formatMontant } from 'src/@core/utils/format'
 
-const DepensesTable = ({ depenses, statut, onAddFrais }) => {
+const DepensesTable = ({ depenses, statut, onAddFrais, onViewDetails }) => {
   return (
     <Card sx={{ boxShadow: 3, borderRadius: 2, height: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 5 }}>
@@ -29,17 +29,22 @@ const DepensesTable = ({ depenses, statut, onAddFrais }) => {
             </Box>
           }
         />
-        {statut !== 'CLOTURE' && (
-          <Button
-            variant='outlined'
-            color='error'
-            size='small'
-            startIcon={<Icon icon='tabler:plus' />}
-            onClick={onAddFrais}
-          >
-            Ajouter Frais
-          </Button>
-        )}
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Tooltip title='Voir tous les frais annexes'>
+            <IconButton color='#0d1b2a' onClick={onViewDetails}>
+              <Icon icon='tabler:eye' />
+            </IconButton>
+          </Tooltip>
+
+          {statut !== 'CLOTURE' && (
+            <Tooltip title='Ajouter Frais'>
+              <IconButton color='error' onClick={onAddFrais}>
+                <Icon icon='tabler:square-rounded-plus' />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
       </Box>
       <Divider sx={{ m: '0 !important' }} />
       <TableContainer>
