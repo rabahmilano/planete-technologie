@@ -381,7 +381,10 @@ export const changerStatutVoyage = async (req, res) => {
       }
 
       if (statut === "EN_COURS") {
-        const dataUpdate = { statut_voy: "EN_COURS" };
+        const dataUpdate = {
+          statut_voy: "EN_COURS",
+          coeff_approche: null,
+        };
         if (tauxChange) dataUpdate.taux_change = parseFloat(tauxChange);
 
         await tx.voyage.update({
