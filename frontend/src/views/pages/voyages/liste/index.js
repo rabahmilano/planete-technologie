@@ -7,6 +7,7 @@ import { VoyageContext } from 'src/context/VoyageContext'
 import VoyagesTable from './VoyagesTable'
 import ModalDemarrerVoyage from './ModalDemarrerVoyage'
 import ModalReouvrirVoyage from './ModalReouvrirVoyage'
+import ModalCloturerVoyage from './ModalCloturerVoyage'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 const VoyagesList = () => {
@@ -16,6 +17,7 @@ const VoyagesList = () => {
   const [openDemarrerModal, setOpenDemarrerModal] = useState(false)
   const [openReouvrirModal, setOpenReouvrirModal] = useState(false)
   const [openDeleteModal, setOpenDeleteModal] = useState(false)
+  const [openClotureModal, setOpenClotureModal] = useState(false)
 
   useEffect(() => {
     fetchVoyages()
@@ -31,8 +33,7 @@ const VoyagesList = () => {
     } else if (actionType === 'SUPPRIMER') {
       setOpenDeleteModal(true)
     } else if (actionType === 'CLOTURER') {
-      await changerStatutVoyage(voyage.id_voyage, 'CLOTURE')
-      setActiveVoyage(null)
+      setOpenClotureModal(true)
     }
   }
 
@@ -54,6 +55,12 @@ const VoyagesList = () => {
     setActiveVoyage(null)
   }
 
+  const validerCloture = async () => {
+    await changerStatutVoyage(activeVoyage.id_voyage, 'CLOTURE')
+    setOpenClotureModal(false)
+    setActiveVoyage(null)
+  }
+
   return (
     <>
       <Card sx={{ boxShadow: 3, borderRadius: 2 }}>
@@ -61,7 +68,7 @@ const VoyagesList = () => {
           <CardHeader
             title={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Icon icon='tabler:plane' fontSize='1.75rem' color='#primary.main' />
+                <Icon icon='tabler:plane' fontSize='1.75rem' color='primary' />
                 <Typography variant='h5'>Dossiers d'importation (Voyages)</Typography>
               </Box>
             }
@@ -96,6 +103,13 @@ const VoyagesList = () => {
           onValidate={validerReouverture}
         />
       )}
+
+      <ModalCloturerVoyage
+        open={openClotureModal}
+        onClose={() => setOpenClotureModal(false)}
+        onValidate={validerCloture}
+        voyageId={activeVoyage?.id_voyage}
+      />
 
       <ConfirmDialog
         open={openDeleteModal}
