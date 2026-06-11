@@ -289,7 +289,6 @@ export const updateColisEnRoute = [
   body("date_stock").notEmpty().withMessage("La date est obligatoire"),
   body("droits_timbre")
     .isBoolean()
-    .notEmpty()
     .withMessage("Une erreur avec les droits de timbres"),
 
   async (req, res) => {
@@ -310,13 +309,20 @@ export const updateColisEnRoute = [
       await prisma.$transaction(async (tx) => {
         const colis = await tx.colis.findUnique({
           where: { id_colis: idColis },
-          select: { qte_achat: true, pu_dzd_ttc: true, cat_id: true },
+          select: {
+            qte_achat: true,
+            pu_dzd_ttc: true,
+            cat_id: true,
+            date_stock: true,
+          },
         });
 
         if (!colis) throw new Error("ACHAT_NON_TROUVE");
 
+        if (colis.date_stock !== null) throw new Error("COLIS_DEJA_STOCKE");
+
         const updatedData = {
-          date_stock,
+          date_stock: new Date(date_stock),
           qte_stock: colis.qte_achat,
         };
 
@@ -347,10 +353,15 @@ export const updateColisEnRoute = [
         }
       });
 
-      res.status(200).json({ message: "Opération effectuée avec succés" });
+      res.status(200).json({ message: "Opération effectuée avec succès" });
     } catch (error) {
       if (error.message === "ACHAT_NON_TROUVE") {
         return res.status(404).json({ message: "Achat non trouvé" });
+      }
+      if (error.message === "COLIS_DEJA_STOCKE") {
+        return res
+          .status(400)
+          .json({ message: "Ce colis a déjà été réceptionné en stock." });
       }
 
       res

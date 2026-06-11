@@ -31,7 +31,6 @@ model colis {
   date_stock    DateTime? @db.Date()
   qte_achat     Int
   qte_stock     Int?
-  droits_timbre Boolean?
   mnt_tot_dzd   Decimal   @db.Decimal(10, 4)
   pu_dev        Decimal   @db.Decimal(10, 4)
   pu_dzd        Decimal   @db.Decimal(10, 4)

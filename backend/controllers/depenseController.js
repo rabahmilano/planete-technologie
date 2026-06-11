@@ -172,11 +172,9 @@ export const addNewDepense = [
           .status(404)
           .json({ error: { message: "Compte introuvable." } });
       if (error.message === "INSUFFICIENT_FUNDS")
-        return res
-          .status(403)
-          .json({
-            error: { message: "Solde insuffisant (Fonds bloqués atteints)." },
-          });
+        return res.status(403).json({
+          error: { message: "Solde insuffisant (Fonds bloqués atteints)." },
+        });
       res.status(500).json({ error: { message: error.message } });
     }
   },
@@ -314,10 +312,7 @@ export const getGlobalStats = async (req, res) => {
       }),
       prisma.colis.count({
         where: {
-          OR: [
-            { droits_timbre: true },
-            { colis_classique: { droits_timbre: true } },
-          ],
+          colis_classique: { droits_timbre: true },
         },
       }),
       prisma.depense.groupBy({
@@ -411,10 +406,7 @@ export const getDepensesFiltrees = async (req, res) => {
     if ((noNatureFilter || natureIsColisTimbre) && excludeTimbres !== "true") {
       droitsTimbreFromColisPromise = prisma.colis.findMany({
         where: {
-          OR: [
-            { droits_timbre: true },
-            { colis_classique: { droits_timbre: true } },
-          ],
+          colis_classique: { droits_timbre: true },
           date_stock: { not: null, ...dateWhereClause },
         },
       });
