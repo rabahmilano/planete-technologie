@@ -10,32 +10,64 @@ const ListeCommandesView = () => {
 
   const [periodeFiltre, setPeriodeFiltre] = useState('all')
   const [produitFiltre, setProduitFiltre] = useState('all')
+  const [dateDebut, setDateDebut] = useState(null)
+  const [dateFin, setDateFin] = useState(null)
+
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
 
   const isInitialMount = useRef(true)
+
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false
     } else {
       if (page !== 0) setPage(0)
     }
-  }, [periodeFiltre, produitFiltre])
+  }, [periodeFiltre, produitFiltre, dateDebut, dateFin])
 
   useEffect(() => {
-    fetchCommandes(page, rowsPerPage, { periode: periodeFiltre, produit: produitFiltre })
-    fetchGlobalStats({ periode: periodeFiltre, produit: produitFiltre })
-  }, [fetchCommandes, fetchGlobalStats, page, rowsPerPage, periodeFiltre, produitFiltre])
+    fetchCommandes(page, rowsPerPage, {
+      periode: periodeFiltre,
+      produit: produitFiltre,
+      dateDebut,
+      dateFin
+    })
+    fetchGlobalStats({
+      periode: periodeFiltre,
+      produit: produitFiltre,
+      dateDebut,
+      dateFin
+    })
+  }, [fetchCommandes, fetchGlobalStats, page, rowsPerPage, periodeFiltre, produitFiltre, dateDebut, dateFin])
 
   const handleResetFilters = () => {
     setPeriodeFiltre('all')
     setProduitFiltre('all')
+    setDateDebut(null)
+    setDateFin(null)
+    setPage(0)
+  }
+
+  const handleApplyCustomDates = (debut, fin) => {
+    setDateDebut(debut)
+    setDateFin(fin)
     setPage(0)
   }
 
   const handleRefreshData = () => {
-    fetchCommandes(page, rowsPerPage, { periode: periodeFiltre, produit: produitFiltre })
-    fetchGlobalStats({ periode: periodeFiltre, produit: produitFiltre })
+    fetchCommandes(page, rowsPerPage, {
+      periode: periodeFiltre,
+      produit: produitFiltre,
+      dateDebut,
+      dateFin
+    })
+    fetchGlobalStats({
+      periode: periodeFiltre,
+      produit: produitFiltre,
+      dateDebut,
+      dateFin
+    })
   }
 
   return (
@@ -50,6 +82,9 @@ const ListeCommandesView = () => {
           setPeriodeFiltre={setPeriodeFiltre}
           produitFiltre={produitFiltre}
           setProduitFiltre={setProduitFiltre}
+          dateDebut={dateDebut}
+          dateFin={dateFin}
+          onApplyCustomDates={handleApplyCustomDates}
           onReset={handleResetFilters}
         />
       </Grid>

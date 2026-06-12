@@ -175,11 +175,16 @@ export const addCommande = [
 ];
 
 const buildWhereClause = (query) => {
-  const { periode, produit } = query;
+  const { periode, produit, dateDebut, dateFin } = query;
   let dateWhereClause = {};
 
   if (periode && periode !== "all") {
-    if (["1m", "3m", "6m"].includes(periode)) {
+    if (periode === "custom" && dateDebut && dateFin) {
+      dateWhereClause = {
+        gte: dayjs(dateDebut).startOf("day").toDate(),
+        lte: dayjs(dateFin).endOf("day").toDate(),
+      };
+    } else if (["1m", "3m", "6m"].includes(periode)) {
       const months = parseInt(periode.replace("m", ""));
       dateWhereClause = { gte: dayjs().subtract(months, "month").toDate() };
     } else if (!isNaN(parseInt(periode, 10))) {

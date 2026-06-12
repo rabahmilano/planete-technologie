@@ -22,7 +22,9 @@ export const CommandeProvider = ({ children }) => {
       const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}commandes/stats`, {
         params: {
           periode: filters.periode || 'all',
-          produit: filters.produit || 'all'
+          produit: filters.produit || 'all',
+          dateDebut: filters.periode === 'custom' ? filters.dateDebut : undefined,
+          dateFin: filters.periode === 'custom' ? filters.dateFin : undefined
         }
       })
       setGlobalStats(response.data)
@@ -39,7 +41,9 @@ export const CommandeProvider = ({ children }) => {
           page: page + 1,
           limit,
           periode: filters.periode || 'all',
-          produit: filters.produit || 'all'
+          produit: filters.produit || 'all',
+          dateDebut: filters.periode === 'custom' ? filters.dateDebut : undefined,
+          dateFin: filters.periode === 'custom' ? filters.dateFin : undefined
         }
       })
       setCommandes(response.data.data)
