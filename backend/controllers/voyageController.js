@@ -507,153 +507,156 @@ export const addTransactionVoyage = [
     } = req.body;
 
     try {
-      await prisma.$transaction(async (tx) => {
-        const compte = await tx.compte.findUnique({
-          where: { id_cpt: parseInt(cptPaiementId, 10) },
-        });
-
-        if (!compte) throw new Error("Compte introuvable.");
-
-        const voyage = await tx.voyage.findUnique({
-          where: { id_voyage: parseInt(idVoyage, 10) },
-        });
-
-        if (!voyage || voyage.statut_voy !== "EN_COURS") {
-          throw new Error("Le voyage n'est pas EN_COURS.");
-        }
-
-        if (
-          deviseFacture !== voyage.dev_dest &&
-          deviseFacture !== compte.dev_code
-        ) {
-          throw new Error("DEVISE_INVALIDE");
-        }
-
-        const dAchatObj = new Date(dateAchat);
-        const dDepObj = new Date(voyage.date_dep);
-        const dRetObj = new Date(voyage.date_ret);
-
-        if (dAchatObj < dDepObj || dAchatObj > dRetObj) {
-          throw new Error("DATE_ACHAT_HORS_VOYAGE");
-        }
-
-        const dateStockPrevue = new Date(voyage.date_ret);
-        dateStockPrevue.setDate(dateStockPrevue.getDate() + 1);
-
-        const tauxTrans = parseFloat(tauxDzd);
-        const tauxCompte = parseFloat(compte.taux_change_actuel) || 1;
-        const tauxVoyage = parseFloat(voyage.taux_change) || 1;
-
-        const montantADeduire = arrondir(
-          (parseFloat(montantDebite) * tauxTrans) / tauxCompte,
-        );
-        const soldeDisponible = arrondir(
-          parseFloat(compte.solde_actuel) -
-            parseFloat(compte.solde_bloque || 0),
-        );
-
-        if (soldeDisponible < montantADeduire) {
-          throw new Error("Solde insuffisant.");
-        }
-
-        const maxTrans = await tx.transaction_voyage.aggregate({
-          _max: { id_trans: true },
-        });
-        const idTransaction = (maxTrans._max.id_trans || 0) + 1;
-
-        const maxPrd = await tx.produit.aggregate({
-          _max: { id_prd: true },
-        });
-        let nextPrdId = (maxPrd._max.id_prd || 0) + 1;
-
-        const maxColis = await tx.colis.aggregate({
-          _max: { id_colis: true },
-        });
-        let nextColisId = (maxColis._max.id_colis || 0) + 1;
-
-        await tx.transaction_voyage.create({
-          data: {
-            id_trans: idTransaction,
-            voyage_id: parseInt(idVoyage, 10),
-            cpt_id: parseInt(cptPaiementId, 10),
-            fournisseur: fournisseur || null,
-            dev_trans: deviseFacture,
-            taux_trans: tauxTrans,
-            mnt_tot_fact: arrondir(parseFloat(montantFacture)),
-            mnt_comm_banque: arrondir(parseFloat(commBanque)),
-            mnt_comm_paie: arrondir(parseFloat(commPaiement)),
-          },
-        });
-
-        for (const article of articles) {
-          const qte = parseInt(article.qte, 10);
-          const pu_trans = parseFloat(article.puDevise);
-          const mnt_tot_article_trans = pu_trans * qte;
-
-          const mnt_tot_dzd = mnt_tot_article_trans * tauxTrans;
-          const pu_dzd = mnt_tot_dzd / qte;
-
-          const mnt_tot_dest = mnt_tot_dzd / tauxVoyage;
-          const pu_dev_dest = mnt_tot_dest / qte;
-
-          const mnt_tot_dev = mnt_tot_dzd / tauxCompte;
-          const pu_dev = mnt_tot_dev / qte;
-
-          let prd_id;
-          const produitExist = await tx.produit.findFirst({
-            where: { designation_prd: article.desPrd.trim() },
+      await prisma.$transaction(
+        async (tx) => {
+          const compte = await tx.compte.findUnique({
+            where: { id_cpt: parseInt(cptPaiementId, 10) },
           });
 
-          if (!produitExist) {
-            prd_id = nextPrdId;
-            await tx.produit.create({
-              data: {
-                id_prd: prd_id,
-                designation_prd: article.desPrd.trim(),
-                qte_dispo: qte,
-              },
-            });
-            nextPrdId++;
-          } else {
-            prd_id = produitExist.id_prd;
-            await tx.produit.update({
-              where: { id_prd: prd_id },
-              data: { qte_dispo: { increment: qte } },
-            });
+          if (!compte) throw new Error("Compte introuvable.");
+
+          const voyage = await tx.voyage.findUnique({
+            where: { id_voyage: parseInt(idVoyage, 10) },
+          });
+
+          if (!voyage || voyage.statut_voy !== "EN_COURS") {
+            throw new Error("Le voyage n'est pas EN_COURS.");
           }
 
-          await tx.colis.create({
+          if (
+            deviseFacture !== voyage.dev_dest &&
+            deviseFacture !== compte.dev_code
+          ) {
+            throw new Error("DEVISE_INVALIDE");
+          }
+
+          const dAchatObj = new Date(dateAchat);
+          const dDepObj = new Date(voyage.date_dep);
+          const dRetObj = new Date(voyage.date_ret);
+
+          if (dAchatObj < dDepObj || dAchatObj > dRetObj) {
+            throw new Error("DATE_ACHAT_HORS_VOYAGE");
+          }
+
+          const dateStockPrevue = new Date(voyage.date_ret);
+          dateStockPrevue.setDate(dateStockPrevue.getDate() + 1);
+
+          const tauxTrans = parseFloat(tauxDzd);
+          const tauxCompte = parseFloat(compte.taux_change_actuel) || 1;
+          const tauxVoyage = parseFloat(voyage.taux_change) || 1;
+
+          const montantADeduire = arrondir(
+            (parseFloat(montantDebite) * tauxTrans) / tauxCompte,
+          );
+          const soldeDisponible = arrondir(
+            parseFloat(compte.solde_actuel) -
+              parseFloat(compte.solde_bloque || 0),
+          );
+
+          if (soldeDisponible < montantADeduire) {
+            throw new Error("Solde insuffisant.");
+          }
+
+          const maxTrans = await tx.transaction_voyage.aggregate({
+            _max: { id_trans: true },
+          });
+          const idTransaction = (maxTrans._max.id_trans || 0) + 1;
+
+          const maxPrd = await tx.produit.aggregate({
+            _max: { id_prd: true },
+          });
+          let nextPrdId = (maxPrd._max.id_prd || 0) + 1;
+
+          const maxColis = await tx.colis.aggregate({
+            _max: { id_colis: true },
+          });
+          let nextColisId = (maxColis._max.id_colis || 0) + 1;
+
+          await tx.transaction_voyage.create({
             data: {
-              id_colis: nextColisId,
-              cat_id: parseInt(article.catId, 10),
-              prd_id: prd_id,
+              id_trans: idTransaction,
+              voyage_id: parseInt(idVoyage, 10),
               cpt_id: parseInt(cptPaiementId, 10),
-              mnt_tot_dev: arrondir(mnt_tot_dev),
-              date_achat: dAchatObj,
-              date_stock: dateStockPrevue,
-              qte_achat: qte,
-              qte_stock: qte,
-              mnt_tot_dzd: arrondir(mnt_tot_dzd),
-              pu_dev: arrondir(pu_dev),
-              pu_dzd: arrondir(pu_dzd),
-              pu_dzd_ttc: arrondir(pu_dzd),
-              colis_voyage: {
-                create: {
-                  trans_id: idTransaction,
-                  pu_dev_dest: arrondir(pu_dev_dest),
-                  mnt_tot_dest: arrondir(mnt_tot_dest),
-                },
-              },
+              fournisseur: fournisseur || null,
+              dev_trans: deviseFacture,
+              taux_trans: tauxTrans,
+              mnt_tot_fact: arrondir(parseFloat(montantFacture)),
+              mnt_comm_banque: arrondir(parseFloat(commBanque)),
+              mnt_comm_paie: arrondir(parseFloat(commPaiement)),
             },
           });
-          nextColisId++;
-        }
 
-        await tx.compte.update({
-          where: { id_cpt: parseInt(cptPaiementId, 10) },
-          data: { solde_actuel: { decrement: montantADeduire } },
-        });
-      });
+          for (const article of articles) {
+            const qte = parseInt(article.qte, 10);
+            const pu_trans = parseFloat(article.puDevise);
+            const mnt_tot_article_trans = pu_trans * qte;
+
+            const mnt_tot_dzd = mnt_tot_article_trans * tauxTrans;
+            const pu_dzd = mnt_tot_dzd / qte;
+
+            const mnt_tot_dest = mnt_tot_dzd / tauxVoyage;
+            const pu_dev_dest = mnt_tot_dest / qte;
+
+            const mnt_tot_dev = mnt_tot_dzd / tauxCompte;
+            const pu_dev = mnt_tot_dev / qte;
+
+            let prd_id;
+            const produitExist = await tx.produit.findFirst({
+              where: { designation_prd: article.desPrd.trim() },
+            });
+
+            if (!produitExist) {
+              prd_id = nextPrdId;
+              await tx.produit.create({
+                data: {
+                  id_prd: prd_id,
+                  designation_prd: article.desPrd.trim(),
+                  qte_dispo: qte,
+                },
+              });
+              nextPrdId++;
+            } else {
+              prd_id = produitExist.id_prd;
+              await tx.produit.update({
+                where: { id_prd: prd_id },
+                data: { qte_dispo: { increment: qte } },
+              });
+            }
+
+            await tx.colis.create({
+              data: {
+                id_colis: nextColisId,
+                cat_id: parseInt(article.catId, 10),
+                prd_id: prd_id,
+                cpt_id: parseInt(cptPaiementId, 10),
+                mnt_tot_dev: arrondir(mnt_tot_dev),
+                date_achat: dAchatObj,
+                date_stock: dateStockPrevue,
+                qte_achat: qte,
+                qte_stock: qte,
+                mnt_tot_dzd: arrondir(mnt_tot_dzd),
+                pu_dev: arrondir(pu_dev),
+                pu_dzd: arrondir(pu_dzd),
+                pu_dzd_ttc: arrondir(pu_dzd),
+                colis_voyage: {
+                  create: {
+                    trans_id: idTransaction,
+                    pu_dev_dest: arrondir(pu_dev_dest),
+                    mnt_tot_dest: arrondir(mnt_tot_dest),
+                  },
+                },
+              },
+            });
+            nextColisId++;
+          }
+
+          await tx.compte.update({
+            where: { id_cpt: parseInt(cptPaiementId, 10) },
+            data: { solde_actuel: { decrement: montantADeduire } },
+          });
+        },
+        { maxWait: 5000, timeout: 20000 },
+      );
 
       res
         .status(201)
