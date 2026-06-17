@@ -6,6 +6,7 @@ import 'dayjs/locale/fr'
 
 import AjoutRapide from './AjoutRapide'
 import PanierTable from './PanierTable'
+import DernieresCommandes from './DernieresCommandes'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import { useCommande } from 'src/context/CommandeContext'
 import { formatMontant } from 'src/@core/utils/format'
@@ -16,6 +17,7 @@ const PasserCommande = () => {
   const [dateVente, setDateVente] = useState(dayjs())
   const [cart, setCart] = useState([])
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const { produitsDisponibles, fetchProduitsDisponibles, addCommande } = useCommande()
 
@@ -134,6 +136,7 @@ const PasserCommande = () => {
       setDateVente(dayjs())
       setConfirmOpen(false)
       fetchProduitsDisponibles()
+      setRefreshTrigger(prev => prev + 1)
     })
   }
 
@@ -159,6 +162,10 @@ const PasserCommande = () => {
             onRemoveFromCart={handleRemoveFromCart}
             onValidateClick={handleOpenConfirm}
           />
+        </Grid>
+
+        <Grid item xs={12}>
+          <DernieresCommandes refreshTrigger={refreshTrigger} />
         </Grid>
       </Grid>
 

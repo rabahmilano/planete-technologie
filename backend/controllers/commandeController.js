@@ -34,127 +34,125 @@ export const addCommande = [
     const { dateVente, produits, totalAmount } = req.body;
 
     try {
-      await prisma.$transaction(async (tx) => {
-        const id_cde = await getMaxValue("commande", "id_cde", null);
-        let totalRefund = 0;
+      await prisma.$transaction(
+        async (tx) => {
+          const id_cde = await getMaxValue("commande", "id_cde", null);
+          let totalRefund = 0;
 
-        const commande = await tx.commande.create({
-          data: {
-            id_cde,
-            date_cde: dateVente,
-            mnt_cde: totalAmount,
-            ligne_commande: {
-              createMany: {
-                data: produits.map((produit) => ({
-                  prd_id: produit.id_prd,
-                  qte_cde: produit.quantity,
-                  pu_vente: produit.unitPrice,
-                })),
+          const commande = await tx.commande.create({
+            data: {
+              id_cde,
+              date_cde: dateVente,
+              mnt_cde: totalAmount,
+              ligne_commande: {
+                createMany: {
+                  data: produits.map((produit) => ({
+                    prd_id: produit.id_prd,
+                    qte_cde: produit.quantity,
+                    pu_vente: produit.unitPrice,
+                  })),
+                },
               },
             },
-          },
-        });
-
-        for (const produit of produits) {
-          // Décrémentation atomique pour empêcher les conflits si plusieurs clients achètent simultanément
-          const updatedProduit = await tx.produit.update({
-            where: { id_prd: produit.id_prd },
-            data: { qte_dispo: { decrement: produit.quantity } },
           });
 
-          if (updatedProduit.qte_dispo < 0) {
-            throw new Error(
-              `Stock global insuffisant pour le produit ID: ${produit.id_prd}.`,
-            );
-          }
-
-          let quantityToDeduct = produit.quantity;
-
-          // Stratégie FIFO (First In, First Out) avec départage par date d'entrée physique en stock
-          const achats = await tx.colis.findMany({
-            where: {
-              prd_id: produit.id_prd,
-              qte_stock: { gt: 0 },
-              date_stock: { not: null }, // Règle métier : interdiction de vendre un colis en transit
-            },
-            orderBy: [{ date_achat: "asc" }, { date_stock: "asc" }],
-            include: {
-              compte: { select: { type_cpt: true } },
-            },
-          });
-
-          for (const colis of achats) {
-            if (quantityToDeduct <= 0) break;
-
-            const deduction = Math.min(quantityToDeduct, colis.qte_stock);
-
-            const updatedColis = await tx.colis.update({
-              where: { id_colis: colis.id_colis },
-              data: { qte_stock: { decrement: deduction } },
+          for (const produit of produits) {
+            const updatedProduit = await tx.produit.update({
+              where: { id_prd: produit.id_prd },
+              data: { qte_dispo: { decrement: produit.quantity } },
             });
 
-            if (updatedColis.qte_stock < 0) {
+            if (updatedProduit.qte_dispo < 0) {
               throw new Error(
-                `Conflit d'inventaire détecté sur le lot ${colis.id_colis}.`,
+                `Stock global insuffisant pour le produit ID: ${produit.id_prd}.`,
               );
             }
 
-            await tx.ligne_commande_colis.create({
-              data: {
-                cde_id: commande.id_cde,
+            let quantityToDeduct = produit.quantity;
+
+            const achats = await tx.colis.findMany({
+              where: {
                 prd_id: produit.id_prd,
-                colis_id: colis.id_colis,
-                qte: deduction,
+                qte_stock: { gt: 0 },
+                date_stock: { not: null },
+              },
+              orderBy: [{ date_achat: "asc" }, { date_stock: "asc" }],
+              include: {
+                compte: { select: { type_cpt: true } },
               },
             });
 
-            // Isoler les fonds à rembourser pour les achats effectués avec des comptes personnels (ex: Wise)
-            if (colis.compte.type_cpt !== "COMMUN") {
-              const refundAmount = arrondir(deduction * colis.pu_dzd);
-              totalRefund = arrondir(totalRefund + refundAmount);
+            for (const colis of achats) {
+              if (quantityToDeduct <= 0) break;
+
+              const deduction = Math.min(quantityToDeduct, colis.qte_stock);
+
+              const updatedColis = await tx.colis.update({
+                where: { id_colis: colis.id_colis },
+                data: { qte_stock: { decrement: deduction } },
+              });
+
+              if (updatedColis.qte_stock < 0) {
+                throw new Error(
+                  `Conflit d'inventaire détecté sur le lot ${colis.id_colis}.`,
+                );
+              }
+
+              await tx.ligne_commande_colis.create({
+                data: {
+                  cde_id: commande.id_cde,
+                  prd_id: produit.id_prd,
+                  colis_id: colis.id_colis,
+                  qte: deduction,
+                },
+              });
+
+              if (colis.compte.type_cpt !== "COMMUN") {
+                const refundAmount = arrondir(deduction * colis.pu_dzd);
+                totalRefund = arrondir(totalRefund + refundAmount);
+              }
+
+              quantityToDeduct -= deduction;
             }
 
-            quantityToDeduct -= deduction;
+            if (quantityToDeduct > 0) {
+              throw new Error(
+                `Incohérence des stocks pour le produit ID: ${produit.id_prd}. Les lots détaillés ne suffisent pas.`,
+              );
+            }
           }
 
-          // Règle de sécurité : Vérifier la cohérence entre le stock global théorique et les lots réels
-          if (quantityToDeduct > 0) {
+          const cptCaisse = await tx.compte.findFirst({
+            where: {
+              designation_cpt: "Caisse",
+              dev_code: "DZD",
+            },
+          });
+
+          if (!cptCaisse) {
             throw new Error(
-              `Incohérence des stocks pour le produit ID: ${produit.id_prd}. Les lots détaillés ne suffisent pas.`,
+              "Opération annulée : Le compte 'Caisse' (DZD) est introuvable.",
             );
           }
-        }
 
-        const cptCaisse = await tx.compte.findFirst({
-          where: {
-            designation_cpt: "Caisse",
-            dev_code: "DZD",
-          },
-        });
+          const montantFinalCaisse = arrondir(totalAmount - totalRefund);
 
-        if (!cptCaisse) {
-          throw new Error(
-            "Opération annulée : Le compte 'Caisse' (DZD) est introuvable.",
-          );
-        }
+          await tx.compte.update({
+            where: { id_cpt: cptCaisse.id_cpt },
+            data: {
+              solde_actuel: { increment: montantFinalCaisse },
+            },
+          });
 
-        // Encaissement de la marge brute (Montant client - Fonds à restituer aux comptes personnels)
-        const montantFinalCaisse = arrondir(totalAmount - totalRefund);
-
-        await tx.compte.update({
-          where: { id_cpt: cptCaisse.id_cpt },
-          data: {
-            solde_actuel: { increment: montantFinalCaisse },
-          },
-        });
-
-        res.status(200).json({
-          message:
-            totalRefund > 0
-              ? `Commande ajoutée avec succès! Montant à rembourser: ${totalRefund.toFixed(2)} DZD pour les comptes non Wise.`
-              : "Commande ajoutée avec succès!",
-        });
-      });
+          res.status(200).json({
+            message:
+              totalRefund > 0
+                ? `Commande ajoutée avec succès! Montant à rembourser: ${totalRefund.toFixed(2)} DZD pour les comptes non Wise.`
+                : "Commande ajoutée avec succès!",
+          });
+        },
+        { maxWait: 5000, timeout: 20000 },
+      );
     } catch (error) {
       console.error("Erreur lors de la création de la commande:", error);
 
