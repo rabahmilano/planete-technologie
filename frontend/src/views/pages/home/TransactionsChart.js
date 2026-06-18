@@ -56,27 +56,27 @@ const TransactionsChart = () => {
       title: 'Activité Commerciale',
       subheader: 'Volume des transactions : Achats vs Ventes sur 12 mois',
       areas: [
-        { key: 'colis', name: 'Achats (Colis)', color: theme.palette.primary.main, id: 'colorColis' },
-        { key: 'commandes', name: 'Ventes (Commandes)', color: theme.palette.success.main, id: 'colorCommandes' }
+        { key: 'colis', name: 'Achats (Colis)', color: theme.palette.primary.main },
+        { key: 'commandes', name: 'Ventes (Commandes)', color: theme.palette.success.main }
       ]
     },
     profit: {
       title: 'Rentabilité (Marge Brute)',
       subheader: 'Évolution du bénéfice net sur produits (Ventes - Coût de revient TTC)',
-      areas: [{ key: 'marge', name: 'Marge Brute', color: theme.palette.info.main, id: 'colorMarge' }]
+      areas: [{ key: 'marge', name: 'Marge Brute', color: theme.palette.info.main }]
     },
     income: {
       title: 'Trésorerie Globale',
       subheader: 'Toutes les entrées (Ventes) VS Toutes les sorties (Stock + Frais)',
       areas: [
-        { key: 'revenus', name: 'Entrées de Cash', color: theme.palette.success.main, id: 'colorRevenus' },
-        { key: 'sorties_globales', name: 'Sorties de Cash', color: theme.palette.error.main, id: 'colorSorties' }
+        { key: 'revenus', name: 'Entrées de Cash', color: theme.palette.success.main },
+        { key: 'sorties_globales', name: 'Sorties de Cash', color: theme.palette.error.main }
       ]
     },
     expenses: {
       title: "Frais d'Exploitation",
       subheader: 'Évolution des dépenses fixes et courantes (Hors achat de stock)',
-      areas: [{ key: 'frais_exploitation', name: 'Dépenses', color: theme.palette.warning.main, id: 'colorFrais' }]
+      areas: [{ key: 'frais_exploitation', name: 'Dépenses', color: theme.palette.warning.main }]
     }
   }
 
@@ -128,16 +128,49 @@ const TransactionsChart = () => {
     )
   }
 
+  const getTicks = () => {
+    let maxVal = 0
+    data.forEach(d => {
+      config.areas.forEach(area => {
+        if (d[area.key] && d[area.key] > maxVal) maxVal = d[area.key]
+      })
+    })
+
+    if (maxVal === 0) return [0, 10, 20, 30, 40, 50]
+
+    const roughStep = maxVal / 5
+    const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)))
+    const normalizedStep = roughStep / magnitude
+
+    let step
+    if (normalizedStep <= 1) step = 1
+    else if (normalizedStep <= 2) step = 2
+    else if (normalizedStep <= 5) step = 5
+    else step = 10
+
+    step *= magnitude
+
+    const ticks = []
+    for (let i = 0; i <= maxVal + step; i += step) {
+      ticks.push(i)
+      if (i >= maxVal) break
+    }
+
+    return ticks
+  }
+
   const renderContent = () => {
     if (loading) return <CircularProgress />
     if (error) return <Typography color='error'>Erreur de chargement</Typography>
 
+    const yTicks = getTicks()
+
     return (
       <ResponsiveContainer width='100%' height='100%'>
-        <AreaChart data={data} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 20, right: 5, left: -20, bottom: 0 }}>
           <defs>
             {config.areas.map(area => (
-              <linearGradient key={area.id} id={area.id} x1='0' y1='0' x2='0' y2='1'>
+              <linearGradient key={`grad-${area.key}`} id={`grad-${area.key}`} x1='0' y1='0' x2='0' y2='1'>
                 <stop offset='5%' stopColor={area.color} stopOpacity={0.3} />
                 <stop offset='95%' stopColor={area.color} stopOpacity={0} />
               </linearGradient>
@@ -150,6 +183,8 @@ const TransactionsChart = () => {
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 12 }}
+            ticks={yTicks}
+            domain={[0, yTicks[yTicks.length - 1]]}
             tickFormatter={value =>
               view !== 'volume'
                 ? new Intl.NumberFormat('fr-DZ', { notation: 'compact', compactDisplay: 'short' }).format(value)
@@ -157,6 +192,7 @@ const TransactionsChart = () => {
             }
           />
           <Tooltip
+            itemSorter={item => -item.value}
             contentStyle={{
               borderRadius: '8px',
               border: 'none',
@@ -175,7 +211,9 @@ const TransactionsChart = () => {
               stroke={area.color}
               strokeWidth={3}
               fillOpacity={1}
-              fill={`url(#${area.id})`}
+              fill={`url(#grad-${area.key})`}
+              dot={{ r: 3, strokeWidth: 2 }}
+              activeDot={{ r: 6, strokeWidth: 0 }}
             />
           ))}
         </AreaChart>
