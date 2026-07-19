@@ -1175,6 +1175,9 @@ export const getArticlesChartData = async (req, res) => {
 
     const achats = await prisma.colis.findMany({
       where: {
+        colis_voyage: {
+          is: null,
+        },
         OR: [
           { date_achat: { gte: twelveMonthsAgo } },
           { date_stock: { gte: twelveMonthsAgo } },

@@ -96,6 +96,18 @@ export const CommandeProvider = ({ children }) => {
     }
   }, [])
 
+  const getDernieresCommandes = useCallback(async () => {
+    try {
+      const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}commandes`, {
+        params: { page: 1, limit: 5 }
+      })
+      return response.data.data
+    } catch (error) {
+      toast.error('Erreur lors du chargement des dernières commandes')
+      return []
+    }
+  }, [])
+
   return (
     <CommandeContext.Provider
       value={{
@@ -108,7 +120,8 @@ export const CommandeProvider = ({ children }) => {
         fetchGlobalStats,
         fetchProduitsDisponibles,
         addCommande,
-        deleteCommande
+        deleteCommande,
+        getDernieresCommandes
       }}
     >
       {children}
