@@ -859,7 +859,7 @@ export const updateColisDetails = async (req, res) => {
             : 0;
 
         await tx.compte.update({
-          where: { id_cpt: compte.id_cpt },
+          where: { id_cpt: colis.cpt_id },
           data: {
             solde_actuel: nouveauSoldeDeviseFinal,
             taux_change_actuel: nouveauTauxChangeFinal,
@@ -1341,6 +1341,7 @@ export const getTransactionsChartData = async (req, res) => {
     res.status(500).json({ error: { message: error.message } });
   }
 };
+
 export const searchProduits = async (req, res) => {
   const q = req.query.q?.trim();
 
