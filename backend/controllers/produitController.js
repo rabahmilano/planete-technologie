@@ -100,11 +100,8 @@ export const getNomSearch = async (req, res) => {
 };
 
 export const addColis = [
-  body("cat")
-    .isNumeric()
-    .notEmpty()
-    .withMessage("La catégorie est obligatoire"),
-  body("cpt").isNumeric().notEmpty().withMessage("Le compte est obligatoire"),
+  body("cat").isInt().notEmpty().withMessage("La catégorie est obligatoire"),
+  body("cpt").isInt().notEmpty().withMessage("Le compte est obligatoire"),
   body("dateAchat")
     .isISO8601()
     .withMessage("La date d'achat doit être une date valide"),
@@ -114,13 +111,12 @@ export const addColis = [
     .notEmpty()
     .withMessage("Le nom du produit est obligatoire"),
   body("mntTotDev")
-    .isDecimal()
+    .isFloat({ gt: 0 })
     .notEmpty()
-    .withMessage("Le montant total est obligatoire"),
+    .withMessage("Le montant total est obligatoire et doit être supérieur à 0"),
   body("qte")
-    .isNumeric()
-    .custom((value) => parseFloat(value) > 0)
-    .withMessage("La quantité est obligatoire et doit être supérieure à 0"),
+    .isInt({ gt: 0 })
+    .withMessage("La quantité doit être un nombre entier supérieur à 0"),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -132,8 +128,12 @@ export const addColis = [
 
     try {
       const newColis = await prisma.$transaction(async (tx) => {
+        const cptIdInt = parseInt(cpt, 10);
+        const catIdInt = parseInt(cat, 10);
+        const qteInt = parseInt(qte, 10);
+
         const infoCpt = await tx.compte.findUnique({
-          where: { id_cpt: parseInt(cpt) },
+          where: { id_cpt: cptIdInt },
           select: {
             solde_actuel: true,
             taux_change_actuel: true,
@@ -151,7 +151,7 @@ export const addColis = [
             parseFloat(infoCpt.solde_bloque || 0),
         );
 
-        const montantSaisi = arrondir(parseFloat(mntTotDev));
+        const montantSaisi = parseFloat(mntTotDev);
         const commPct = parseFloat(infoCpt.commission_pct || 0);
 
         const montantCommission = arrondir(montantSaisi * (commPct / 100));
@@ -161,18 +161,16 @@ export const addColis = [
           throw new Error("INSUFFICIENT_FUNDS");
         }
 
-        let id_colis, prd_id;
         const tauxActuel = parseFloat(infoCpt.taux_change_actuel || 0);
 
         const mnt_tot_dzd = arrondir(montantSaisi * tauxActuel);
-        const pu_dev = arrondir(montantSaisi / parseFloat(qte));
-        const pu_dzd = arrondir(mnt_tot_dzd / parseFloat(qte));
-
-        const montantCommissionDzd = montantCommission * tauxActuel;
+        const pu_dev = arrondir(montantSaisi / qteInt);
+        const pu_dzd = arrondir((montantSaisi * tauxActuel) / qteInt);
         const pu_dzd_ttc = arrondir(
-          (mnt_tot_dzd + montantCommissionDzd) / parseFloat(qte),
+          (montantTotalADeduire * tauxActuel) / qteInt,
         );
 
+        let prd_id;
         const produitExist = await tx.produit.findFirst({
           where: { designation_prd: { equals: desPrd } },
         });
@@ -189,20 +187,20 @@ export const addColis = [
           prd_id = produitExist.id_prd;
         }
 
-        id_colis = await getMaxValue("colis", "id_colis", null);
+        const id_colis = await getMaxValue("colis", "id_colis", null);
 
         const colis = await tx.colis.create({
           data: {
             id_colis,
-            mnt_tot_dev: montantSaisi,
+            mnt_tot_dev: arrondir(montantSaisi),
             date_achat: new Date(dateAchat),
-            qte_achat: parseInt(qte),
+            qte_achat: qteInt,
             mnt_tot_dzd,
             pu_dev,
             pu_dzd,
-            cat_id: parseInt(cat),
+            cat_id: catIdInt,
             prd_id,
-            cpt_id: parseInt(cpt),
+            cpt_id: cptIdInt,
             pu_dzd_ttc,
             colis_classique: {
               create: {
@@ -213,7 +211,7 @@ export const addColis = [
         });
 
         await tx.compte.update({
-          where: { id_cpt: parseInt(cpt) },
+          where: { id_cpt: cptIdInt },
           data: { solde_actuel: { decrement: montantTotalADeduire } },
         });
 
@@ -990,6 +988,113 @@ export const getProduitsPageStats = async (req, res) => {
   }
 };
 
+// export const getProduitDetails = async (req, res) => {
+//   const idProduit = parseInt(req.params.id);
+//   if (isNaN(idProduit)) {
+//     return res.status(400).json({ message: "ID du produit invalide." });
+//   }
+
+//   try {
+//     const [produit, statsAchat, lignesDeCommande, colisVendus] =
+//       await Promise.all([
+//         prisma.produit.findUnique({ where: { id_prd: idProduit } }),
+//         prisma.colis.aggregate({
+//           where: { prd_id: idProduit },
+//           _min: { pu_dev: true, pu_dzd_ttc: true },
+//           _max: { pu_dev: true, pu_dzd_ttc: true },
+//           _avg: { pu_dev: true, pu_dzd_ttc: true },
+//           _sum: { qte_achat: true },
+//         }),
+//         prisma.ligne_commande.findMany({ where: { prd_id: idProduit } }),
+//         prisma.ligne_commande_colis.findMany({
+//           where: { prd_id: idProduit },
+//           include: { colis: true },
+//         }),
+//       ]);
+
+//     if (!produit)
+//       return res.status(404).json({ message: "Produit non trouvé." });
+
+//     const rawTotalVenteDZD = lignesDeCommande.reduce(
+//       (sum, ligne) => sum + parseFloat(ligne.pu_vente) * ligne.qte_cde,
+//       0,
+//     );
+//     const totalVenteDZD = parseFloat(rawTotalVenteDZD.toFixed(4));
+
+//     const rawTotalCoutDZD = colisVendus.reduce(
+//       (sum, l) => sum + parseFloat(l.colis.pu_dzd_ttc) * l.qte,
+//       0,
+//     );
+//     const totalCoutDZDdesVentes = parseFloat(rawTotalCoutDZD.toFixed(4));
+
+//     const totalBeneficeDZD = parseFloat(
+//       (totalVenteDZD - totalCoutDZDdesVentes).toFixed(4),
+//     );
+
+//     const totalQteCde = lignesDeCommande.reduce((sum, l) => sum + l.qte_cde, 0);
+
+//     const kpisVente =
+//       lignesDeCommande.length > 0
+//         ? {
+//             minDa: Math.min(
+//               ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
+//             ),
+//             maxDa: Math.max(
+//               ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
+//             ),
+//             avgDa:
+//               totalQteCde > 0
+//                 ? parseFloat((totalVenteDZD / totalQteCde).toFixed(4))
+//                 : 0,
+//           }
+//         : { minDa: 0, maxDa: 0, avgDa: 0 };
+
+//     const qteParAnneeRaw = await prisma.$queryRaw`
+//       SELECT YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) as year, SUM(qte_achat) as value
+//       FROM colis
+//       WHERE prd_id = ${idProduit}
+//       GROUP BY YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) ORDER BY year DESC LIMIT 5`;
+
+//     const qteParAnnee = qteParAnneeRaw
+//       .map((item) => ({
+//         year: item.year.toString(),
+//         value: Number(item.value),
+//       }))
+//       .reverse();
+
+//     res.status(200).json({
+//       produitInfo: {
+//         designation: produit.designation_prd,
+//         qteDispo: produit.qte_dispo,
+//         qteAchetee: statsAchat._sum.qte_achat || 0,
+//       },
+//       kpisAchat: {
+//         minDev: statsAchat._min.pu_dev,
+//         maxDev: statsAchat._max.pu_dev,
+//         avgDev: statsAchat._avg.pu_dev,
+//         minDzd: statsAchat._min.pu_dzd_ttc,
+//         maxDzd: statsAchat._max.pu_dzd_ttc,
+//         avgDzd: statsAchat._avg.pu_dzd_ttc,
+//       },
+//       kpisVente: kpisVente,
+//       chartData: {
+//         financials: [
+//           { name: "Coût d'Achat (Ventes)", value: totalCoutDZDdesVentes },
+//           {
+//             name: "Bénéfice Brut",
+//             value: totalBeneficeDZD > 0 ? totalBeneficeDZD : 0,
+//           },
+//         ],
+//         qteParAnnee: qteParAnnee,
+//       },
+//     });
+//   } catch (error) {
+//     res
+//       .status(500)
+//       .json({ error: { code: error.code, message: error.message } });
+//   }
+// };
+
 export const getProduitDetails = async (req, res) => {
   const idProduit = parseInt(req.params.id);
   if (isNaN(idProduit)) {
@@ -997,15 +1102,16 @@ export const getProduitDetails = async (req, res) => {
   }
 
   try {
-    const [produit, statsAchat, lignesDeCommande, colisVendus] =
+    const [produit, colisAchats, lignesDeCommande, colisVendus] =
       await Promise.all([
         prisma.produit.findUnique({ where: { id_prd: idProduit } }),
-        prisma.colis.aggregate({
+        prisma.colis.findMany({
           where: { prd_id: idProduit },
-          _min: { pu_dev: true, pu_dzd_ttc: true },
-          _max: { pu_dev: true, pu_dzd_ttc: true },
-          _avg: { pu_dev: true, pu_dzd_ttc: true },
-          _sum: { qte_achat: true },
+          select: {
+            qte_achat: true,
+            pu_dev: true,
+            pu_dzd_ttc: true,
+          },
         }),
         prisma.ligne_commande.findMany({ where: { prd_id: idProduit } }),
         prisma.ligne_commande_colis.findMany({
@@ -1017,21 +1123,58 @@ export const getProduitDetails = async (req, res) => {
     if (!produit)
       return res.status(404).json({ message: "Produit non trouvé." });
 
+    // --- CALCUL DES KPIS D'ACHAT (Moyenne Pondérée) ---
+    const totalQteAchetee = colisAchats.reduce(
+      (sum, c) => sum + c.qte_achat,
+      0,
+    );
+
+    const totalCoutAchatDZD = colisAchats.reduce(
+      (sum, c) => sum + parseFloat(c.pu_dzd_ttc) * c.qte_achat,
+      0,
+    );
+
+    const totalCoutAchatDev = colisAchats.reduce(
+      (sum, c) => sum + parseFloat(c.pu_dev) * c.qte_achat,
+      0,
+    );
+
+    const kpisAchat =
+      colisAchats.length > 0
+        ? {
+            minDev: Math.min(...colisAchats.map((c) => parseFloat(c.pu_dev))),
+            maxDev: Math.max(...colisAchats.map((c) => parseFloat(c.pu_dev))),
+            avgDev:
+              totalQteAchetee > 0
+                ? arrondir(totalCoutAchatDev / totalQteAchetee)
+                : 0,
+            minDzd: Math.min(
+              ...colisAchats.map((c) => parseFloat(c.pu_dzd_ttc)),
+            ),
+            maxDzd: Math.max(
+              ...colisAchats.map((c) => parseFloat(c.pu_dzd_ttc)),
+            ),
+            avgDzd:
+              totalQteAchetee > 0
+                ? arrondir(totalCoutAchatDZD / totalQteAchetee)
+                : 0,
+          }
+        : { minDev: 0, maxDev: 0, avgDev: 0, minDzd: 0, maxDzd: 0, avgDzd: 0 };
+
+    // --- CALCUL DES KPIS DE VENTE & FINANCIERS ---
     const rawTotalVenteDZD = lignesDeCommande.reduce(
       (sum, ligne) => sum + parseFloat(ligne.pu_vente) * ligne.qte_cde,
       0,
     );
-    const totalVenteDZD = parseFloat(rawTotalVenteDZD.toFixed(4));
+    const totalVenteDZD = arrondir(rawTotalVenteDZD);
 
     const rawTotalCoutDZD = colisVendus.reduce(
       (sum, l) => sum + parseFloat(l.colis.pu_dzd_ttc) * l.qte,
       0,
     );
-    const totalCoutDZDdesVentes = parseFloat(rawTotalCoutDZD.toFixed(4));
+    const totalCoutDZDdesVentes = arrondir(rawTotalCoutDZD);
 
-    const totalBeneficeDZD = parseFloat(
-      (totalVenteDZD - totalCoutDZDdesVentes).toFixed(4),
-    );
+    const totalBeneficeDZD = arrondir(totalVenteDZD - totalCoutDZDdesVentes);
 
     const totalQteCde = lignesDeCommande.reduce((sum, l) => sum + l.qte_cde, 0);
 
@@ -1044,10 +1187,7 @@ export const getProduitDetails = async (req, res) => {
             maxDa: Math.max(
               ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
             ),
-            avgDa:
-              totalQteCde > 0
-                ? parseFloat((totalVenteDZD / totalQteCde).toFixed(4))
-                : 0,
+            avgDa: totalQteCde > 0 ? arrondir(totalVenteDZD / totalQteCde) : 0,
           }
         : { minDa: 0, maxDa: 0, avgDa: 0 };
 
@@ -1068,16 +1208,9 @@ export const getProduitDetails = async (req, res) => {
       produitInfo: {
         designation: produit.designation_prd,
         qteDispo: produit.qte_dispo,
-        qteAchetee: statsAchat._sum.qte_achat || 0,
+        qteAchetee: totalQteAchetee,
       },
-      kpisAchat: {
-        minDev: statsAchat._min.pu_dev,
-        maxDev: statsAchat._max.pu_dev,
-        avgDev: statsAchat._avg.pu_dev,
-        minDzd: statsAchat._min.pu_dzd_ttc,
-        maxDzd: statsAchat._max.pu_dzd_ttc,
-        avgDzd: statsAchat._avg.pu_dzd_ttc,
-      },
+      kpisAchat: kpisAchat,
       kpisVente: kpisVente,
       chartData: {
         financials: [

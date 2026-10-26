@@ -5,11 +5,15 @@ import dayjs from "dayjs";
 import { body, validationResult } from "express-validator";
 
 export const addCommande = [
-  body("dateVente").notEmpty().withMessage("La date est obligatoire"),
+  body("dateVente")
+    .isISO8601()
+    .notEmpty()
+    .withMessage("La date est obligatoire"),
   body("produits")
     .isArray({ min: 1 })
     .withMessage("Les produits sont obligatoires"),
   body("produits.*.id_prd")
+    .isInt()
     .notEmpty()
     .withMessage("L'ID du produit est obligatoire"),
   body("produits.*.quantity")
@@ -34,22 +38,36 @@ export const addCommande = [
     const { dateVente, produits, totalAmount } = req.body;
 
     try {
-      await prisma.$transaction(
+      const totalRefund = await prisma.$transaction(
         async (tx) => {
+          const cptCaisse = await tx.compte.findFirst({
+            where: {
+              designation_cpt: "Caisse",
+              dev_code: "DZD",
+            },
+          });
+
+          if (!cptCaisse) {
+            throw new Error(
+              "Opération annulée : Le compte 'Caisse' (DZD) est introuvable.",
+            );
+          }
+
           const id_cde = await getMaxValue("commande", "id_cde", null);
-          let totalRefund = 0;
+          let cumulRefund = 0;
+          const montantTotalCde = arrondir(parseFloat(totalAmount));
 
           const commande = await tx.commande.create({
             data: {
               id_cde,
-              date_cde: dateVente,
-              mnt_cde: totalAmount,
+              date_cde: new Date(dateVente),
+              mnt_cde: montantTotalCde,
               ligne_commande: {
                 createMany: {
                   data: produits.map((produit) => ({
-                    prd_id: produit.id_prd,
-                    qte_cde: produit.quantity,
-                    pu_vente: produit.unitPrice,
+                    prd_id: parseInt(produit.id_prd, 10),
+                    qte_cde: parseInt(produit.quantity, 10),
+                    pu_vente: arrondir(parseFloat(produit.unitPrice)),
                   })),
                 },
               },
@@ -57,22 +75,25 @@ export const addCommande = [
           });
 
           for (const produit of produits) {
+            const prdIdInt = parseInt(produit.id_prd, 10);
+            const qteCdeInt = parseInt(produit.quantity, 10);
+
             const updatedProduit = await tx.produit.update({
-              where: { id_prd: produit.id_prd },
-              data: { qte_dispo: { decrement: produit.quantity } },
+              where: { id_prd: prdIdInt },
+              data: { qte_dispo: { decrement: qteCdeInt } },
             });
 
             if (updatedProduit.qte_dispo < 0) {
               throw new Error(
-                `Stock global insuffisant pour le produit ID: ${produit.id_prd}.`,
+                `Stock global insuffisant pour le produit ID: ${prdIdInt}.`,
               );
             }
 
-            let quantityToDeduct = produit.quantity;
+            let quantityToDeduct = qteCdeInt;
 
             const achats = await tx.colis.findMany({
               where: {
-                prd_id: produit.id_prd,
+                prd_id: prdIdInt,
                 qte_stock: { gt: 0 },
                 date_stock: { not: null },
               },
@@ -101,15 +122,17 @@ export const addCommande = [
               await tx.ligne_commande_colis.create({
                 data: {
                   cde_id: commande.id_cde,
-                  prd_id: produit.id_prd,
+                  prd_id: prdIdInt,
                   colis_id: colis.id_colis,
                   qte: deduction,
                 },
               });
 
               if (colis.compte.type_cpt !== "COMMUN") {
-                const refundAmount = arrondir(deduction * colis.pu_dzd);
-                totalRefund = arrondir(totalRefund + refundAmount);
+                const refundAmount = arrondir(
+                  deduction * parseFloat(colis.pu_dzd),
+                );
+                cumulRefund = arrondir(cumulRefund + refundAmount);
               }
 
               quantityToDeduct -= deduction;
@@ -117,25 +140,12 @@ export const addCommande = [
 
             if (quantityToDeduct > 0) {
               throw new Error(
-                `Incohérence des stocks pour le produit ID: ${produit.id_prd}. Les lots détaillés ne suffisent pas.`,
+                `Incohérence des stocks pour le produit ID: ${prdIdInt}. Les lots détaillés ne suffisent pas.`,
               );
             }
           }
 
-          const cptCaisse = await tx.compte.findFirst({
-            where: {
-              designation_cpt: "Caisse",
-              dev_code: "DZD",
-            },
-          });
-
-          if (!cptCaisse) {
-            throw new Error(
-              "Opération annulée : Le compte 'Caisse' (DZD) est introuvable.",
-            );
-          }
-
-          const montantFinalCaisse = arrondir(totalAmount - totalRefund);
+          const montantFinalCaisse = arrondir(montantTotalCde - cumulRefund);
 
           await tx.compte.update({
             where: { id_cpt: cptCaisse.id_cpt },
@@ -144,15 +154,17 @@ export const addCommande = [
             },
           });
 
-          res.status(200).json({
-            message:
-              totalRefund > 0
-                ? `Commande ajoutée avec succès! Montant à rembourser: ${totalRefund.toFixed(2)} DZD pour les comptes non Wise.`
-                : "Commande ajoutée avec succès!",
-          });
+          return cumulRefund;
         },
         { maxWait: 5000, timeout: 20000 },
       );
+
+      res.status(200).json({
+        message:
+          totalRefund > 0
+            ? `Commande ajoutée avec succès! Montant à rembourser: ${totalRefund.toFixed(2)} DZD pour les comptes non Wise.`
+            : "Commande ajoutée avec succès!",
+      });
     } catch (error) {
       console.error("Erreur lors de la création de la commande:", error);
 

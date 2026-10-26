@@ -4,9 +4,12 @@ import { getMaxValue, arrondir } from "../config/utils.js";
 
 export const crediterCompte = [
   body("cpt").isNumeric().notEmpty().withMessage("Le compte est obligatoire"),
-  body("mnt").isDecimal().notEmpty().withMessage("Le montant doit etre >= 1"),
+  body("mnt")
+    .isFloat({ min: 1 })
+    .notEmpty()
+    .withMessage("Le montant doit etre >= 1"),
   body("taux")
-    .isDecimal()
+    .isFloat({ min: 1 })
     .notEmpty()
     .withMessage("Le taux de change doit etre >= 1"),
   body("dateOp").notEmpty().withMessage("La date est obligatoire"),
@@ -21,25 +24,7 @@ export const crediterCompte = [
 
     try {
       await prisma.$transaction(async (tx) => {
-        const id_op = await getMaxValue("crediter", "id_op_crd", null);
         const cptIdInt = parseInt(cpt, 10);
-
-        const montantAjout = arrondir(parseFloat(mnt));
-        const tauxAjout = arrondir(parseFloat(taux));
-
-        await tx.crediter.create({
-          data: {
-            id_op_crd: id_op,
-            date_op: new Date(dateOp),
-            montant_op: montantAjout,
-            taux_change: tauxAjout,
-            compte: {
-              connect: {
-                id_cpt: cptIdInt,
-              },
-            },
-          },
-        });
 
         const infoCompte = await tx.compte.findUnique({
           where: { id_cpt: cptIdInt },
@@ -51,21 +36,10 @@ export const crediterCompte = [
           },
         });
 
-        const soldeAncien = parseFloat(infoCompte.solde_actuel || 0);
-        const tauxAncien = parseFloat(infoCompte.taux_change_actuel || 0);
+        if (!infoCompte) throw new Error("COMPTE_NOT_FOUND");
 
-        const newTauxChange = arrondir(
-          (soldeAncien * tauxAncien + montantAjout * tauxAjout) /
-            (soldeAncien + montantAjout),
-        );
-
-        await tx.compte.update({
-          where: { id_cpt: cptIdInt },
-          data: {
-            solde_actuel: { increment: montantAjout },
-            taux_change_actuel: newTauxChange,
-          },
-        });
+        const montantAjout = arrondir(parseFloat(mnt));
+        const tauxAjout = arrondir(parseFloat(taux));
 
         if (
           infoCompte.type_cpt === "COMMUN" &&
@@ -99,12 +73,47 @@ export const crediterCompte = [
             },
           });
         }
+
+        const soldeAncien = parseFloat(infoCompte.solde_actuel || 0);
+        const tauxAncien = parseFloat(infoCompte.taux_change_actuel || 0);
+
+        const newTauxChange = arrondir(
+          (soldeAncien * tauxAncien + montantAjout * tauxAjout) /
+            (soldeAncien + montantAjout),
+        );
+
+        const id_op = await getMaxValue("crediter", "id_op_crd", null);
+
+        await tx.crediter.create({
+          data: {
+            id_op_crd: id_op,
+            date_op: new Date(dateOp),
+            montant_op: montantAjout,
+            taux_change: tauxAjout,
+            compte: {
+              connect: {
+                id_cpt: cptIdInt,
+              },
+            },
+          },
+        });
+
+        await tx.compte.update({
+          where: { id_cpt: cptIdInt },
+          data: {
+            solde_actuel: { increment: montantAjout },
+            taux_change_actuel: newTauxChange,
+          },
+        });
       });
 
       res
         .status(200)
         .json({ message: "Votre compte a été mis à jour avec succès!" });
     } catch (error) {
+      if (error.message === "COMPTE_NOT_FOUND") {
+        return res.status(404).json({ message: "Compte introuvable." });
+      }
       if (error.message === "INSUFFICIENT_FUNDS") {
         return res.status(400).json({
           message:
