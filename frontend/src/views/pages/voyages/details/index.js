@@ -73,7 +73,9 @@ const VoyageDetails = () => {
 
   const hasCoeffFinal = voyage.statut_voy === 'CLOTURE' && voyage.coeff_approche != null
   const coeffEstime =
-    !hasCoeffFinal && voyage.kpis?.totalAchatsDZD > 0 ? voyage.kpis.coutTotalDZD / voyage.kpis.totalAchatsDZD : 0
+    !hasCoeffFinal && voyage.kpis?.totalAchatsDZD > 0
+      ? Math.round((voyage.kpis.coutTotalDZD / voyage.kpis.totalAchatsDZD + Number.EPSILON) * 10000) / 10000
+      : 0
 
   return (
     <Grid container spacing={6}>

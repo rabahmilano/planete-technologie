@@ -396,9 +396,11 @@ export const changerStatutVoyage = async (req, res) => {
           throw new Error("Impossible de clôturer sans transactions.");
         }
 
-        const totalDepensesDZD = voyage.depenses.reduce(
-          (sum, d) => sum + parseFloat(d.mnt_dep_dzd),
-          0,
+        const totalDepensesDZD = arrondir(
+          voyage.depenses.reduce(
+            (sum, d) => sum + parseFloat(d.mnt_dep_dzd),
+            0,
+          ),
         );
 
         let totalAchatsPursDZD = 0;
@@ -413,13 +415,19 @@ export const changerStatutVoyage = async (req, res) => {
             taux;
         });
 
+        totalAchatsPursDZD = arrondir(totalAchatsPursDZD);
+        totalCommissionsDZD = arrondir(totalCommissionsDZD);
+
         if (totalAchatsPursDZD === 0) {
           throw new Error("Le total des marchandises est de 0 DZD.");
         }
 
-        const coutGlobalDZD =
-          totalAchatsPursDZD + totalCommissionsDZD + totalDepensesDZD;
-        const coeffApproche = coutGlobalDZD / totalAchatsPursDZD;
+        const coutGlobalDZD = arrondir(
+          totalAchatsPursDZD + totalCommissionsDZD + totalDepensesDZD,
+        );
+
+        // On arrondit le coefficient à 4 décimales (exactement comme en BDD)
+        const coeffApproche = arrondir(coutGlobalDZD / totalAchatsPursDZD);
 
         await tx.voyage.update({
           where: { id_voyage: id },
