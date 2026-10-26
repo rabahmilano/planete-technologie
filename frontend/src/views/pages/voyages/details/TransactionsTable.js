@@ -23,7 +23,7 @@ import ArticlesVoyageModal from './ArticlesVoyageModal'
 import TransactionDetailModal from './TransactionDetailModal'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
-const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
+const TransactionsTable = ({ transactions, statut, onAddFacture, coeffApproche, coeffEstime }) => {
   const { deleteTransactionVoyage } = useContext(VoyageContext)
 
   const [modalGlobalOpen, setModalGlobalOpen] = useState(false)
@@ -256,6 +256,8 @@ const TransactionsTable = ({ transactions, statut, onAddFacture }) => {
         open={modalGlobalOpen}
         onClose={() => setModalGlobalOpen(false)}
         transactions={transactions}
+        coeffApproche={coeffApproche}
+        coeffEstime={coeffEstime}
       />
 
       <TransactionDetailModal

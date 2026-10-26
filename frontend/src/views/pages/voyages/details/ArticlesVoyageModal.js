@@ -8,7 +8,7 @@ const Transition = forwardRef(function Transition(props, ref) {
   return <Slide direction='up' ref={ref} {...props} />
 })
 
-const ArticlesVoyageModal = ({ open, onClose, transactions, coeffApproche, coeffEstime = 1.3 }) => {
+const ArticlesVoyageModal = ({ open, onClose, transactions, coeffApproche, coeffEstime }) => {
   const [showTTC, setShowTTC] = useState(false)
 
   useEffect(() => {

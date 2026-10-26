@@ -4,12 +4,10 @@ import dayjs from 'dayjs'
 import { formatMontant } from 'src/@core/utils/format'
 import { getStatusColor, getStatusLabel } from 'src/@core/utils/voyageUtils'
 
-const VoyageHeaderKpis = ({ voyage }) => {
+const VoyageHeaderKpis = ({ voyage, coeffEstime }) => {
   if (!voyage) return null
 
   const { kpis } = voyage
-
-  const coeffEstime = kpis?.totalAchatsDZD > 0 ? kpis.coutTotalDZD / kpis.totalAchatsDZD : 0
 
   return (
     <Card>

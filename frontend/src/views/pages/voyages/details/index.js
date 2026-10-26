@@ -71,6 +71,10 @@ const VoyageDetails = () => {
     )
   }
 
+  const hasCoeffFinal = voyage.statut_voy === 'CLOTURE' && voyage.coeff_approche != null
+  const coeffEstime =
+    !hasCoeffFinal && voyage.kpis?.totalAchatsDZD > 0 ? voyage.kpis.coutTotalDZD / voyage.kpis.totalAchatsDZD : 0
+
   return (
     <Grid container spacing={6}>
       <Grid item xs={12}>
@@ -85,13 +89,15 @@ const VoyageDetails = () => {
       </Grid>
 
       <Grid item xs={12}>
-        <VoyageHeaderKpis voyage={voyage} />
+        <VoyageHeaderKpis voyage={voyage} coeffEstime={coeffEstime} />
       </Grid>
 
       <Grid item xs={12} md={7}>
         <TransactionsTable
           transactions={voyage.transactions}
           statut={voyage.statut_voy}
+          coeffApproche={voyage.coeff_approche}
+          coeffEstime={coeffEstime}
           onAddFacture={() => setOpenTransactionModal(true)}
         />
       </Grid>
