@@ -69,7 +69,6 @@ export const crediterCompte = [
         let tauxEffectif;
 
         if (strategie === "DZD_PAYE") {
-          // montantSaisi représente les DZD effectivement payés.
           montantADeduireCentimes = montantSaisiCentimes;
           montantAjoutCentimes = truncateToCents(
             montantSaisiCentimes,
@@ -80,11 +79,9 @@ export const crediterCompte = [
             throw new Error("CREDIT_AMOUNT_TOO_SMALL");
           }
 
-          // Le taux effectif reflète le coût réellement payé après troncature.
           tauxEffectif =
             montantADeduireCentimes / montantAjoutCentimes;
         } else {
-          // Mode montant reçu : montantSaisi représente la devise reçue.
           montantAjoutCentimes = montantSaisiCentimes;
           montantADeduireCentimes = Math.round(
             (montantAjoutCentimes * tauxCentimes) / 100,
@@ -120,8 +117,6 @@ export const crediterCompte = [
             throw new Error("INSUFFICIENT_FUNDS");
           }
 
-          // Mise à jour conditionnelle pour empêcher un débit qui ferait
-          // passer la Caisse sous le montant bloqué si deux opérations arrivent ensemble.
           const debitCaisse = await tx.compte.updateMany({
             where: {
               id_cpt: caisse.id_cpt,
@@ -162,8 +157,6 @@ export const crediterCompte = [
             id_op_crd: id_op,
             date_op: new Date(dateOperation),
             montant_op: montantAjout,
-            // Pour le mode montant payé, mémoriser le taux effectif correspondant
-            // au montant réellement payé et au montant crédité après troncature.
             taux_change:
               strategie === "DZD_PAYE" ? tauxValorisation : tauxAjout,
             compte: {
