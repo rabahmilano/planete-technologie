@@ -4,6 +4,9 @@ import Card from '@mui/material/Card'
 import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
 import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
 import CardHeader from '@mui/material/CardHeader'
 import CardContent from '@mui/material/CardContent'
 import Box from '@mui/material/Box'
@@ -38,6 +41,7 @@ const defaultValues = {
 const CrediterCompte = () => {
   const { tousLesComptes, crediter } = useCompte()
   const [devise, setDevise] = useState('')
+  const [strategie, setStrategie] = useState('DZD_PAYE')
   const [isTauxEnabled, setIsTauxEnabled] = useState(false)
   const [totalMontantDZD, setTotalMontantDZD] = useState(0)
 
@@ -69,19 +73,39 @@ const CrediterCompte = () => {
   }
 
   const updateTotalMontantDZD = () => {
-    const montant = parseFloat(getValues('mnt')) || 0
-    const taux = parseFloat(getValues('taux')) || 0
-    setTotalMontantDZD(montant * taux)
+    const montant = Number(String(getValues('mnt') || '').replace(/,/g, '')) || 0
+    const taux = Number(String(getValues('taux') || '').replace(/,/g, '')) || 0
+
+    if (strategie === 'DZD_PAYE') {
+      // Estimation informative uniquement : le backend recalcule le montant définitif.
+      const montantDeviseCentimes = taux > 0 ? Math.floor((montant * 100) / taux * 100 + Number.EPSILON) : 0
+      setTotalMontantDZD(montantDeviseCentimes / 100)
+    } else {
+      setTotalMontantDZD(montant * taux)
+    }
   }
 
   const handleTauxChange = () => {
     updateTotalMontantDZD()
   }
 
+  const handleStrategieChange = event => {
+    const nextStrategie = event.target.value
+    setStrategie(nextStrategie)
+    const montant = Number(String(getValues('mnt') || '').replace(/,/g, '')) || 0
+    const taux = Number(String(getValues('taux') || '').replace(/,/g, '')) || 0
+    if (nextStrategie === 'DZD_PAYE') {
+      setTotalMontantDZD(taux > 0 ? Math.floor((montant * 10000) / taux + Number.EPSILON) / 100 : 0)
+    } else {
+      setTotalMontantDZD(montant * taux)
+    }
+  }
+
   const onSubmit = async () => {
     const data = getValues()
     const updatedData = {
       ...data,
+      strategie,
       dateOp: dayjs(data.dateOp).toISOString(),
       mnt: parseFloat(data.mnt),
       taux: parseFloat(data.taux)
@@ -93,6 +117,7 @@ const CrediterCompte = () => {
       setTotalMontantDZD(0)
       setDevise('')
       setIsTauxEnabled(false)
+      setStrategie('DZD_PAYE')
     }
   }
 
@@ -109,6 +134,20 @@ const CrediterCompte = () => {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={5} alignItems='flex-end'>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel id='strategie-credit-label'>Stratégie de crédit</InputLabel>
+                <Select
+                  labelId='strategie-credit-label'
+                  value={strategie}
+                  label='Stratégie de crédit'
+                  onChange={handleStrategieChange}
+                >
+                  <MenuItem value='DZD_PAYE'>Nouvelle stratégie — montant payé en DZD</MenuItem>
+                  <MenuItem value='DEVISE_RECUE'>Ancienne stratégie — montant reçu en devise</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={12} sm={6}>
               <Controller
                 name='cpt'
@@ -171,7 +210,7 @@ const CrediterCompte = () => {
                 render={({ field: { value, onChange } }) => (
                   <CustomTextField
                     fullWidth
-                    label='Montant total en devise'
+                    label={strategie === 'DZD_PAYE' ? 'Montant payé en DZD' : 'Montant total en devise'}
                     autoComplete='off'
                     value={value}
                     onChange={e => {
@@ -182,7 +221,7 @@ const CrediterCompte = () => {
                     {...(errors.mnt && { helperText: 'Doit être supérieur à 0' })}
                     InputProps={{
                       inputComponent: CleaveInput,
-                      endAdornment: <InputAdornment position='end'>{devise || '---'}</InputAdornment>
+                      endAdornment: <InputAdornment position='end'>{strategie === 'DZD_PAYE' ? 'DZD' : (devise || '---')}</InputAdornment>
                     }}
                   />
                 )}
@@ -221,11 +260,11 @@ const CrediterCompte = () => {
               <CustomTextField
                 fullWidth
                 type='text'
-                label='Montant total calculé'
+                label={strategie === 'DZD_PAYE' ? 'Montant estimé en devise' : 'Montant total calculé'}
                 value={formatMontant(totalMontantDZD)}
                 disabled
                 InputProps={{
-                  endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
+                  endAdornment: <InputAdornment position='end'>{strategie === 'DZD_PAYE' ? (devise || '---') : 'DZD'}</InputAdornment>
                 }}
               />
             </Grid>
