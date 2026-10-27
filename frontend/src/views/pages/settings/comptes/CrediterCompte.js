@@ -46,6 +46,7 @@ const CrediterCompte = () => {
   const [isTauxEnabled, setIsTauxEnabled] = useState(false)
   const [montantEstime, setMontantEstime] = useState(0)
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [operationEnAttente, setOperationEnAttente] = useState(null)
 
   const {
@@ -132,21 +133,28 @@ const CrediterCompte = () => {
   }
 
   const handleConfirmation = async () => {
-    if (!operationEnAttente) return
+    // Le verrou local empêche les doubles clics avant même le prochain rendu React.
+    if (!operationEnAttente || isSubmitting) return
 
-    const isSuccess = await crediter(operationEnAttente)
-    if (isSuccess) {
-      reset(defaultValues)
-      setMontantEstime(0)
-      setDevise('')
-      setIsTauxEnabled(false)
-      setStrategie('DZD_PAYE')
-      setIsConfirmationOpen(false)
-      setOperationEnAttente(null)
+    setIsSubmitting(true)
+    try {
+      const isSuccess = await crediter(operationEnAttente)
+      if (isSuccess) {
+        reset(defaultValues)
+        setMontantEstime(0)
+        setDevise('')
+        setIsTauxEnabled(false)
+        setStrategie('DZD_PAYE')
+        setIsConfirmationOpen(false)
+        setOperationEnAttente(null)
+      }
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const fermerConfirmation = () => {
+    if (isSubmitting) return
     setIsConfirmationOpen(false)
     setOperationEnAttente(null)
   }
@@ -312,7 +320,8 @@ const CrediterCompte = () => {
             </Grid>
 
             <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-              <Button type='submit' variant='contained' startIcon={<Icon icon='tabler:send' />}>
+              <Button type='submit' variant='contained' disabled={isSubmitting}
+                startIcon={<Icon icon='tabler:send' />}>
                 Créditer le compte
               </Button>
             </Grid>
@@ -322,6 +331,8 @@ const CrediterCompte = () => {
     </Card>
     <ConfirmDialog
       open={isConfirmationOpen}
+      loading={isSubmitting}
+      loadingText='Crédit en cours…'
       handleClose={fermerConfirmation}
       handleConfirm={handleConfirmation}
       title='Vérifier le crédit avant confirmation'
