@@ -3,23 +3,23 @@ import { body, validationResult } from "express-validator";
 import { getMaxValue, arrondir } from "../config/utils.js";
 
 export const crediterCompte = [
-  body("cpt")
+  body("compteId")
     .isInt({ min: 1 })
     .withMessage("Le compte est obligatoire et doit être un identifiant entier"),
-  body("mnt")
+  body("montantSaisi")
     .matches(/^\d+(?:\.\d{1,2})?$/)
     .withMessage("Le montant doit être un nombre positif avec au maximum 2 décimales")
     .custom((value) => Number(value) >= 1 && Number(value) <= 99999999.99)
     .withMessage("Le montant doit être compris entre 1 et 99 999 999,99"),
-  body("taux")
+  body("tauxChange")
     .matches(/^\d+(?:\.\d{1,2})?$/)
     .withMessage("Le taux doit être un nombre positif avec au maximum 2 décimales")
     .custom((value) => Number(value) >= 1 && Number(value) <= 99999999.99)
     .withMessage("Le taux de change doit être compris entre 1 et 99 999 999,99"),
-  body("dateOp")
+  body("dateOperation")
     .isISO8601({ strict: true })
     .withMessage("La date d'opération est invalide"),
-  body("strategie")
+  body("strategieCredit")
     .optional()
     .isIn(["DEVISE_RECUE", "DZD_PAYE"])
     .withMessage("La stratégie de crédit est invalide"),
@@ -30,10 +30,10 @@ export const crediterCompte = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { cpt, mnt, taux, dateOp } = req.body;
+    const { compteId, montantSaisi, tauxChange, dateOperation } = req.body;
     // Compatibilité temporaire : sans stratégie explicite, l'ancien formulaire
     // conserve son comportement jusqu'à son adaptation côté frontend.
-    const strategie = req.body.strategie || "DEVISE_RECUE";
+    const strategie = req.body.strategieCredit || "DEVISE_RECUE";
 
     // Les montants manipulés en centimes évitent les erreurs binaires des floats.
     const toCents = (value) => {
@@ -46,9 +46,9 @@ export const crediterCompte = [
 
     try {
       await prisma.$transaction(async (tx) => {
-        const cptIdInt = Number(cpt);
-        const montantSaisiCentimes = toCents(mnt);
-        const tauxCentimes = toCents(taux);
+        const cptIdInt = Number(compteId);
+        const montantSaisiCentimes = toCents(montantSaisi);
+        const tauxCentimes = toCents(tauxChange);
 
         if (!Number.isSafeInteger(cptIdInt)) throw new Error("INVALID_ACCOUNT_ID");
 
@@ -160,7 +160,7 @@ export const crediterCompte = [
         await tx.crediter.create({
           data: {
             id_op_crd: id_op,
-            date_op: new Date(dateOp),
+            date_op: new Date(dateOperation),
             montant_op: montantAjout,
             // En nouvelle stratégie, mémoriser le taux effectif correspondant
             // au montant réellement payé et au montant crédité après troncature.
