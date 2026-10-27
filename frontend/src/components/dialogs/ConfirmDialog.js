@@ -1,7 +1,6 @@
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, IconButton, CircularProgress } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 
-// Dictionnaire sémantique des actions
 const actionConfig = {
   create: { color: 'primary', icon: 'tabler:device-floppy', defaultTitle: 'Confirmer la création' },
   delete: { color: 'error', icon: 'tabler:trash', defaultTitle: 'Confirmer la suppression' },
@@ -17,7 +16,7 @@ const ConfirmDialog = ({
   content, 
   confirmText = 'Confirmer', 
   cancelText = 'Annuler',
-  actionType = 'warning', // Valeurs possibles : 'create', 'delete', 'warning', 'info'
+  actionType = 'warning',
   loading = false,
   loadingText = 'Traitement en cours…'
 }) => {
@@ -31,20 +30,18 @@ const ConfirmDialog = ({
       fullWidth
       PaperProps={{
         sx: {
-          // Ligne de couleur en haut de la modale pour le contexte visuel
           borderTop: theme => `5px solid ${theme.palette[config.color].main}`
         }
       }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 3, pt: 5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-          {/* Bloc d'icône coloré */}
           <Box sx={{ 
             display: 'flex', 
             p: 2, 
             borderRadius: 1, 
-            backgroundColor: theme => theme.palette[config.color].main, // Fond plein
-            color: '#ffffff' // Icône blanche pure
+            backgroundColor: theme => theme.palette[config.color].main,
+            color: '#ffffff'
           }}>
             <Icon icon={config.icon} fontSize="1.75rem" />
           </Box>
