@@ -77,7 +77,6 @@ const CrediterCompte = () => {
   }
 
   const lireNombre = valeur => {
-    // Tolère les séparateurs de milliers affichés par Cleave.
     const normalise = String(valeur ?? '').replace(/[\s,]/g, '')
     return normalise === '' ? 0 : Number(normalise) || 0
   }
@@ -95,13 +94,10 @@ const CrediterCompte = () => {
     if (montantCentimes <= 0 || tauxCentimes <= 0) return 0
 
     if (mode === 'DZD_PAYE') {
-      // Montant devise en centimes = floor(montant DZD en centimes * 100 / taux en centimes).
-      // Le résultat est tronqué, comme dans le backend.
       const deviseCentimes = Math.floor((montantCentimes * 100) / tauxCentimes)
       return deviseCentimes / 100
     }
 
-    // Mode montant reçu en devise : estimation du coût en DZD.
     return (montantCentimes * tauxCentimes) / 10000
   }
 
@@ -133,7 +129,6 @@ const CrediterCompte = () => {
   }
 
   const handleConfirmation = async () => {
-    // Le verrou local empêche les doubles clics avant même le prochain rendu React.
     if (!operationEnAttente || isSubmitting) return
 
     setIsSubmitting(true)
@@ -186,15 +181,15 @@ const CrediterCompte = () => {
           <Grid container spacing={5} alignItems='flex-end'>
             <Grid item xs={12}>
               <FormControl fullWidth>
-                <InputLabel id='strategie-credit-label'>Stratégie de crédit</InputLabel>
+                <InputLabel id='strategie-credit-label'>Mode de calcul</InputLabel>
                 <Select
                   labelId='strategie-credit-label'
                   value={strategie}
-                  label='Mode de saisie'
+                  label='Mode de calcul'
                   onChange={handleStrategieChange}
                 >
-                  <MenuItem value='DZD_PAYE'>Saisir le montant payé en DZD</MenuItem>
-                  <MenuItem value='DEVISE_RECUE'>Saisir le montant reçu en devise</MenuItem>
+                  <MenuItem value='DZD_PAYE'>Montant payé en DZD → montant crédité en devise</MenuItem>
+                  <MenuItem value='DEVISE_RECUE'>Montant reçu en devise → coût calculé en DZD</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
