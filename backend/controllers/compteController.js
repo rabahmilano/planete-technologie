@@ -7,12 +7,12 @@ export const crediterCompte = [
     .isInt({ min: 1 })
     .withMessage("Le compte est obligatoire et doit être un identifiant entier"),
   body("mnt")
-    .matches(/^\\d+(?:\\.\\d{1,2})?$/)
+    .matches(/^\d+(?:\.\d{1,2})?$/)
     .withMessage("Le montant doit être un nombre positif avec au maximum 2 décimales")
     .custom((value) => Number(value) >= 1 && Number(value) <= 99999999.99)
     .withMessage("Le montant doit être compris entre 1 et 99 999 999,99"),
   body("taux")
-    .matches(/^\\d+(?:\\.\\d{1,2})?$/)
+    .matches(/^\d+(?:\.\d{1,2})?$/)
     .withMessage("Le taux doit être un nombre positif avec au maximum 2 décimales")
     .custom((value) => Number(value) >= 1 && Number(value) <= 99999999.99)
     .withMessage("Le taux de change doit être compris entre 1 et 99 999 999,99"),
