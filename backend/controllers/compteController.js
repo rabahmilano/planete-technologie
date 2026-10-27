@@ -69,7 +69,7 @@ export const crediterCompte = [
         let tauxEffectif;
 
         if (strategie === "DZD_PAYE") {
-          // mnt = montant effectivement payé en DZD.
+          // montantSaisi représente les DZD effectivement payés.
           montantADeduireCentimes = montantSaisiCentimes;
           montantAjoutCentimes = truncateToCents(
             montantSaisiCentimes,
@@ -84,7 +84,7 @@ export const crediterCompte = [
           tauxEffectif =
             montantADeduireCentimes / montantAjoutCentimes;
         } else {
-          // Ancienne stratégie : mnt = montant reçu en devise.
+          // Mode montant reçu : montantSaisi représente la devise reçue.
           montantAjoutCentimes = montantSaisiCentimes;
           montantADeduireCentimes = Math.round(
             (montantAjoutCentimes * tauxCentimes) / 100,
@@ -162,7 +162,7 @@ export const crediterCompte = [
             id_op_crd: id_op,
             date_op: new Date(dateOperation),
             montant_op: montantAjout,
-            // En nouvelle stratégie, mémoriser le taux effectif correspondant
+            // Pour le mode montant payé, mémoriser le taux effectif correspondant
             // au montant réellement payé et au montant crédité après troncature.
             taux_change:
               strategie === "DZD_PAYE" ? tauxValorisation : tauxAjout,
