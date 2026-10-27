@@ -4,11 +4,15 @@ import Card from '@mui/material/Card'
 import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
 import MenuItem from '@mui/material/MenuItem'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Select from '@mui/material/Select'
 import CardHeader from '@mui/material/CardHeader'
 import CardContent from '@mui/material/CardContent'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import InputAdornment from '@mui/material/InputAdornment'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -38,8 +42,12 @@ const defaultValues = {
 const CrediterCompte = () => {
   const { tousLesComptes, crediter } = useCompte()
   const [devise, setDevise] = useState('')
+  const [strategie, setStrategie] = useState('DZD_PAYE')
   const [isTauxEnabled, setIsTauxEnabled] = useState(false)
-  const [totalMontantDZD, setTotalMontantDZD] = useState(0)
+  const [montantEstime, setMontantEstime] = useState(0)
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [operationEnAttente, setOperationEnAttente] = useState(null)
 
   const {
     control,
@@ -50,7 +58,7 @@ const CrediterCompte = () => {
   } = useForm({ defaultValues })
 
   const handleCompteChange = newCompte => {
-    const selectedCompte = tousLesComptes?.find(compte => compte.id_cpt === newCompte)
+    const selectedCompte = tousLesComptes?.find(compte => String(compte.id_cpt) === String(newCompte))
     const newDevise = selectedCompte?.dev_code || ''
     setDevise(newDevise)
     updateTauxEnabled()
@@ -68,35 +76,97 @@ const CrediterCompte = () => {
     setIsTauxEnabled(!!compte && !!montant)
   }
 
+  const lireNombre = valeur => {
+    const normalise = String(valeur ?? '').replace(/[\s,]/g, '')
+    return normalise === '' ? 0 : Number(normalise) || 0
+  }
+
+  const convertirEnCentimes = valeur => {
+    const normalise = String(valeur ?? '').replace(/[\s,]/g, '')
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalise)) return 0
+    const [entier, decimales = ''] = normalise.split('.')
+    return Number(entier) * 100 + Number(decimales.padEnd(2, '0'))
+  }
+
+  const calculerEstimation = (mode, montantSaisi, tauxSaisi) => {
+    const montantCentimes = convertirEnCentimes(montantSaisi)
+    const tauxCentimes = convertirEnCentimes(tauxSaisi)
+    if (montantCentimes <= 0 || tauxCentimes <= 0) return 0
+
+    if (mode === 'DZD_PAYE') {
+      const deviseCentimes = Math.floor((montantCentimes * 100) / tauxCentimes)
+      return deviseCentimes / 100
+    }
+
+    return (montantCentimes * tauxCentimes) / 10000
+  }
+
   const updateTotalMontantDZD = () => {
-    const montant = parseFloat(getValues('mnt')) || 0
-    const taux = parseFloat(getValues('taux')) || 0
-    setTotalMontantDZD(montant * taux)
+    setMontantEstime(calculerEstimation(strategie, getValues('mnt'), getValues('taux')))
   }
 
   const handleTauxChange = () => {
     updateTotalMontantDZD()
   }
 
-  const onSubmit = async () => {
-    const data = getValues()
-    const updatedData = {
-      ...data,
-      dateOp: dayjs(data.dateOp).toISOString(),
-      mnt: parseFloat(data.mnt),
-      taux: parseFloat(data.taux)
+  const handleStrategieChange = event => {
+    const nextStrategie = event.target.value
+    setStrategie(nextStrategie)
+    setMontantEstime(calculerEstimation(nextStrategie, getValues('mnt'), getValues('taux')))
+  }
+
+  const onSubmit = data => {
+    const operation = {
+      compteId: String(data.cpt),
+      montantSaisi: String(data.mnt),
+      tauxChange: String(data.taux),
+      dateOperation: dayjs(data.dateOp).toISOString(),
+      strategieCredit: strategie
     }
 
-    const isSuccess = await crediter(updatedData)
-    if (isSuccess) {
-      reset(defaultValues)
-      setTotalMontantDZD(0)
-      setDevise('')
-      setIsTauxEnabled(false)
+    setOperationEnAttente(operation)
+    setIsConfirmationOpen(true)
+  }
+
+  const handleConfirmation = async () => {
+    if (!operationEnAttente || isSubmitting) return
+
+    setIsSubmitting(true)
+    try {
+      const isSuccess = await crediter(operationEnAttente)
+      if (isSuccess) {
+        reset(defaultValues)
+        setMontantEstime(0)
+        setDevise('')
+        setIsTauxEnabled(false)
+        setStrategie('DZD_PAYE')
+        setIsConfirmationOpen(false)
+        setOperationEnAttente(null)
+      }
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
+  const fermerConfirmation = () => {
+    if (isSubmitting) return
+    setIsConfirmationOpen(false)
+    setOperationEnAttente(null)
+  }
+
+  const compteSelectionne = tousLesComptes?.find(
+    compte => String(compte.id_cpt) === String(operationEnAttente?.compteId)
+  )
+  const montantConfirme = lireNombre(operationEnAttente?.montantSaisi)
+  const tauxConfirme = lireNombre(operationEnAttente?.tauxChange)
+  const estimationConfirmee = calculerEstimation(
+    operationEnAttente?.strategieCredit,
+    operationEnAttente?.montantSaisi,
+    operationEnAttente?.tauxChange
+  )
+
   return (
+    <>
     <Card sx={{ boxShadow: 3, borderRadius: 2 }}>
       <CardHeader
         title={
@@ -109,6 +179,20 @@ const CrediterCompte = () => {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={5} alignItems='flex-end'>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel id='strategie-credit-label'>Mode de calcul</InputLabel>
+                <Select
+                  labelId='strategie-credit-label'
+                  value={strategie}
+                  label='Mode de calcul'
+                  onChange={handleStrategieChange}
+                >
+                  <MenuItem value='DZD_PAYE'>Montant payé en DZD → montant crédité en devise</MenuItem>
+                  <MenuItem value='DEVISE_RECUE'>Montant reçu en devise → coût calculé en DZD</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={12} sm={6}>
               <Controller
                 name='cpt'
@@ -171,7 +255,7 @@ const CrediterCompte = () => {
                 render={({ field: { value, onChange } }) => (
                   <CustomTextField
                     fullWidth
-                    label='Montant total en devise'
+                    label={strategie === 'DZD_PAYE' ? 'Montant payé en DZD' : 'Montant total en devise'}
                     autoComplete='off'
                     value={value}
                     onChange={e => {
@@ -182,7 +266,7 @@ const CrediterCompte = () => {
                     {...(errors.mnt && { helperText: 'Doit être supérieur à 0' })}
                     InputProps={{
                       inputComponent: CleaveInput,
-                      endAdornment: <InputAdornment position='end'>{devise || '---'}</InputAdornment>
+                      endAdornment: <InputAdornment position='end'>{strategie === 'DZD_PAYE' ? 'DZD' : (devise || '---')}</InputAdornment>
                     }}
                   />
                 )}
@@ -221,17 +305,18 @@ const CrediterCompte = () => {
               <CustomTextField
                 fullWidth
                 type='text'
-                label='Montant total calculé'
-                value={formatMontant(totalMontantDZD)}
+                label={strategie === 'DZD_PAYE' ? 'Montant estimé en devise' : 'Coût estimé en DZD'}
+                value={formatMontant(montantEstime)}
                 disabled
                 InputProps={{
-                  endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
+                  endAdornment: <InputAdornment position='end'>{strategie === 'DZD_PAYE' ? (devise || '---') : 'DZD'}</InputAdornment>
                 }}
               />
             </Grid>
 
             <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-              <Button type='submit' variant='contained' startIcon={<Icon icon='tabler:send' />}>
+              <Button type='submit' variant='contained' disabled={isSubmitting}
+                startIcon={<Icon icon='tabler:send' />}>
                 Créditer le compte
               </Button>
             </Grid>
@@ -239,6 +324,58 @@ const CrediterCompte = () => {
         </form>
       </CardContent>
     </Card>
+    <ConfirmDialog
+      open={isConfirmationOpen}
+      loading={isSubmitting}
+      loadingText='Crédit en cours…'
+      handleClose={fermerConfirmation}
+      handleConfirm={handleConfirmation}
+      title='Vérifier le crédit avant confirmation'
+      confirmText='Confirmer le crédit'
+      cancelText='Retour au formulaire'
+      actionType='create'
+      content={
+        <Box>
+          <Typography sx={{ mb: 3 }}>
+            Vérifiez les informations ci-dessous avant de confirmer l'opération.
+          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>Compte à créditer</Typography>
+              <Typography fontWeight={600}>{compteSelectionne ? `${compteSelectionne.designation_cpt} (${compteSelectionne.dev_code})` : '—'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>Date de l'opération</Typography>
+              <Typography fontWeight={600}>{operationEnAttente ? dayjs(operationEnAttente.dateOperation).format('DD/MM/YYYY') : '—'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>
+                {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant payé' : 'Montant reçu'}
+              </Typography>
+              <Typography fontWeight={600}>
+                {formatMontant(montantConfirme)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'DZD' : (compteSelectionne?.dev_code || '')}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>Taux de change</Typography>
+              <Typography fontWeight={600}>{formatMontant(tauxConfirme)} DZD</Typography>
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant='body2' color='text.secondary'>
+                {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant estimé qui sera crédité' : 'Coût estimé en DZD'}
+              </Typography>
+              <Typography variant='h6' color='primary'>
+                {formatMontant(estimationConfirmee)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? (compteSelectionne?.dev_code || '') : 'DZD'}
+              </Typography>
+              <Typography variant='caption' color='text.secondary'>
+                Cette estimation est informative. Le backend recalcule les montants avant l'enregistrement.
+              </Typography>
+            </Grid>
+          </Grid>
+        </Box>
+      }
+    />
+    </>
   )
 }
 
