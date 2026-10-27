@@ -107,8 +107,10 @@ const CrediterCompte = () => {
       ...data,
       strategie,
       dateOp: dayjs(data.dateOp).toISOString(),
-      mnt: parseFloat(data.mnt),
-      taux: parseFloat(data.taux)
+      // Envoyer les valeurs numériques brutes en chaînes pour préserver les décimales.
+      // Le backend valide et recalcule tous les montants.
+      mnt: String(data.mnt),
+      taux: String(data.taux)
     }
 
     const isSuccess = await crediter(updatedData)
