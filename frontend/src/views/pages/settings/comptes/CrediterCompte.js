@@ -60,7 +60,7 @@ const CrediterCompte = () => {
   } = useForm({ defaultValues })
 
   const handleCompteChange = newCompte => {
-    const selectedCompte = tousLesComptes?.find(compte => compte.id_cpt === newCompte)
+    const selectedCompte = tousLesComptes?.find(compte => String(compte.id_cpt) === String(newCompte))
     const newDevise = selectedCompte?.dev_code || ''
     setDevise(newDevise)
     updateTauxEnabled()
@@ -80,22 +80,31 @@ const CrediterCompte = () => {
 
   const lireNombre = valeur => {
     // Tolère les séparateurs de milliers affichés par Cleave.
-    const normalise = String(valeur ?? '').replace(/[\\s,]/g, '')
+    const normalise = String(valeur ?? '').replace(/[\s,]/g, '')
     return normalise === '' ? 0 : Number(normalise) || 0
   }
 
+  const convertirEnCentimes = valeur => {
+    const normalise = String(valeur ?? '').replace(/[\s,]/g, '')
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalise)) return 0
+    const [entier, decimales = ''] = normalise.split('.')
+    return Number(entier) * 100 + Number(decimales.padEnd(2, '0'))
+  }
+
   const calculerEstimation = (mode, montantSaisi, tauxSaisi) => {
-    const montant = lireNombre(montantSaisi)
-    const taux = lireNombre(tauxSaisi)
-    if (montant <= 0 || taux <= 0) return 0
+    const montantCentimes = convertirEnCentimes(montantSaisi)
+    const tauxCentimes = convertirEnCentimes(tauxSaisi)
+    if (montantCentimes <= 0 || tauxCentimes <= 0) return 0
 
     if (mode === 'DZD_PAYE') {
-      // Montant en devise = montant DZD / taux, tronqué à 2 décimales.
-      return Math.floor((montant * 100) / taux) / 100
+      // Montant devise en centimes = floor(montant DZD en centimes * 100 / taux en centimes).
+      // Le résultat est tronqué, comme dans le backend.
+      const deviseCentimes = Math.floor((montantCentimes * 100) / tauxCentimes)
+      return deviseCentimes / 100
     }
 
     // Mode montant reçu en devise : estimation du coût en DZD.
-    return montant * taux
+    return (montantCentimes * tauxCentimes) / 10000
   }
 
   const updateTotalMontantDZD = () => {
