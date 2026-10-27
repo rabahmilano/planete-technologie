@@ -12,10 +12,7 @@ import CardContent from '@mui/material/CardContent'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import InputAdornment from '@mui/material/InputAdornment'
-import Dialog from '@mui/material/Dialog'
-import DialogTitle from '@mui/material/DialogTitle'
-import DialogContent from '@mui/material/DialogContent'
-import DialogActions from '@mui/material/DialogActions'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -323,53 +320,55 @@ const CrediterCompte = () => {
         </form>
       </CardContent>
     </Card>
-    <Dialog open={isConfirmationOpen} onClose={fermerConfirmation} fullWidth maxWidth='sm'>
-      <DialogTitle>Vérification de l'opération</DialogTitle>
-      <DialogContent dividers>
-        <Typography sx={{ mb: 2 }}>
-          Vérifiez les informations ci-dessous avant de confirmer le crédit.
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6}>
-            <Typography variant='body2' color='text.secondary'>Compte à créditer</Typography>
-            <Typography fontWeight={600}>{compteSelectionne ? `${compteSelectionne.designation_cpt} (${compteSelectionne.dev_code})` : '—'}</Typography>
+    <ConfirmDialog
+      open={isConfirmationOpen}
+      handleClose={fermerConfirmation}
+      handleConfirm={handleConfirmation}
+      title='Vérifier le crédit avant confirmation'
+      confirmText='Confirmer le crédit'
+      cancelText='Retour au formulaire'
+      actionType='create'
+      content={
+        <Box>
+          <Typography sx={{ mb: 3 }}>
+            Vérifiez les informations ci-dessous avant de confirmer l'opération.
+          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>Compte à créditer</Typography>
+              <Typography fontWeight={600}>{compteSelectionne ? `${compteSelectionne.designation_cpt} (${compteSelectionne.dev_code})` : '—'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>Date de l'opération</Typography>
+              <Typography fontWeight={600}>{operationEnAttente ? dayjs(operationEnAttente.dateOperation).format('DD/MM/YYYY') : '—'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>
+                {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant payé' : 'Montant reçu'}
+              </Typography>
+              <Typography fontWeight={600}>
+                {formatMontant(montantConfirme)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'DZD' : (compteSelectionne?.dev_code || '')}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant='body2' color='text.secondary'>Taux de change</Typography>
+              <Typography fontWeight={600}>{formatMontant(tauxConfirme)} DZD</Typography>
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant='body2' color='text.secondary'>
+                {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant estimé qui sera crédité' : 'Coût estimé en DZD'}
+              </Typography>
+              <Typography variant='h6' color='primary'>
+                {formatMontant(estimationConfirmee)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? (compteSelectionne?.dev_code || '') : 'DZD'}
+              </Typography>
+              <Typography variant='caption' color='text.secondary'>
+                Cette estimation est informative. Le backend recalcule les montants avant l'enregistrement.
+              </Typography>
+            </Grid>
           </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant='body2' color='text.secondary'>Date de l'opération</Typography>
-            <Typography fontWeight={600}>{operationEnAttente ? dayjs(operationEnAttente.dateOperation).format('DD/MM/YYYY') : '—'}</Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant='body2' color='text.secondary'>
-              {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant payé' : 'Montant reçu'}
-            </Typography>
-            <Typography fontWeight={600}>
-              {formatMontant(montantConfirme)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'DZD' : (compteSelectionne?.dev_code || '')}
-            </Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant='body2' color='text.secondary'>Taux de change</Typography>
-            <Typography fontWeight={600}>{formatMontant(tauxConfirme)} DZD</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant='body2' color='text.secondary'>
-              {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant estimé qui sera crédité' : 'Coût estimé en DZD'}
-            </Typography>
-            <Typography variant='h6' color='primary'>
-              {formatMontant(estimationConfirmee)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? (compteSelectionne?.dev_code || '') : 'DZD'}
-            </Typography>
-            <Typography variant='caption' color='text.secondary'>
-              Cette estimation est informative. Le backend recalcule les montants avant l'enregistrement.
-            </Typography>
-          </Grid>
-        </Grid>
-      </DialogContent>
-      <DialogActions sx={{ p: 3, gap: 2 }}>
-        <Button onClick={fermerConfirmation}>Retour au formulaire</Button>
-        <Button variant='contained' color='success' onClick={handleConfirmation}>
-          Confirmer le crédit
-        </Button>
-      </DialogActions>
-    </Dialog>
+        </Box>
+      }
+    />
     </>
   )
 }
