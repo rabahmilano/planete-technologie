@@ -12,6 +12,10 @@ import CardContent from '@mui/material/CardContent'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import InputAdornment from '@mui/material/InputAdornment'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
 
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -43,7 +47,9 @@ const CrediterCompte = () => {
   const [devise, setDevise] = useState('')
   const [strategie, setStrategie] = useState('DZD_PAYE')
   const [isTauxEnabled, setIsTauxEnabled] = useState(false)
-  const [totalMontantDZD, setTotalMontantDZD] = useState(0)
+  const [montantEstime, setMontantEstime] = useState(0)
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
+  const [operationEnAttente, setOperationEnAttente] = useState(null)
 
   const {
     control,
@@ -72,17 +78,28 @@ const CrediterCompte = () => {
     setIsTauxEnabled(!!compte && !!montant)
   }
 
-  const updateTotalMontantDZD = () => {
-    const montant = Number(String(getValues('mnt') || '').replace(/,/g, '')) || 0
-    const taux = Number(String(getValues('taux') || '').replace(/,/g, '')) || 0
+  const lireNombre = valeur => {
+    // Tolère les séparateurs de milliers affichés par Cleave.
+    const normalise = String(valeur ?? '').replace(/[\\s,]/g, '')
+    return normalise === '' ? 0 : Number(normalise) || 0
+  }
 
-    if (strategie === 'DZD_PAYE') {
-      // Estimation informative uniquement : le backend recalcule le montant définitif.
-      const montantDeviseCentimes = taux > 0 ? Math.floor((montant * 100) / taux * 100 + Number.EPSILON) : 0
-      setTotalMontantDZD(montantDeviseCentimes / 100)
-    } else {
-      setTotalMontantDZD(montant * taux)
+  const calculerEstimation = (mode, montantSaisi, tauxSaisi) => {
+    const montant = lireNombre(montantSaisi)
+    const taux = lireNombre(tauxSaisi)
+    if (montant <= 0 || taux <= 0) return 0
+
+    if (mode === 'DZD_PAYE') {
+      // Montant en devise = montant DZD / taux, tronqué à 2 décimales.
+      return Math.floor((montant * 100) / taux) / 100
     }
+
+    // Mode montant reçu en devise : estimation du coût en DZD.
+    return montant * taux
+  }
+
+  const updateTotalMontantDZD = () => {
+    setMontantEstime(calculerEstimation(strategie, getValues('mnt'), getValues('taux')))
   }
 
   const handleTauxChange = () => {
@@ -92,38 +109,55 @@ const CrediterCompte = () => {
   const handleStrategieChange = event => {
     const nextStrategie = event.target.value
     setStrategie(nextStrategie)
-    const montant = Number(String(getValues('mnt') || '').replace(/,/g, '')) || 0
-    const taux = Number(String(getValues('taux') || '').replace(/,/g, '')) || 0
-    if (nextStrategie === 'DZD_PAYE') {
-      setTotalMontantDZD(taux > 0 ? Math.floor((montant * 10000) / taux + Number.EPSILON) / 100 : 0)
-    } else {
-      setTotalMontantDZD(montant * taux)
-    }
+    setMontantEstime(calculerEstimation(nextStrategie, getValues('mnt'), getValues('taux')))
   }
 
-  const onSubmit = async () => {
-    const data = getValues()
-    const updatedData = {
-      ...data,
-      strategie,
-      dateOp: dayjs(data.dateOp).toISOString(),
-      // Envoyer les valeurs numériques brutes en chaînes pour préserver les décimales.
-      // Le backend valide et recalcule tous les montants.
-      mnt: String(data.mnt),
-      taux: String(data.taux)
+  const onSubmit = data => {
+    const operation = {
+      compteId: String(data.cpt),
+      montantSaisi: String(data.mnt),
+      tauxChange: String(data.taux),
+      dateOperation: dayjs(data.dateOp).toISOString(),
+      strategieCredit: strategie
     }
 
-    const isSuccess = await crediter(updatedData)
+    setOperationEnAttente(operation)
+    setIsConfirmationOpen(true)
+  }
+
+  const handleConfirmation = async () => {
+    if (!operationEnAttente) return
+
+    const isSuccess = await crediter(operationEnAttente)
     if (isSuccess) {
       reset(defaultValues)
-      setTotalMontantDZD(0)
+      setMontantEstime(0)
       setDevise('')
       setIsTauxEnabled(false)
       setStrategie('DZD_PAYE')
+      setIsConfirmationOpen(false)
+      setOperationEnAttente(null)
     }
   }
 
+  const fermerConfirmation = () => {
+    setIsConfirmationOpen(false)
+    setOperationEnAttente(null)
+  }
+
+  const compteSelectionne = tousLesComptes?.find(
+    compte => String(compte.id_cpt) === String(operationEnAttente?.compteId)
+  )
+  const montantConfirme = lireNombre(operationEnAttente?.montantSaisi)
+  const tauxConfirme = lireNombre(operationEnAttente?.tauxChange)
+  const estimationConfirmee = calculerEstimation(
+    operationEnAttente?.strategieCredit,
+    operationEnAttente?.montantSaisi,
+    operationEnAttente?.tauxChange
+  )
+
   return (
+    <>
     <Card sx={{ boxShadow: 3, borderRadius: 2 }}>
       <CardHeader
         title={
@@ -142,11 +176,11 @@ const CrediterCompte = () => {
                 <Select
                   labelId='strategie-credit-label'
                   value={strategie}
-                  label='Stratégie de crédit'
+                  label='Mode de saisie'
                   onChange={handleStrategieChange}
                 >
-                  <MenuItem value='DZD_PAYE'>Nouvelle stratégie — montant payé en DZD</MenuItem>
-                  <MenuItem value='DEVISE_RECUE'>Ancienne stratégie — montant reçu en devise</MenuItem>
+                  <MenuItem value='DZD_PAYE'>Saisir le montant payé en DZD</MenuItem>
+                  <MenuItem value='DEVISE_RECUE'>Saisir le montant reçu en devise</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -262,8 +296,8 @@ const CrediterCompte = () => {
               <CustomTextField
                 fullWidth
                 type='text'
-                label={strategie === 'DZD_PAYE' ? 'Montant estimé en devise' : 'Montant total calculé'}
-                value={formatMontant(totalMontantDZD)}
+                label={strategie === 'DZD_PAYE' ? 'Montant estimé en devise' : 'Coût estimé en DZD'}
+                value={formatMontant(montantEstime)}
                 disabled
                 InputProps={{
                   endAdornment: <InputAdornment position='end'>{strategie === 'DZD_PAYE' ? (devise || '---') : 'DZD'}</InputAdornment>
@@ -280,6 +314,54 @@ const CrediterCompte = () => {
         </form>
       </CardContent>
     </Card>
+    <Dialog open={isConfirmationOpen} onClose={fermerConfirmation} fullWidth maxWidth='sm'>
+      <DialogTitle>Vérification de l'opération</DialogTitle>
+      <DialogContent dividers>
+        <Typography sx={{ mb: 2 }}>
+          Vérifiez les informations ci-dessous avant de confirmer le crédit.
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6}>
+            <Typography variant='body2' color='text.secondary'>Compte à créditer</Typography>
+            <Typography fontWeight={600}>{compteSelectionne ? `${compteSelectionne.designation_cpt} (${compteSelectionne.dev_code})` : '—'}</Typography>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <Typography variant='body2' color='text.secondary'>Date de l'opération</Typography>
+            <Typography fontWeight={600}>{operationEnAttente ? dayjs(operationEnAttente.dateOperation).format('DD/MM/YYYY') : '—'}</Typography>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <Typography variant='body2' color='text.secondary'>
+              {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant payé' : 'Montant reçu'}
+            </Typography>
+            <Typography fontWeight={600}>
+              {formatMontant(montantConfirme)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'DZD' : (compteSelectionne?.dev_code || '')}
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <Typography variant='body2' color='text.secondary'>Taux de change</Typography>
+            <Typography fontWeight={600}>{formatMontant(tauxConfirme)} DZD</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant='body2' color='text.secondary'>
+              {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant estimé qui sera crédité' : 'Coût estimé en DZD'}
+            </Typography>
+            <Typography variant='h6' color='primary'>
+              {formatMontant(estimationConfirmee)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? (compteSelectionne?.dev_code || '') : 'DZD'}
+            </Typography>
+            <Typography variant='caption' color='text.secondary'>
+              Cette estimation est informative. Le backend recalcule les montants avant l'enregistrement.
+            </Typography>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions sx={{ p: 3, gap: 2 }}>
+        <Button onClick={fermerConfirmation}>Retour au formulaire</Button>
+        <Button variant='contained' color='success' onClick={handleConfirmation}>
+          Confirmer le crédit
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   )
 }
 
