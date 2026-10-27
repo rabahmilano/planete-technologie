@@ -3,16 +3,26 @@ import { body, validationResult } from "express-validator";
 import { getMaxValue, arrondir } from "../config/utils.js";
 
 export const crediterCompte = [
-  body("cpt").isNumeric().notEmpty().withMessage("Le compte est obligatoire"),
+  body("cpt")
+    .isInt({ min: 1 })
+    .withMessage("Le compte est obligatoire et doit être un identifiant entier"),
   body("mnt")
-    .isFloat({ min: 1 })
-    .notEmpty()
-    .withMessage("Le montant doit etre >= 1"),
+    .matches(/^\\d+(?:\\.\\d{1,2})?$/)
+    .withMessage("Le montant doit être un nombre positif avec au maximum 2 décimales")
+    .custom((value) => Number(value) >= 1)
+    .withMessage("Le montant doit être >= 1"),
   body("taux")
-    .isFloat({ min: 1 })
-    .notEmpty()
-    .withMessage("Le taux de change doit etre >= 1"),
-  body("dateOp").notEmpty().withMessage("La date est obligatoire"),
+    .matches(/^\\d+(?:\\.\\d{1,2})?$/)
+    .withMessage("Le taux doit être un nombre positif avec au maximum 2 décimales")
+    .custom((value) => Number(value) >= 1)
+    .withMessage("Le taux de change doit être >= 1"),
+  body("dateOp")
+    .isISO8601({ strict: true })
+    .withMessage("La date d'opération est invalide"),
+  body("strategie")
+    .optional()
+    .isIn(["DEVISE_RECUE", "DZD_PAYE"])
+    .withMessage("La stratégie de crédit est invalide"),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -21,10 +31,26 @@ export const crediterCompte = [
     }
 
     const { cpt, mnt, taux, dateOp } = req.body;
+    // Compatibilité temporaire : sans stratégie explicite, l'ancien formulaire
+    // conserve son comportement jusqu'à son adaptation côté frontend.
+    const strategie = req.body.strategie || "DEVISE_RECUE";
+
+    // Les montants manipulés en centimes évitent les erreurs binaires des floats.
+    const toCents = (value) => {
+      const [whole, fraction = ""] = String(value).split(".");
+      return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+    };
+    const fromCents = (value) => value / 100;
+    const truncateToCents = (numeratorCents, rateCents) =>
+      Math.floor((numeratorCents * 100) / rateCents);
 
     try {
       await prisma.$transaction(async (tx) => {
-        const cptIdInt = parseInt(cpt, 10);
+        const cptIdInt = Number(cpt);
+        const montantSaisiCentimes = toCents(mnt);
+        const tauxCentimes = toCents(taux);
+
+        if (!Number.isSafeInteger(cptIdInt)) throw new Error("INVALID_ACCOUNT_ID");
 
         const infoCompte = await tx.compte.findUnique({
           where: { id_cpt: cptIdInt },
@@ -38,8 +64,38 @@ export const crediterCompte = [
 
         if (!infoCompte) throw new Error("COMPTE_NOT_FOUND");
 
-        const montantAjout = arrondir(parseFloat(mnt));
-        const tauxAjout = arrondir(parseFloat(taux));
+        let montantAjoutCentimes;
+        let montantADeduireCentimes;
+        let tauxEffectif;
+
+        if (strategie === "DZD_PAYE") {
+          // mnt = montant effectivement payé en DZD.
+          montantADeduireCentimes = montantSaisiCentimes;
+          montantAjoutCentimes = truncateToCents(
+            montantSaisiCentimes,
+            tauxCentimes,
+          );
+
+          if (montantAjoutCentimes < 1) {
+            throw new Error("CREDIT_AMOUNT_TOO_SMALL");
+          }
+
+          // Le taux effectif reflète le coût réellement payé après troncature.
+          tauxEffectif =
+            montantADeduireCentimes / montantAjoutCentimes;
+        } else {
+          // Ancienne stratégie : mnt = montant reçu en devise.
+          montantAjoutCentimes = montantSaisiCentimes;
+          montantADeduireCentimes = Math.round(
+            (montantAjoutCentimes * tauxCentimes) / 100,
+          );
+          tauxEffectif = fromCents(tauxCentimes);
+        }
+
+        const montantAjout = fromCents(montantAjoutCentimes);
+        const montantPayeDzd = fromCents(montantADeduireCentimes);
+        const tauxAjout = fromCents(tauxCentimes);
+        const tauxValorisation = arrondir(tauxEffectif);
 
         if (
           infoCompte.type_cpt === "COMMUN" &&
@@ -56,31 +112,48 @@ export const crediterCompte = [
 
           if (!caisse) throw new Error("CAISSE_NOT_FOUND");
 
-          const montantADeduire = arrondir(montantAjout * tauxAjout);
-          const soldeDisponibleCaisse = arrondir(
-            parseFloat(caisse.solde_actuel) -
-              parseFloat(caisse.solde_bloque || 0),
-          );
+          const soldeDisponibleCaisseCentimes =
+            toCents(caisse.solde_actuel) -
+            toCents(caisse.solde_bloque || 0);
 
-          if (soldeDisponibleCaisse < montantADeduire) {
+          if (soldeDisponibleCaisseCentimes < montantADeduireCentimes) {
             throw new Error("INSUFFICIENT_FUNDS");
           }
 
-          await tx.compte.update({
-            where: { id_cpt: caisse.id_cpt },
+          // Mise à jour conditionnelle pour empêcher un débit qui ferait
+          // passer la Caisse sous le montant bloqué si deux opérations arrivent ensemble.
+          const debitCaisse = await tx.compte.updateMany({
+            where: {
+              id_cpt: caisse.id_cpt,
+              solde_actuel: {
+                gte: fromCents(
+                  toCents(caisse.solde_bloque || 0) +
+                    montantADeduireCentimes,
+                ),
+              },
+            },
             data: {
-              solde_actuel: { decrement: montantADeduire },
+              solde_actuel: { decrement: montantPayeDzd },
             },
           });
+
+          if (debitCaisse.count !== 1) {
+            throw new Error("INSUFFICIENT_FUNDS");
+          }
         }
 
-        const soldeAncien = parseFloat(infoCompte.solde_actuel || 0);
-        const tauxAncien = parseFloat(infoCompte.taux_change_actuel || 0);
+        const soldeAncien = Number(infoCompte.solde_actuel || 0);
+        const tauxAncien = Number(infoCompte.taux_change_actuel || 0);
+        const soldeNouveau = soldeAncien + montantAjout;
 
-        const newTauxChange = arrondir(
-          (soldeAncien * tauxAncien + montantAjout * tauxAjout) /
-            (soldeAncien + montantAjout),
-        );
+        const newTauxChange =
+          soldeNouveau > 0
+            ? arrondir(
+                (soldeAncien * tauxAncien +
+                  montantPayeDzd) /
+                  soldeNouveau,
+              )
+            : tauxValorisation;
 
         const id_op = await getMaxValue("crediter", "id_op_crd", null);
 
@@ -89,7 +162,10 @@ export const crediterCompte = [
             id_op_crd: id_op,
             date_op: new Date(dateOp),
             montant_op: montantAjout,
-            taux_change: tauxAjout,
+            // En nouvelle stratégie, mémoriser le taux effectif correspondant
+            // au montant réellement payé et au montant crédité après troncature.
+            taux_change:
+              strategie === "DZD_PAYE" ? tauxValorisation : tauxAjout,
             compte: {
               connect: {
                 id_cpt: cptIdInt,
@@ -107,17 +183,25 @@ export const crediterCompte = [
         });
       });
 
-      res
-        .status(200)
-        .json({ message: "Votre compte a été mis à jour avec succès!" });
+      return res.status(200).json({
+        message: "Votre compte a été mis à jour avec succès!",
+      });
     } catch (error) {
       if (error.message === "COMPTE_NOT_FOUND") {
         return res.status(404).json({ message: "Compte introuvable." });
       }
+      if (error.message === "INVALID_ACCOUNT_ID") {
+        return res.status(400).json({ message: "Identifiant de compte invalide." });
+      }
+      if (error.message === "CREDIT_AMOUNT_TOO_SMALL") {
+        return res.status(400).json({
+          message: "Le montant payé est trop faible pour créditer 0,01 unité de devise.",
+        });
+      }
       if (error.message === "INSUFFICIENT_FUNDS") {
         return res.status(400).json({
           message:
-            "Le solde de la CAISSE est insuffisant (fonds bloqués atteints).",
+            "Le solde disponible de la CAISSE est insuffisant (fonds bloqués déduits).",
         });
       }
       if (error.message === "CAISSE_NOT_FOUND") {
@@ -126,13 +210,12 @@ export const crediterCompte = [
           .json({ message: "Compte 'Caisse' introuvable." });
       }
 
-      res
+      return res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
     }
   },
 ];
-
 export const addCompte = [
   body("typeCpt")
     .isString()
