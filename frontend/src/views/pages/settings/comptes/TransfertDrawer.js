@@ -237,7 +237,7 @@ const TransfertDrawer = ({ open, toggle }) => {
                     <Alert severity='info' variant='outlined'>
                       Conversion estimée : {formatMontant(montantNumerique)} {selectedSource.dev_code} → {formatMontant(montantDestEstime)} {selectedDest.dev_code}
                       <br />
-                      Taux implicite : {formatMontant(montantDestEstime / montantNumerique, 4)} {selectedDest.dev_code} pour 1 {selectedSource.dev_code}
+                      Taux de conversion estimé : {formatMontant(tauxSource / tauxDest, 4)} {selectedDest.dev_code} pour 1 {selectedSource.dev_code}
                     </Alert>
                   ) : (
                     <Alert severity='warning' variant='outlined'>
