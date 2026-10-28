@@ -32,6 +32,7 @@ const defaultValues = {
   cptSource: '',
   cptDest: '',
   montant: '',
+  montantDest: '',
   dateTransfert: dayjs(),
   observation: ''
 }
@@ -52,18 +53,15 @@ const TransfertDrawer = ({ open, toggle }) => {
   const watchCptSource = watch('cptSource')
   const watchCptDest = watch('cptDest')
   const watchMontant = watch('montant')
+  const watchMontantDest = watch('montantDest')
   const selectedSource = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptSource))
   const selectedDest = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptDest))
   const montantNumerique = parseFloat(String(watchMontant || '').replace(/\s/g, '')) || 0
   const memeDevise = selectedSource?.dev_code === selectedDest?.dev_code
-  const tauxSource = parseFloat(selectedSource?.taux_change_actuel || 0)
-  const tauxDest = parseFloat(selectedDest?.taux_change_actuel || 0)
-  const montantDestEstime = selectedSource && selectedDest && montantNumerique > 0
-    ? memeDevise
-      ? montantNumerique
-      : tauxSource > 0 && tauxDest > 0
-        ? Math.round((montantNumerique * tauxSource / tauxDest + Number.EPSILON) * 100) / 100
-        : null
+  const montantDestNumerique = parseFloat(String(watchMontantDest || '').replace(/\\s/g, '')) || 0
+  const montantDestEffectif = memeDevise ? montantNumerique : montantDestNumerique
+  const tauxImplicite = montantNumerique > 0 && montantDestNumerique > 0
+    ? montantDestNumerique / montantNumerique
     : null
 
   const destinationsValides =
@@ -77,10 +75,14 @@ const TransfertDrawer = ({ open, toggle }) => {
   const onSubmit = async data => {
     setSubmitting(true)
     const cleanMontant = parseFloat(data.montant.toString().replace(/\s/g, ''))
+    const cleanMontantDest = data.montantDest
+      ? parseFloat(data.montantDest.toString().replace(/\\s/g, ''))
+      : cleanMontant
     const payload = {
       cptSource: data.cptSource,
       cptDest: data.cptDest,
       montant: cleanMontant,
+      montantDest: cleanMontantDest,
       dateTransfert: dayjs(data.dateTransfert).toISOString(),
       observation: data.observation?.trim() || ''
     }
@@ -129,6 +131,7 @@ const TransfertDrawer = ({ open, toggle }) => {
                   onChange={e => {
                     field.onChange(e)
                     setValue('cptDest', '')
+                    setValue('montantDest', '')
                   }}
                   InputProps={{
                     startAdornment: (
@@ -227,21 +230,56 @@ const TransfertDrawer = ({ open, toggle }) => {
                 />
               </Box>
 
+              {selectedDest && !memeDevise && (
+                <Box sx={{ mb: 4 }}>
+                  <Controller
+                    name='montantDest'
+                    control={control}
+                    rules={{
+                      required: 'Obligatoire',
+                      validate: v => parseFloat(String(v || '').replace(/\\s/g, '')) > 0 || 'Montant reçu invalide'
+                    }}
+                    render={({ field: { value, onChange }, fieldState: { error } }) => (
+                      <CustomTextField
+                        fullWidth
+                        label='Montant reçu'
+                        value={value}
+                        onChange={onChange}
+                        error={!!error}
+                        helperText={error?.message}
+                        autoComplete='off'
+                        InputProps={{
+                          inputComponent: CleaveInput,
+                          startAdornment: (
+                            <InputAdornment position='start'>
+                              <Icon icon='tabler:report-money' />
+                            </InputAdornment>
+                          ),
+                          endAdornment: <InputAdornment position='end'>{selectedDest.dev_code}</InputAdornment>
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
+              )}
+
               {selectedDest && montantNumerique > 0 && (
                 <Box sx={{ mb: 4 }}>
                   {memeDevise ? (
                     <Alert severity='info' variant='outlined'>
-                      Le compte destination recevra {formatMontant(montantDestEstime)} {selectedDest.dev_code}.
+                      Le compte destination recevra {formatMontant(montantDestEffectif)} {selectedDest.dev_code}.
                     </Alert>
-                  ) : montantDestEstime !== null ? (
+                  ) : tauxImplicite !== null ? (
                     <Alert severity='info' variant='outlined'>
-                      Conversion estimée : {formatMontant(montantNumerique)} {selectedSource.dev_code} → {formatMontant(montantDestEstime)} {selectedDest.dev_code}
+                      Montant débité : {formatMontant(montantNumerique)} {selectedSource.dev_code}
                       <br />
-                      Taux de conversion estimé : {formatMontant(tauxSource / tauxDest, 4)} {selectedDest.dev_code} pour 1 {selectedSource.dev_code}
+                      Montant reçu : {formatMontant(montantDestNumerique)} {selectedDest.dev_code}
+                      <br />
+                      Taux implicite : {formatMontant(tauxImplicite, 4)} {selectedDest.dev_code} pour 1 {selectedSource.dev_code}
                     </Alert>
                   ) : (
-                    <Alert severity='warning' variant='outlined'>
-                      Conversion impossible : vérifiez les taux de valorisation des deux comptes.
+                    <Alert severity='info' variant='outlined'>
+                      Saisissez le montant reçu pour calculer le taux implicite.
                     </Alert>
                   )}
                 </Box>
