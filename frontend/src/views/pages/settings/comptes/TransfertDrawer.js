@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Alert from '@mui/material/Alert'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import InputAdornment from '@mui/material/InputAdornment'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -40,6 +41,8 @@ const defaultValues = {
 const TransfertDrawer = ({ open, toggle }) => {
   const { tousLesComptes, transferer } = useCompte()
   const [submitting, setSubmitting] = useState(false)
+  const [confirmationOpen, setConfirmationOpen] = useState(false)
+  const [transfertEnAttente, setTransfertEnAttente] = useState(null)
 
   const {
     control,
@@ -68,31 +71,47 @@ const TransfertDrawer = ({ open, toggle }) => {
     tousLesComptes?.filter(c => String(c.id_cpt) !== String(watchCptSource)) || []
 
   const handleClose = () => {
+    if (submitting) return
+    setConfirmationOpen(false)
+    setTransfertEnAttente(null)
     reset()
     toggle()
   }
 
-  const onSubmit = async data => {
-    setSubmitting(true)
-    const cleanMontant = parseFloat(data.montant.toString().replace(/\s/g, ''))
+  const onSubmit = data => {
+    const cleanMontant = parseFloat(data.montant.toString().replace(/\\s/g, ''))
     const cleanMontantDest = data.montantDest
-      ? parseFloat(data.montantDest.toString().replace(/\s/g, ''))
+      ? parseFloat(data.montantDest.toString().replace(/\\s/g, ''))
       : cleanMontant
-    const payload = {
+
+    setTransfertEnAttente({
       cptSource: data.cptSource,
       cptDest: data.cptDest,
       montant: cleanMontant,
       montantDest: cleanMontantDest,
       dateTransfert: dayjs(data.dateTransfert).toISOString(),
       observation: data.observation?.trim() || ''
-    }
-
-    const success = await transferer(payload)
-    if (success) {
-      handleClose()
-    }
-    setSubmitting(false)
+    })
+    setConfirmationOpen(true)
   }
+
+  const handleConfirmation = async () => {
+    if (!transfertEnAttente || submitting) return
+
+    setSubmitting(true)
+    try {
+      const success = await transferer(transfertEnAttente)
+      if (success) {
+        setConfirmationOpen(false)
+        setTransfertEnAttente(null)
+        reset()
+        toggle()
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
 
   return (
     <Drawer
@@ -364,6 +383,54 @@ const TransfertDrawer = ({ open, toggle }) => {
           )}
         </form>
       </Box>
+      <ConfirmDialog
+        open={confirmationOpen}
+        loading={submitting}
+        loadingText='Transfert en cours…'
+        handleClose={() => {
+          if (!submitting) {
+            setConfirmationOpen(false)
+            setTransfertEnAttente(null)
+          }
+        }}
+        handleConfirm={handleConfirmation}
+        title='Vérifier le transfert avant confirmation'
+        confirmText='Confirmer le transfert'
+        cancelText='Retour au formulaire'
+        actionType='create'
+        content={
+          <Box>
+            <Typography sx={{ mb: 3 }}>
+              Vérifiez les montants et les comptes avant de confirmer cette opération financière.
+            </Typography>
+            <Box sx={{ p: 4, borderRadius: 1, border: '1px dashed', borderColor: 'primary.main', backgroundColor: 'action.hover' }}>
+              <Typography variant='body2' sx={{ mb: 2 }}>
+                <strong>Compte source :</strong> {selectedSource?.designation_cpt || '—'} ({selectedSource?.dev_code || '—'})
+              </Typography>
+              <Typography variant='h6' color='error.main' sx={{ mb: 3 }}>
+                Débit : {transfertEnAttente ? formatMontant(transfertEnAttente.montant) : '—'} {selectedSource?.dev_code || ''}
+              </Typography>
+              <Typography variant='body2' sx={{ mb: 2 }}>
+                <strong>Compte destination :</strong> {selectedDest?.designation_cpt || '—'} ({selectedDest?.dev_code || '—'})
+              </Typography>
+              <Typography variant='h6' color='success.main' sx={{ mb: 2 }}>
+                Crédit : {transfertEnAttente ? formatMontant(transfertEnAttente.montantDest) : '—'} {selectedDest?.dev_code || ''}
+              </Typography>
+              {selectedSource?.dev_code !== selectedDest?.dev_code && transfertEnAttente?.montant > 0 && (
+                <Typography variant='body2' sx={{ mb: 2 }}>
+                  Taux implicite : {formatMontant(transfertEnAttente.montantDest / transfertEnAttente.montant, 4)} {selectedDest?.dev_code} pour 1 {selectedSource?.dev_code}
+                </Typography>
+              )}
+              <Typography variant='body2' sx={{ mb: 1 }}>
+                <strong>Date :</strong> {transfertEnAttente ? dayjs(transfertEnAttente.dateTransfert).format('DD/MM/YYYY') : '—'}
+              </Typography>
+              {transfertEnAttente?.observation && (
+                <Typography variant='body2'><strong>Observation :</strong> {transfertEnAttente.observation}</Typography>
+              )}
+            </Box>
+          </Box>
+        }
+      />
     </Drawer>
   )
 }
