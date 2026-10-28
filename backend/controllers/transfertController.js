@@ -6,6 +6,7 @@ export const executeTransfert = [
   body("cptSource").isInt().notEmpty().withMessage("Source obligatoire"),
   body("cptDest").isInt().notEmpty().withMessage("Destination obligatoire"),
   body("montant").isDecimal().notEmpty().withMessage("Montant obligatoire"),
+  body("montantDest").optional().isDecimal().withMessage("Montant reçu invalide"),
   body("dateTransfert").notEmpty().withMessage("Date obligatoire"),
   body("observation").optional({ checkFalsy: true }).isString().trim(),
 
@@ -14,7 +15,7 @@ export const executeTransfert = [
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
 
-    const { cptSource, cptDest, montant, dateTransfert, observation } =
+    const { cptSource, cptDest, montant, montantDest: montantDestSaisi, dateTransfert, observation } =
       req.body;
 
     const sourceId = parseInt(cptSource, 10);
@@ -67,19 +68,18 @@ export const executeTransfert = [
 
         let montantDest = montantSaisi;
         if (!memeDevise) {
-          if (tauxSource <= 0 || tauxDestAncien <= 0)
-            throw new Error("INVALID_EXCHANGE_RATE");
-          montantDest = arrondir((montantSaisi * tauxSource) / tauxDestAncien);
+          montantDest = parseFloat(montantDestSaisi);
+          if (!Number.isFinite(montantDest) || montantDest <= 0)
+            throw new Error("INVALID_DESTINATION_AMOUNT");
           montantDest = Math.round((montantDest + Number.EPSILON) * 100) / 100;
-          if (montantDest <= 0) throw new Error("INVALID_CONVERTED_AMOUNT");
         }
 
         const nouveauSoldeDest = arrondir(soldeDestAncien + montantDest);
+        const valeurTransfertDzd = montantSaisi * tauxSource;
         const nouveauTauxDest =
           nouveauSoldeDest > 0
             ? arrondir(
-                (soldeDestAncien * tauxDestAncien +
-                  montantSaisi * tauxSource) /
+                (soldeDestAncien * tauxDestAncien + valeurTransfertDzd) /
                   nouveauSoldeDest,
               )
             : tauxSource;
@@ -130,6 +130,8 @@ export const executeTransfert = [
           "Conversion impossible : le taux de valorisation d'un compte est nul ou invalide.",
         INVALID_CONVERTED_AMOUNT:
           "Le montant converti est inférieur à la précision autorisée.",
+        INVALID_DESTINATION_AMOUNT:
+          "Le montant reçu doit être supérieur à zéro.",
       };
       res
         .status(403)
