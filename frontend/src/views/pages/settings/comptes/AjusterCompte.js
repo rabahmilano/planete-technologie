@@ -11,7 +11,6 @@ import Typography from '@mui/material/Typography'
 import RadioGroup from '@mui/material/RadioGroup'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Radio from '@mui/material/Radio'
-import Divider from '@mui/material/Divider'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import CustomTextField from 'src/@core/components/mui/text-field'
@@ -58,9 +57,7 @@ const AjusterCompte = () => {
 
   const lireNombre = value => Number(String(value ?? '').replace(/[\s,]/g, '')) || 0
 
-  const formulaireValide = Boolean(compteId && watch('dateAjustement') && lireNombre(montant) > 0 && String(watch('observation') || '').trim() && (typeAjustement !== 'AUGMENTATION' || modeTaux !== 'PERSONNALISE' || lireNombre(tauxPersonnalise) > 0))
-
-  const onSubmit = data => {
+    const onSubmit = data => {
     const montantNet = lireNombre(data.montant)
     const tauxNet = lireNombre(data.tauxPersonnalise)
     if (!data.compteId || montantNet <= 0 || !data.observation.trim()) return
@@ -113,8 +110,8 @@ const AjusterCompte = () => {
         />
         <CardContent sx={{ pt: 2 }}>
           <form onSubmit={handleSubmit(onSubmit)}>
-            <Grid container spacing={3} alignItems='flex-start'>
-              <Grid item xs={12} sm={6} md={4}>
+            <Grid container spacing={5} alignItems='flex-end'>
+              <Grid item xs={12} sm={6}>
                 <Controller
                   name='compteId'
                   control={control}
@@ -131,7 +128,7 @@ const AjusterCompte = () => {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={4}>
+              <Grid item xs={12} sm={6}>
                 <Controller
                   name='dateAjustement'
                   control={control}
@@ -174,16 +171,14 @@ const AjusterCompte = () => {
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography variant='body2' sx={{ mb: 1, fontWeight: 600 }}>Sens de l’ajustement</Typography>
+                <Typography variant='body2' sx={{ mb: 1, fontWeight: 600 }}>Type d’ajustement</Typography>
                 <Controller
                   name='typeAjustement'
                   control={control}
                   render={({ field }) => (
                     <RadioGroup row {...field} onChange={event => {
                       field.onChange(event.target.value)
-                      if (event.target.value === 'DIMINUTION') {
-                        // Une diminution utilise obligatoirement le taux courant.
-                      }
+                      if (event.target.value === 'DIMINUTION') setValue('modeTaux', 'ACTUEL')
                     }}>
                       <FormControlLabel value='AUGMENTATION' control={<Radio size='small' />} label='Augmentation du solde' />
                       <FormControlLabel value='DIMINUTION' control={<Radio size='small' />} label='Diminution du solde' />
@@ -243,7 +238,7 @@ const AjusterCompte = () => {
                   render={({ field }) => (
                     <CustomTextField {...field} fullWidth label='Motif de l’ajustement'
                       placeholder='Ex. : correction d’un écart constaté'
-                      error={Boolean(errors.observation)} helperText={errors.observation?.message || 'Obligatoire'}
+                      error={Boolean(errors.observation)} helperText={errors.observation?.message}
                       inputProps={{ maxLength: 255 }} />
                   )}
                 />
@@ -258,8 +253,8 @@ const AjusterCompte = () => {
                   </Typography>
                 </Grid>
               )}
-              <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1 }}>
-                <Button type='submit' variant='contained' disabled={!formulaireValide || submitting}
+              <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                <Button type='submit' variant='contained' disabled={submitting}
                   startIcon={<Icon icon='tabler:adjustments' />}>Enregistrer l’ajustement</Button>
               </Grid>
             </Grid>
