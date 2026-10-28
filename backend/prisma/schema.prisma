@@ -254,6 +254,7 @@ model transfert {
   cpt_source_id   Int
   cpt_dest_id     Int
   montant         Decimal  @db.Decimal(10, 4)
+  montant_dest    Decimal? @db.Decimal(10, 4)
   date_transfert  DateTime @db.Date()
   taux_source  Decimal  @db.Decimal(10, 4)
   observation     String?  @db.VarChar(255)
