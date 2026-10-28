@@ -122,6 +122,7 @@ model compte {
   crediter       crediter[]
   emprunts       emprunt[]
   remboursements remboursement[]
+  ajustements    ajustement_compte[]
   voyages_defaut      voyage[]
   transactions_voyage transaction_voyage[]
 
@@ -332,4 +333,19 @@ model ligne_sortie_colis {
   colis      colis                 @relation(fields: [colis_id], references: [id_colis])
 
   @@id([sortie_id, colis_id])
+}
+
+model ajustement_compte {
+  id_ajustement   Int      @id
+  cpt_id          Int
+  montant         Decimal  @db.Decimal(10, 2)
+  type_ajustement String   @db.VarChar(20)
+  taux_change     Decimal  @db.Decimal(10, 2)
+  date_ajustement DateTime @db.Date()
+  observation     String   @db.VarChar(255)
+  isAnnule        Boolean  @default(false)
+
+  compte compte @relation(fields: [cpt_id], references: [id_cpt])
+
+  @@index([cpt_id, date_ajustement])
 }
