@@ -58,7 +58,7 @@ const TransfertDrawer = ({ open, toggle }) => {
   const selectedDest = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptDest))
   const montantNumerique = parseFloat(String(watchMontant || '').replace(/\s/g, '')) || 0
   const memeDevise = selectedSource?.dev_code === selectedDest?.dev_code
-  const montantDestNumerique = parseFloat(String(watchMontantDest || '').replace(/\\s/g, '')) || 0
+  const montantDestNumerique = parseFloat(String(watchMontantDest || '').replace(/\s/g, '')) || 0
   const montantDestEffectif = memeDevise ? montantNumerique : montantDestNumerique
   const tauxImplicite = montantNumerique > 0 && montantDestNumerique > 0
     ? montantDestNumerique / montantNumerique
@@ -76,7 +76,7 @@ const TransfertDrawer = ({ open, toggle }) => {
     setSubmitting(true)
     const cleanMontant = parseFloat(data.montant.toString().replace(/\s/g, ''))
     const cleanMontantDest = data.montantDest
-      ? parseFloat(data.montantDest.toString().replace(/\\s/g, ''))
+      ? parseFloat(data.montantDest.toString().replace(/\s/g, ''))
       : cleanMontant
     const payload = {
       cptSource: data.cptSource,
@@ -237,7 +237,7 @@ const TransfertDrawer = ({ open, toggle }) => {
                     control={control}
                     rules={{
                       required: 'Obligatoire',
-                      validate: v => parseFloat(String(v || '').replace(/\\s/g, '')) > 0 || 'Montant reçu invalide'
+                      validate: v => parseFloat(String(v || '').replace(/\s/g, '')) > 0 || 'Montant reçu invalide'
                     }}
                     render={({ field: { value, onChange }, fieldState: { error } }) => (
                       <CustomTextField
