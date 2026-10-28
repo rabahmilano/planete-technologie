@@ -178,6 +178,10 @@ const TransfertDrawer = ({ open, toggle }) => {
                     label='Compte Destination (Crédit)'
                     error={!!error}
                     helperText={error?.message}
+                    onChange={e => {
+                      field.onChange(e)
+                      setValue('montantDest', '')
+                    }}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position='start'>
