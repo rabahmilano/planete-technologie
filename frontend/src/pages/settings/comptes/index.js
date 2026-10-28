@@ -64,11 +64,11 @@ const Comptes = () => {
           </Grid>
 
           <Grid item xs={12}>
-            <AjusterCompte />
+            <ListeComptes />
           </Grid>
 
           <Grid item xs={12}>
-            <ListeComptes />
+            <AjusterCompte />
           </Grid>
         </Grid>
 
