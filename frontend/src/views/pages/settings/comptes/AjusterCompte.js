@@ -243,16 +243,6 @@ const AjusterCompte = () => {
                   )}
                 />
               </Grid>
-              {compte && lireNombre(montant) > 0 && (
-                <Grid item xs={12}>
-                  <Typography variant='caption' color='text.secondary'>
-                    Taux utilisé pour cette opération : {formatMontant(tauxUtilise)} DZD
-                    {typeAjustement === 'AUGMENTATION' && modeTaux === 'PERSONNALISE'
-                      ? ' · le taux moyen sera recalculé.'
-                      : ''}
-                  </Typography>
-                </Grid>
-              )}
               <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
                 <Button type='submit' variant='contained' disabled={submitting}
                   startIcon={<Icon icon='tabler:adjustments' />}>Enregistrer l’ajustement</Button>
