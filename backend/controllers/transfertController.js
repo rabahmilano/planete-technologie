@@ -54,11 +54,13 @@ export const executeTransfert = [
 
         if (!infoSource || !infoDest) throw new Error("COMPTE_NOT_FOUND");
 
-        const soldeDisponible = arrondir(
-          parseFloat(infoSource.solde_actuel) -
-            parseFloat(infoSource.solde_bloque || 0),
-        );
-        if (soldeDisponible < montantSaisi)
+        const soldeSourceActuel = arrondir(parseFloat(infoSource.solde_actuel || 0));
+        const soldeBloqueSource = arrondir(parseFloat(infoSource.solde_bloque || 0));
+        const soldeDisponible = arrondir(soldeSourceActuel - soldeBloqueSource);
+
+        // Un transfert ne doit jamais débiter un compte au-delà de zéro,
+        // ni utiliser des fonds déjà bloqués.
+        if (soldeSourceActuel < 0 || soldeDisponible < montantSaisi)
           throw new Error("INSUFFICIENT_FUNDS");
 
         const tauxSource = parseFloat(infoSource.taux_change_actuel || 0);
@@ -175,12 +177,13 @@ export const deleteTransfert = [
         const montantDest = parseFloat(
           transfert.montant_dest ?? transfert.montant,
         );
-        const soldeDisponibleDest = arrondir(
-          parseFloat(infoDest.solde_actuel) -
-            parseFloat(infoDest.solde_bloque || 0),
-        );
+        const soldeDestActuel = arrondir(parseFloat(infoDest.solde_actuel || 0));
+        const soldeBloqueDest = arrondir(parseFloat(infoDest.solde_bloque || 0));
+        const soldeDisponibleDest = arrondir(soldeDestActuel - soldeBloqueDest);
 
-        if (soldeDisponibleDest < montantDest)
+        // L'annulation débite le compte destination : elle est refusée si
+        // le débit ferait passer son solde sous zéro ou toucherait les fonds bloqués.
+        if (soldeDestActuel < 0 || soldeDisponibleDest < montantDest)
           throw new Error("DEST_INSUFFICIENT_FUNDS");
 
         const tauxTransfertInitial = parseFloat(transfert.taux_source);
@@ -261,7 +264,7 @@ export const getAllTransferts = async (req, res) => {
         compte_source: { select: { designation_cpt: true, dev_code: true } },
         compte_dest: { select: { designation_cpt: true, dev_code: true } },
       },
-      orderBy: { date_transfert: "desc" },
+      orderBy: [{ date_transfert: "desc" }, { id_transfert: "desc" }],
     });
     res.status(200).json(list);
   } catch (error) {
