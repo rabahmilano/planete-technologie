@@ -50,10 +50,24 @@ const TransfertDrawer = ({ open, toggle }) => {
   } = useForm({ defaultValues })
 
   const watchCptSource = watch('cptSource')
-  const selectedSource = tousLesComptes?.find(c => c.id_cpt === watchCptSource)
+  const watchCptDest = watch('cptDest')
+  const watchMontant = watch('montant')
+  const selectedSource = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptSource))
+  const selectedDest = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptDest))
+  const montantNumerique = parseFloat(String(watchMontant || '').replace(/\\s/g, '')) || 0
+  const memeDevise = selectedSource?.dev_code === selectedDest?.dev_code
+  const tauxSource = parseFloat(selectedSource?.taux_change_actuel || 0)
+  const tauxDest = parseFloat(selectedDest?.taux_change_actuel || 0)
+  const montantDestEstime = selectedSource && selectedDest && montantNumerique > 0
+    ? memeDevise
+      ? montantNumerique
+      : tauxSource > 0 && tauxDest > 0
+        ? Math.round((montantNumerique * tauxSource / tauxDest + Number.EPSILON) * 100) / 100
+        : null
+    : null
 
   const destinationsValides =
-    tousLesComptes?.filter(c => c.id_cpt !== watchCptSource && c.dev_code === selectedSource?.dev_code) || []
+    tousLesComptes?.filter(c => String(c.id_cpt) !== String(watchCptSource)) || []
 
   const handleClose = () => {
     reset()
@@ -146,7 +160,7 @@ const TransfertDrawer = ({ open, toggle }) => {
               </Alert>
             ) : destinationsValides.length === 0 ? (
               <Alert severity='warning' variant='outlined'>
-                Aucune destination possible en {selectedSource?.dev_code}.
+                Aucun autre compte disponible.
               </Alert>
             ) : (
               <Controller
@@ -212,6 +226,26 @@ const TransfertDrawer = ({ open, toggle }) => {
                   )}
                 />
               </Box>
+
+              {selectedDest && montantNumerique > 0 && (
+                <Box sx={{ mb: 4 }}>
+                  {memeDevise ? (
+                    <Alert severity='info' variant='outlined'>
+                      Le compte destination recevra {formatMontant(montantDestEstime)} {selectedDest.dev_code}.
+                    </Alert>
+                  ) : montantDestEstime !== null ? (
+                    <Alert severity='info' variant='outlined'>
+                      Conversion estimée : {formatMontant(montantNumerique)} {selectedSource.dev_code} → {formatMontant(montantDestEstime)} {selectedDest.dev_code}
+                      <br />
+                      Taux implicite : {formatMontant(montantNumerique / montantDestEstime, 4)} {selectedSource.dev_code}/{selectedDest.dev_code}
+                    </Alert>
+                  ) : (
+                    <Alert severity='warning' variant='outlined'>
+                      Conversion impossible : vérifiez les taux de valorisation des deux comptes.
+                    </Alert>
+                  )}
+                </Box>
+              )}
 
               <Box sx={{ mb: 4 }}>
                 <Controller
