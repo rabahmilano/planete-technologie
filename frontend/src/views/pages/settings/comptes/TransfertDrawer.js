@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Alert from '@mui/material/Alert'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import InputAdornment from '@mui/material/InputAdornment'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -32,6 +33,7 @@ const defaultValues = {
   cptSource: '',
   cptDest: '',
   montant: '',
+  montantDest: '',
   dateTransfert: dayjs(),
   observation: ''
 }
@@ -39,6 +41,8 @@ const defaultValues = {
 const TransfertDrawer = ({ open, toggle }) => {
   const { tousLesComptes, transferer } = useCompte()
   const [submitting, setSubmitting] = useState(false)
+  const [confirmationOpen, setConfirmationOpen] = useState(false)
+  const [transfertEnAttente, setTransfertEnAttente] = useState(null)
 
   const {
     control,
@@ -50,33 +54,64 @@ const TransfertDrawer = ({ open, toggle }) => {
   } = useForm({ defaultValues })
 
   const watchCptSource = watch('cptSource')
-  const selectedSource = tousLesComptes?.find(c => c.id_cpt === watchCptSource)
+  const watchCptDest = watch('cptDest')
+  const watchMontant = watch('montant')
+  const watchMontantDest = watch('montantDest')
+  const selectedSource = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptSource))
+  const selectedDest = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptDest))
+  const montantNumerique = parseFloat(String(watchMontant || '').replace(/\s/g, '')) || 0
+  const memeDevise = selectedSource?.dev_code === selectedDest?.dev_code
+  const montantDestNumerique = parseFloat(String(watchMontantDest || '').replace(/\s/g, '')) || 0
+  const montantDestEffectif = memeDevise ? montantNumerique : montantDestNumerique
+  const tauxImplicite = montantNumerique > 0 && montantDestNumerique > 0
+    ? montantDestNumerique / montantNumerique
+    : null
 
   const destinationsValides =
-    tousLesComptes?.filter(c => c.id_cpt !== watchCptSource && c.dev_code === selectedSource?.dev_code) || []
+    tousLesComptes?.filter(c => String(c.id_cpt) !== String(watchCptSource)) || []
 
   const handleClose = () => {
+    if (submitting) return
+    setConfirmationOpen(false)
+    setTransfertEnAttente(null)
     reset()
     toggle()
   }
 
-  const onSubmit = async data => {
-    setSubmitting(true)
-    const cleanMontant = parseFloat(data.montant.toString().replace(/\s/g, ''))
-    const payload = {
+  const onSubmit = data => {
+    const cleanMontant = parseFloat(data.montant.toString().replace(/\\s/g, ''))
+    const cleanMontantDest = data.montantDest
+      ? parseFloat(data.montantDest.toString().replace(/\\s/g, ''))
+      : cleanMontant
+
+    setTransfertEnAttente({
       cptSource: data.cptSource,
       cptDest: data.cptDest,
       montant: cleanMontant,
+      montantDest: cleanMontantDest,
       dateTransfert: dayjs(data.dateTransfert).toISOString(),
       observation: data.observation?.trim() || ''
-    }
-
-    const success = await transferer(payload)
-    if (success) {
-      handleClose()
-    }
-    setSubmitting(false)
+    })
+    setConfirmationOpen(true)
   }
+
+  const handleConfirmation = async () => {
+    if (!transfertEnAttente || submitting) return
+
+    setSubmitting(true)
+    try {
+      const success = await transferer(transfertEnAttente)
+      if (success) {
+        setConfirmationOpen(false)
+        setTransfertEnAttente(null)
+        reset()
+        toggle()
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
 
   return (
     <Drawer
@@ -115,6 +150,7 @@ const TransfertDrawer = ({ open, toggle }) => {
                   onChange={e => {
                     field.onChange(e)
                     setValue('cptDest', '')
+                    setValue('montantDest', '')
                   }}
                   InputProps={{
                     startAdornment: (
@@ -146,7 +182,7 @@ const TransfertDrawer = ({ open, toggle }) => {
               </Alert>
             ) : destinationsValides.length === 0 ? (
               <Alert severity='warning' variant='outlined'>
-                Aucune destination possible en {selectedSource?.dev_code}.
+                Aucun autre compte disponible.
               </Alert>
             ) : (
               <Controller
@@ -161,6 +197,10 @@ const TransfertDrawer = ({ open, toggle }) => {
                     label='Compte Destination (Crédit)'
                     error={!!error}
                     helperText={error?.message}
+                    onChange={e => {
+                      field.onChange(e)
+                      setValue('montantDest', '')
+                    }}
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position='start'>
@@ -212,6 +252,61 @@ const TransfertDrawer = ({ open, toggle }) => {
                   )}
                 />
               </Box>
+
+              {selectedDest && !memeDevise && (
+                <Box sx={{ mb: 4 }}>
+                  <Controller
+                    name='montantDest'
+                    control={control}
+                    rules={{
+                      required: 'Obligatoire',
+                      validate: v => parseFloat(String(v || '').replace(/\s/g, '')) > 0 || 'Montant reçu invalide'
+                    }}
+                    render={({ field: { value, onChange }, fieldState: { error } }) => (
+                      <CustomTextField
+                        fullWidth
+                        label='Montant reçu'
+                        value={value}
+                        onChange={onChange}
+                        error={!!error}
+                        helperText={error?.message}
+                        autoComplete='off'
+                        InputProps={{
+                          inputComponent: CleaveInput,
+                          startAdornment: (
+                            <InputAdornment position='start'>
+                              <Icon icon='tabler:report-money' />
+                            </InputAdornment>
+                          ),
+                          endAdornment: <InputAdornment position='end'>{selectedDest.dev_code}</InputAdornment>
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
+              )}
+
+              {selectedDest && montantNumerique > 0 && (
+                <Box sx={{ mb: 4 }}>
+                  {memeDevise ? (
+                    <Alert severity='info' variant='outlined'>
+                      Le compte destination recevra {formatMontant(montantDestEffectif)} {selectedDest.dev_code}.
+                    </Alert>
+                  ) : tauxImplicite !== null ? (
+                    <Alert severity='info' variant='outlined'>
+                      Montant débité : {formatMontant(montantNumerique)} {selectedSource.dev_code}
+                      <br />
+                      Montant reçu : {formatMontant(montantDestNumerique)} {selectedDest.dev_code}
+                      <br />
+                      Taux implicite : {formatMontant(tauxImplicite, 4)} {selectedDest.dev_code} pour 1 {selectedSource.dev_code}
+                    </Alert>
+                  ) : (
+                    <Alert severity='info' variant='outlined'>
+                      Saisissez le montant reçu pour calculer le taux implicite.
+                    </Alert>
+                  )}
+                </Box>
+              )}
 
               <Box sx={{ mb: 4 }}>
                 <Controller
@@ -288,6 +383,54 @@ const TransfertDrawer = ({ open, toggle }) => {
           )}
         </form>
       </Box>
+      <ConfirmDialog
+        open={confirmationOpen}
+        loading={submitting}
+        loadingText='Transfert en cours…'
+        handleClose={() => {
+          if (!submitting) {
+            setConfirmationOpen(false)
+            setTransfertEnAttente(null)
+          }
+        }}
+        handleConfirm={handleConfirmation}
+        title='Vérifier le transfert avant confirmation'
+        confirmText='Confirmer le transfert'
+        cancelText='Retour au formulaire'
+        actionType='create'
+        content={
+          <Box>
+            <Typography sx={{ mb: 3 }}>
+              Vérifiez les montants et les comptes avant de confirmer cette opération financière.
+            </Typography>
+            <Box sx={{ p: 4, borderRadius: 1, border: '1px dashed', borderColor: 'primary.main', backgroundColor: 'action.hover' }}>
+              <Typography variant='body2' sx={{ mb: 2 }}>
+                <strong>Compte source :</strong> {selectedSource?.designation_cpt || '—'} ({selectedSource?.dev_code || '—'})
+              </Typography>
+              <Typography variant='h6' color='error.main' sx={{ mb: 3 }}>
+                Débit : {transfertEnAttente ? formatMontant(transfertEnAttente.montant) : '—'} {selectedSource?.dev_code || ''}
+              </Typography>
+              <Typography variant='body2' sx={{ mb: 2 }}>
+                <strong>Compte destination :</strong> {selectedDest?.designation_cpt || '—'} ({selectedDest?.dev_code || '—'})
+              </Typography>
+              <Typography variant='h6' color='success.main' sx={{ mb: 2 }}>
+                Crédit : {transfertEnAttente ? formatMontant(transfertEnAttente.montantDest) : '—'} {selectedDest?.dev_code || ''}
+              </Typography>
+              {selectedSource?.dev_code !== selectedDest?.dev_code && transfertEnAttente?.montant > 0 && (
+                <Typography variant='body2' sx={{ mb: 2 }}>
+                  Taux implicite : {formatMontant(transfertEnAttente.montantDest / transfertEnAttente.montant, 4)} {selectedDest?.dev_code} pour 1 {selectedSource?.dev_code}
+                </Typography>
+              )}
+              <Typography variant='body2' sx={{ mb: 1 }}>
+                <strong>Date :</strong> {transfertEnAttente ? dayjs(transfertEnAttente.dateTransfert).format('DD/MM/YYYY') : '—'}
+              </Typography>
+              {transfertEnAttente?.observation && (
+                <Typography variant='body2'><strong>Observation :</strong> {transfertEnAttente.observation}</Typography>
+              )}
+            </Box>
+          </Box>
+        }
+      />
     </Drawer>
   )
 }

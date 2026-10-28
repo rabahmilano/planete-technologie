@@ -1,0 +1,1 @@
+ALTER TABLE `transfert` ADD COLUMN `montant_dest` DECIMAL(10,4) NULL;

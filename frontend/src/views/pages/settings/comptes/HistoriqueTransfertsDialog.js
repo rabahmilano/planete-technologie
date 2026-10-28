@@ -13,6 +13,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 
 import Icon from 'src/@core/components/icon'
 import { useCompte } from 'src/context/CompteContext'
@@ -24,6 +25,7 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
   const [transferts, setTransferts] = useState([])
   const [loading, setLoading] = useState(false)
   const [cancelingId, setCancelingId] = useState(null)
+  const [transfertToCancel, setTransfertToCancel] = useState(null)
 
   const fetchTransferts = async () => {
     setLoading(true)
@@ -38,15 +40,20 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
     }
   }, [open])
 
-  const handleAnnuler = async id => {
-    if (!window.confirm('Voulez-vous vraiment annuler ce transfert ? Les soldes seront recalculés.')) return
+  const handleAnnuler = async () => {
+    if (!transfertToCancel || cancelingId !== null) return
 
+    const id = transfertToCancel.id_transfert
     setCancelingId(id)
-    const success = await annulerTransfert(id)
-    if (success) {
-      await fetchTransferts()
+    try {
+      const success = await annulerTransfert(id)
+      if (success) {
+        await fetchTransferts()
+        setTransfertToCancel(null)
+      }
+    } finally {
+      setCancelingId(null)
     }
-    setCancelingId(null)
   }
 
   return (
@@ -72,7 +79,10 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
                 <TableCell sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>Source</TableCell>
                 <TableCell sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>Destination</TableCell>
                 <TableCell align='right' sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>
-                  Montant
+                  Débit
+                </TableCell>
+                <TableCell align='right' sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>
+                  Crédit
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>Observation</TableCell>
                 <TableCell align='center' sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>
@@ -83,13 +93,24 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} align='center' sx={{ py: 10 }}>
+                  <TableCell colSpan={7} align='center' sx={{ py: 10 }}>
                     <CircularProgress size={30} />
                   </TableCell>
                 </TableRow>
               ) : transferts.length > 0 ? (
                 transferts.map(row => (
-                  <TableRow key={row.id_transfert} hover>
+                  <TableRow
+                    key={row.id_transfert}
+                    hover={!row.isAnnule}
+                    sx={{
+                      opacity: row.isAnnule ? 0.5 : 1,
+                      backgroundColor: row.isAnnule ? 'rgba(0,0,0,0.03)' : 'inherit',
+                      '& td': {
+                        textDecoration: row.isAnnule ? 'line-through' : 'none',
+                        color: row.isAnnule ? 'text.disabled' : 'inherit'
+                      }
+                    }}
+                  >
                     <TableCell>
                       <Typography variant='body2' sx={{ fontWeight: 500 }}>
                         {dayjs(row.date_transfert).format('DD/MM/YYYY')}
@@ -113,6 +134,14 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
                         </Typography>
                       </Typography>
                     </TableCell>
+                    <TableCell align='right'>
+                      <Typography variant='body1' sx={{ fontWeight: 700 }}>
+                        {formatMontant(row.montant_dest ?? row.montant)}{' '}
+                        <Typography component='span' variant='caption'>
+                          {row.compte_dest?.dev_code}
+                        </Typography>
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <Typography
                         variant='body2'
@@ -127,27 +156,36 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
                         {row.observation || '-'}
                       </Typography>
                     </TableCell>
-                    <TableCell align='center'>
-                      <Tooltip title='Annuler le transfert'>
-                        <IconButton
-                          size='small'
-                          color='error'
-                          onClick={() => handleAnnuler(row.id_transfert)}
-                          disabled={cancelingId === row.id_transfert}
-                        >
-                          {cancelingId === row.id_transfert ? (
-                            <CircularProgress size={20} color='inherit' />
-                          ) : (
-                            <Icon icon='tabler:trash' />
-                          )}
-                        </IconButton>
-                      </Tooltip>
+                    <TableCell align='center' sx={{ textDecoration: 'none !important' }}>
+                      {row.isAnnule ? (
+                        <Typography variant='caption' fontWeight='bold' color='error' sx={{ textDecoration: 'none' }}>
+                          ANNULÉ
+                        </Typography>
+                      ) : (
+                        <Tooltip title='Annuler le transfert'>
+                          <span>
+                            <IconButton
+                              size='small'
+                              color='error'
+                              onClick={() => setTransfertToCancel(row)}
+                              disabled={cancelingId === row.id_transfert}
+                              title='Annuler le transfert'
+                            >
+                              {cancelingId === row.id_transfert ? (
+                                <CircularProgress size={20} color='inherit' />
+                              ) : (
+                                <Icon icon='tabler:trash' />
+                              )}
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} align='center' sx={{ py: 10 }}>
+                  <TableCell colSpan={7} align='center' sx={{ py: 10 }}>
                     <Typography variant='body2' color='text.secondary'>
                       Aucun transfert enregistré.
                     </Typography>
@@ -158,6 +196,39 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
           </Table>
         </TableContainer>
       </DialogContent>
+      <ConfirmDialog
+        open={Boolean(transfertToCancel)}
+        loading={cancelingId !== null}
+        loadingText='Annulation en cours…'
+        handleClose={() => {
+          if (cancelingId === null) setTransfertToCancel(null)
+        }}
+        handleConfirm={handleAnnuler}
+        title='Confirmer l’annulation du transfert'
+        confirmText='Confirmer l’annulation'
+        cancelText='Retour à l’historique'
+        actionType='warning'
+        content={
+          <Box>
+            <Typography sx={{ mb: 3 }}>
+              Cette opération restaurera le montant débité sur le compte source et retirera le montant crédité du compte destination. Elle ne peut être annulée qu’une seule fois.
+            </Typography>
+            {transfertToCancel && (
+              <Box sx={{ p: 4, borderRadius: 1, border: '1px dashed', borderColor: 'warning.main', backgroundColor: 'action.hover' }}>
+                <Typography variant='body2' sx={{ mb: 1 }}>
+                  <strong>Source :</strong> {transfertToCancel.compte_source?.designation_cpt} — {formatMontant(transfertToCancel.montant)} {transfertToCancel.compte_source?.dev_code}
+                </Typography>
+                <Typography variant='body2' sx={{ mb: 1 }}>
+                  <strong>Destination :</strong> {transfertToCancel.compte_dest?.designation_cpt} — {formatMontant(transfertToCancel.montant_dest ?? transfertToCancel.montant)} {transfertToCancel.compte_dest?.dev_code}
+                </Typography>
+                <Typography variant='body2'>
+                  <strong>Date :</strong> {dayjs(transfertToCancel.date_transfert).format('DD/MM/YYYY')}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        }
+      />
     </Dialog>
   )
 }

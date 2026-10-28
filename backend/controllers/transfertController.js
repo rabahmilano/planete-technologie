@@ -6,6 +6,7 @@ export const executeTransfert = [
   body("cptSource").isInt().notEmpty().withMessage("Source obligatoire"),
   body("cptDest").isInt().notEmpty().withMessage("Destination obligatoire"),
   body("montant").isDecimal().notEmpty().withMessage("Montant obligatoire"),
+  body("montantDest").optional().isDecimal().withMessage("Montant reçu invalide"),
   body("dateTransfert").notEmpty().withMessage("Date obligatoire"),
   body("observation").optional({ checkFalsy: true }).isString().trim(),
 
@@ -14,12 +15,15 @@ export const executeTransfert = [
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
 
-    const { cptSource, cptDest, montant, dateTransfert, observation } =
+    const { cptSource, cptDest, montant, montantDest: montantDestSaisi, dateTransfert, observation } =
       req.body;
 
     const sourceId = parseInt(cptSource, 10);
     const destId = parseInt(cptDest, 10);
     const montantSaisi = arrondir(parseFloat(montant));
+
+    if (!Number.isFinite(montantSaisi) || montantSaisi <= 0)
+      return res.status(400).json({ message: "Montant invalide." });
 
     if (sourceId === destId) {
       return res
@@ -49,24 +53,38 @@ export const executeTransfert = [
         });
 
         if (!infoSource || !infoDest) throw new Error("COMPTE_NOT_FOUND");
-        if (infoSource.dev_code !== infoDest.dev_code)
-          throw new Error("DEVISE_MISMATCH");
 
-        const soldeDisponible = arrondir(
-          parseFloat(infoSource.solde_actuel) -
-            parseFloat(infoSource.solde_bloque || 0),
-        );
-        if (soldeDisponible < montantSaisi)
+        const soldeSourceActuel = arrondir(parseFloat(infoSource.solde_actuel || 0));
+        const soldeBloqueSource = arrondir(parseFloat(infoSource.solde_bloque || 0));
+        const soldeDisponible = arrondir(soldeSourceActuel - soldeBloqueSource);
+
+        // Un transfert ne doit jamais débiter un compte au-delà de zéro,
+        // ni utiliser des fonds déjà bloqués.
+        if (soldeSourceActuel < 0 || soldeDisponible < montantSaisi)
           throw new Error("INSUFFICIENT_FUNDS");
 
         const tauxSource = parseFloat(infoSource.taux_change_actuel || 0);
         const soldeDestAncien = parseFloat(infoDest.solde_actuel || 0);
         const tauxDestAncien = parseFloat(infoDest.taux_change_actuel || 0);
+        const memeDevise = infoSource.dev_code === infoDest.dev_code;
 
-        const nouveauTauxDest = arrondir(
-          (soldeDestAncien * tauxDestAncien + montantSaisi * tauxSource) /
-            (soldeDestAncien + montantSaisi),
-        );
+        let montantDest = montantSaisi;
+        if (!memeDevise) {
+          montantDest = parseFloat(montantDestSaisi);
+          if (!Number.isFinite(montantDest) || montantDest <= 0)
+            throw new Error("INVALID_DESTINATION_AMOUNT");
+          montantDest = Math.round((montantDest + Number.EPSILON) * 100) / 100;
+        }
+
+        const nouveauSoldeDest = arrondir(soldeDestAncien + montantDest);
+        const valeurTransfertDzd = montantSaisi * tauxSource;
+        const nouveauTauxDest =
+          nouveauSoldeDest > 0
+            ? arrondir(
+                (soldeDestAncien * tauxDestAncien + valeurTransfertDzd) /
+                  nouveauSoldeDest,
+              )
+            : tauxSource;
 
         const newTransfertId = await getMaxValue(
           "transfert",
@@ -80,6 +98,7 @@ export const executeTransfert = [
             cpt_source_id: sourceId,
             cpt_dest_id: destId,
             montant: montantSaisi,
+            montant_dest: montantDest,
             taux_source: tauxSource,
             date_transfert: new Date(dateTransfert),
             observation: observation || null,
@@ -94,7 +113,7 @@ export const executeTransfert = [
         await tx.compte.update({
           where: { id_cpt: destId },
           data: {
-            solde_actuel: { increment: montantSaisi },
+            solde_actuel: { increment: montantDest },
             taux_change_actuel: nouveauTauxDest,
           },
         });
@@ -108,8 +127,13 @@ export const executeTransfert = [
     } catch (error) {
       const messages = {
         COMPTE_NOT_FOUND: "Compte introuvable.",
-        DEVISE_MISMATCH: "Les devises doivent être identiques.",
         INSUFFICIENT_FUNDS: "Fonds insuffisants (Fonds bloqués atteints).",
+        INVALID_EXCHANGE_RATE:
+          "Conversion impossible : le taux de valorisation d'un compte est nul ou invalide.",
+        INVALID_CONVERTED_AMOUNT:
+          "Le montant converti est inférieur à la précision autorisée.",
+        INVALID_DESTINATION_AMOUNT:
+          "Le montant reçu doit être supérieur à zéro.",
       };
       res
         .status(403)
@@ -147,43 +171,54 @@ export const deleteTransfert = [
           select: { solde_actuel: true, taux_change_actuel: true },
         });
 
-        const montantARendre = parseFloat(transfert.montant);
-        const soldeDisponibleDest = arrondir(
-          parseFloat(infoDest.solde_actuel) -
-            parseFloat(infoDest.solde_bloque || 0),
-        );
+        if (!infoDest || !infoSource) throw new Error("COMPTE_NOT_FOUND");
 
-        if (soldeDisponibleDest < montantARendre)
+        const montantSource = parseFloat(transfert.montant);
+        const montantDest = parseFloat(
+          transfert.montant_dest ?? transfert.montant,
+        );
+        const soldeDestActuel = arrondir(parseFloat(infoDest.solde_actuel || 0));
+        const soldeBloqueDest = arrondir(parseFloat(infoDest.solde_bloque || 0));
+        const soldeDisponibleDest = arrondir(soldeDestActuel - soldeBloqueDest);
+
+        // L'annulation débite le compte destination : elle est refusée si
+        // le débit ferait passer son solde sous zéro ou toucherait les fonds bloqués.
+        if (soldeDestActuel < 0 || soldeDisponibleDest < montantDest)
           throw new Error("DEST_INSUFFICIENT_FUNDS");
 
         const tauxTransfertInitial = parseFloat(transfert.taux_source);
-
         const soldeSourceAncien = parseFloat(infoSource.solde_actuel || 0);
         const tauxSourceAncien = parseFloat(infoSource.taux_change_actuel || 0);
-
-        const nouveauTauxSource = arrondir(
-          (soldeSourceAncien * tauxSourceAncien +
-            montantARendre * tauxTransfertInitial) /
-            (soldeSourceAncien + montantARendre),
-        );
+        const nouveauSoldeSource = arrondir(soldeSourceAncien + montantSource);
+        const nouveauTauxSource =
+          nouveauSoldeSource > 0
+            ? arrondir(
+                (soldeSourceAncien * tauxSourceAncien +
+                  montantSource * tauxTransfertInitial) /
+                  nouveauSoldeSource,
+              )
+            : tauxTransfertInitial;
 
         const soldeDestAncien = parseFloat(infoDest.solde_actuel || 0);
         const tauxDestAncien = parseFloat(infoDest.taux_change_actuel || 0);
-        const nouveauSoldeDest = arrondir(soldeDestAncien - montantARendre);
+        const nouveauSoldeDest = arrondir(soldeDestAncien - montantDest);
+
+        if (nouveauSoldeDest < 0) throw new Error("DEST_INSUFFICIENT_FUNDS");
 
         let nouveauTauxDest = 0;
         if (nouveauSoldeDest > 0) {
           nouveauTauxDest = arrondir(
             (soldeDestAncien * tauxDestAncien -
-              montantARendre * tauxTransfertInitial) /
+              montantSource * tauxTransfertInitial) /
               nouveauSoldeDest,
           );
+          if (nouveauTauxDest < 0) throw new Error("DEST_VALUATION_INVALID");
         }
 
         await tx.compte.update({
           where: { id_cpt: transfert.cpt_dest_id },
           data: {
-            solde_actuel: { decrement: montantARendre },
+            solde_actuel: { decrement: montantDest },
             taux_change_actuel: nouveauTauxDest,
           },
         });
@@ -191,7 +226,7 @@ export const deleteTransfert = [
         await tx.compte.update({
           where: { id_cpt: transfert.cpt_source_id },
           data: {
-            solde_actuel: { increment: montantARendre },
+            solde_actuel: { increment: montantSource },
             taux_change_actuel: nouveauTauxSource,
           },
         });
@@ -209,8 +244,11 @@ export const deleteTransfert = [
       const messages = {
         NOT_FOUND: "Transfert introuvable.",
         ALREADY_CANCELED: "Ce transfert est déjà annulé.",
+        COMPTE_NOT_FOUND: "Compte introuvable.",
         DEST_INSUFFICIENT_FUNDS:
           "Le compte de destination n'a plus assez de fonds pour annuler.",
+        DEST_VALUATION_INVALID:
+          "Annulation impossible : la valorisation du compte destination deviendrait négative.",
       };
       res
         .status(403)
@@ -226,7 +264,7 @@ export const getAllTransferts = async (req, res) => {
         compte_source: { select: { designation_cpt: true, dev_code: true } },
         compte_dest: { select: { designation_cpt: true, dev_code: true } },
       },
-      orderBy: { date_transfert: "desc" },
+      orderBy: [{ date_transfert: "desc" }, { id_transfert: "desc" }],
     });
     res.status(200).json(list);
   } catch (error) {
