@@ -54,7 +54,7 @@ const TransfertDrawer = ({ open, toggle }) => {
   const watchMontant = watch('montant')
   const selectedSource = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptSource))
   const selectedDest = tousLesComptes?.find(c => String(c.id_cpt) === String(watchCptDest))
-  const montantNumerique = parseFloat(String(watchMontant || '').replace(/\\s/g, '')) || 0
+  const montantNumerique = parseFloat(String(watchMontant || '').replace(/\s/g, '')) || 0
   const memeDevise = selectedSource?.dev_code === selectedDest?.dev_code
   const tauxSource = parseFloat(selectedSource?.taux_change_actuel || 0)
   const tauxDest = parseFloat(selectedDest?.taux_change_actuel || 0)
