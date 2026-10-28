@@ -5,35 +5,48 @@ import CardContent from '@mui/material/CardContent'
 import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
 import MenuItem from '@mui/material/MenuItem'
-import FormControl from '@mui/material/FormControl'
-import InputLabel from '@mui/material/InputLabel'
-import Select from '@mui/material/Select'
 import InputAdornment from '@mui/material/InputAdornment'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import RadioGroup from '@mui/material/RadioGroup'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Radio from '@mui/material/Radio'
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import CustomTextField from 'src/@core/components/mui/text-field'
 import Icon from 'src/@core/components/icon'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import { useCompte } from 'src/context/CompteContext'
 import { formatMontant } from 'src/@core/utils/format'
+import CleaveInput from 'src/components/CleaveInput'
+import { useForm, Controller } from 'react-hook-form'
 import dayjs from 'dayjs'
+import 'dayjs/locale/fr'
+
+dayjs.locale('fr')
+
+const defaultValues = {
+  compteId: '',
+  typeAjustement: 'AUGMENTATION',
+  modeTaux: 'ACTUEL',
+  montant: '',
+  tauxPersonnalise: '',
+  dateAjustement: dayjs(),
+  observation: ''
+}
 
 const AjusterCompte = () => {
   const { tousLesComptes, creerAjustement } = useCompte()
-  const [compteId, setCompteId] = useState('')
-  const [typeAjustement, setTypeAjustement] = useState('AUGMENTATION')
-  const [modeTaux, setModeTaux] = useState('ACTUEL')
-  const [montant, setMontant] = useState('')
-  const [tauxPersonnalise, setTauxPersonnalise] = useState('')
-  const [dateAjustement, setDateAjustement] = useState(dayjs().format('YYYY-MM-DD'))
-  const [observation, setObservation] = useState('')
   const [confirmationOpen, setConfirmationOpen] = useState(false)
   const [operation, setOperation] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const { control, handleSubmit, watch, reset, formState: { errors } } = useForm({ defaultValues })
 
+  const compteId = watch('compteId')
+  const typeAjustement = watch('typeAjustement')
+  const modeTaux = watch('modeTaux')
+  const montant = watch('montant')
+  const tauxPersonnalise = watch('tauxPersonnalise')
   const compte = useMemo(
     () => tousLesComptes?.find(item => String(item.id_cpt) === String(compteId)),
     [tousLesComptes, compteId]
@@ -42,26 +55,22 @@ const AjusterCompte = () => {
     ? Number(compte?.taux_change_actuel || 0)
     : Number(tauxPersonnalise || 0)
 
-  const handleTypeChange = event => {
-    const type = event.target.value
-    setTypeAjustement(type)
-    if (type === 'DIMINUTION') setModeTaux('ACTUEL')
-  }
+  const lireNombre = value => Number(String(value ?? '').replace(/[\s,]/g, '')) || 0
 
-  const handleSubmit = event => {
-    event.preventDefault()
-    if (!compteId || !Number(montant) || Number(montant) <= 0 || !dateAjustement || !observation.trim()) return
-    if (typeAjustement === 'AUGMENTATION' && modeTaux === 'PERSONNALISE' &&
-      (!Number(tauxPersonnalise) || Number(tauxPersonnalise) <= 0)) return
+  const onSubmit = data => {
+    const montantNet = lireNombre(data.montant)
+    const tauxNet = lireNombre(data.tauxPersonnalise)
+    if (!data.compteId || montantNet <= 0 || !data.observation.trim()) return
+    if (data.typeAjustement === 'AUGMENTATION' && data.modeTaux === 'PERSONNALISE' && tauxNet <= 0) return
 
     setOperation({
-      compteId: String(compteId),
-      typeAjustement,
-      montant: String(montant),
-      modeTaux,
-      tauxPersonnalise: modeTaux === 'PERSONNALISE' ? String(tauxPersonnalise) : undefined,
-      dateAjustement,
-      observation: observation.trim()
+      compteId: String(data.compteId),
+      typeAjustement: data.typeAjustement,
+      montant: String(montantNet),
+      modeTaux: data.typeAjustement === 'DIMINUTION' ? 'ACTUEL' : data.modeTaux,
+      tauxPersonnalise: data.modeTaux === 'PERSONNALISE' ? String(tauxNet) : undefined,
+      dateAjustement: dayjs(data.dateAjustement).format('YYYY-MM-DD'),
+      observation: data.observation.trim()
     })
     setConfirmationOpen(true)
   }
@@ -72,13 +81,7 @@ const AjusterCompte = () => {
     try {
       const success = await creerAjustement(operation)
       if (success) {
-        setCompteId('')
-        setTypeAjustement('AUGMENTATION')
-        setModeTaux('ACTUEL')
-        setMontant('')
-        setTauxPersonnalise('')
-        setDateAjustement(dayjs().format('YYYY-MM-DD'))
-        setObservation('')
+        reset({ ...defaultValues, dateAjustement: dayjs() })
         setOperation(null)
         setConfirmationOpen(false)
       }
@@ -103,85 +106,158 @@ const AjusterCompte = () => {
             </Box>
           }
         />
-        <CardContent>
-          <Box component='form' onSubmit={handleSubmit}>
-            <Grid container spacing={5}>
-              <Grid item xs={12} md={6}>
-                <CustomTextField select fullWidth label='Compte' value={compteId}
-                  onChange={event => setCompteId(event.target.value)} required>
-                  {tousLesComptes?.map(item => (
-                    <MenuItem key={item.id_cpt} value={item.id_cpt}>
-                      {item.designation_cpt} ({item.dev_code})
-                    </MenuItem>
-                  ))}
-                </CustomTextField>
+        <CardContent sx={{ pt: 2 }}>
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <Grid container spacing={4} alignItems='flex-end'>
+              <Grid item xs={12} sm={6} md={4}>
+                <Controller
+                  name='compteId'
+                  control={control}
+                  rules={{ required: 'Sélectionnez un compte' }}
+                  render={({ field }) => (
+                    <CustomTextField {...field} select fullWidth label='Compte'
+                      error={Boolean(errors.compteId)} helperText={errors.compteId?.message}>
+                      {tousLesComptes?.map(item => (
+                        <MenuItem key={item.id_cpt} value={String(item.id_cpt)}>
+                          {item.designation_cpt} ({item.dev_code})
+                        </MenuItem>
+                      ))}
+                    </CustomTextField>
+                  )}
+                />
               </Grid>
-              <Grid item xs={12} md={6}>
-                <CustomTextField fullWidth type='date' label='Date de l’ajustement'
-                  value={dateAjustement} onChange={event => setDateAjustement(event.target.value)}
-                  InputLabelProps={{ shrink: true }} inputProps={{ max: dayjs().format('YYYY-MM-DD') }} required />
+              <Grid item xs={12} sm={6} md={4}>
+                <Controller
+                  name='dateAjustement'
+                  control={control}
+                  rules={{ required: 'La date est obligatoire' }}
+                  render={({ field, fieldState: { error } }) => (
+                    <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='fr'>
+                      <DatePicker
+                        {...field}
+                        maxDate={dayjs()}
+                        label='Date de l’ajustement'
+                        slots={{ textField: CustomTextField }}
+                        slotProps={{ textField: { fullWidth: true, error: !!error, helperText: error?.message, autoComplete: 'off' } }}
+                      />
+                    </LocalizationProvider>
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <Controller
+                  name='montant'
+                  control={control}
+                  rules={{
+                    required: 'Le montant est obligatoire',
+                    validate: value => lireNombre(value) > 0 || 'Le montant doit être supérieur à zéro'
+                  }}
+                  render={({ field }) => (
+                    <CustomTextField
+                      {...field}
+                      fullWidth
+                      label='Montant à ajuster'
+                      autoComplete='off'
+                      error={Boolean(errors.montant)}
+                      helperText={errors.montant?.message}
+                      InputProps={{
+                        inputComponent: CleaveInput,
+                        endAdornment: <InputAdornment position='end'>{compte?.dev_code || 'Devise'}</InputAdornment>
+                      }}
+                    />
+                  )}
+                />
               </Grid>
               <Grid item xs={12}>
-                <FormControl>
-                  <Typography variant='body2' sx={{ mb: 1, fontWeight: 600 }}>Type d'ajustement</Typography>
-                  <RadioGroup row value={typeAjustement} onChange={handleTypeChange}>
-                    <FormControlLabel value='AUGMENTATION' control={<Radio />} label='Augmentation du solde' />
-                    <FormControlLabel value='DIMINUTION' control={<Radio />} label='Diminution du solde' />
-                  </RadioGroup>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <CustomTextField fullWidth label={`Montant en ${compte?.dev_code || 'devise'}`}
-                  value={montant} onChange={event => setMontant(event.target.value)}
-                  type='number' inputProps={{ min: '0.01', step: '0.01' }} required
-                  InputProps={{ endAdornment: <InputAdornment position='end'>{compte?.dev_code || '—'}</InputAdornment> }} />
+                <Typography variant='body2' sx={{ mb: 1, fontWeight: 600 }}>Sens de l’ajustement</Typography>
+                <Controller
+                  name='typeAjustement'
+                  control={control}
+                  render={({ field }) => (
+                    <RadioGroup row {...field} onChange={event => {
+                      field.onChange(event.target.value)
+                      if (event.target.value === 'DIMINUTION') {
+                        // Une diminution utilise obligatoirement le taux courant.
+                      }
+                    }}>
+                      <FormControlLabel value='AUGMENTATION' control={<Radio size='small' />} label='Augmentation du solde' />
+                      <FormControlLabel value='DIMINUTION' control={<Radio size='small' />} label='Diminution du solde' />
+                    </RadioGroup>
+                  )}
+                />
               </Grid>
               {typeAjustement === 'AUGMENTATION' && (
-                <Grid item xs={12}>
-                  <FormControl>
-                    <Typography variant='body2' sx={{ mb: 1, fontWeight: 600 }}>Taux de change à appliquer</Typography>
-                    <RadioGroup row value={modeTaux} onChange={event => setModeTaux(event.target.value)}>
-                      <FormControlLabel value='ACTUEL' control={<Radio />} label={`Taux actuel (${formatMontant(compte?.taux_change_actuel || 0)} DZD)`} />
-                      <FormControlLabel value='PERSONNALISE' control={<Radio />} label='Saisir un taux personnalisé' />
-                    </RadioGroup>
-                  </FormControl>
-                </Grid>
-              )}
-              {typeAjustement === 'AUGMENTATION' && modeTaux === 'PERSONNALISE' && (
-                <Grid item xs={12} md={6}>
-                  <CustomTextField fullWidth label='Taux personnalisé' value={tauxPersonnalise}
-                    onChange={event => setTauxPersonnalise(event.target.value)} type='number'
-                    inputProps={{ min: '0.01', step: '0.01' }} required
-                    InputProps={{ endAdornment: <InputAdornment position='end'>DZD</InputAdornment> }} />
-                </Grid>
+                <>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant='body2' sx={{ mb: 1, fontWeight: 600 }}>Taux de valorisation</Typography>
+                    <Controller
+                      name='modeTaux'
+                      control={control}
+                      render={({ field }) => (
+                        <RadioGroup row {...field}>
+                          <FormControlLabel value='ACTUEL' control={<Radio size='small' />} label={`Taux actuel (${formatMontant(compte?.taux_change_actuel || 0)} DZD)`} />
+                          <FormControlLabel value='PERSONNALISE' control={<Radio size='small' />} label='Taux personnalisé' />
+                        </RadioGroup>
+                      )}
+                    />
+                  </Grid>
+                  {modeTaux === 'PERSONNALISE' && (
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Controller
+                        name='tauxPersonnalise'
+                        control={control}
+                        rules={{
+                          validate: value => modeTaux !== 'PERSONNALISE' || lireNombre(value) > 0 || 'Saisissez un taux supérieur à zéro'
+                        }}
+                        render={({ field }) => (
+                          <CustomTextField {...field} fullWidth label='Taux personnalisé'
+                            autoComplete='off' error={Boolean(errors.tauxPersonnalise)}
+                            helperText={errors.tauxPersonnalise?.message}
+                            InputProps={{
+                              inputComponent: CleaveInput,
+                              endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
+                            }} />
+                        )}
+                      />
+                    </Grid>
+                  )}
+                </>
               )}
               {typeAjustement === 'DIMINUTION' && (
-                <Grid item xs={12}>
+                <Grid item xs={12} md={6}>
                   <Typography variant='body2' color='text.secondary'>
-                    Le taux actuel du compte ({formatMontant(compte?.taux_change_actuel || 0)} DZD) sera utilisé. Le taux moyen restera inchangé.
+                    Taux appliqué : {formatMontant(compte?.taux_change_actuel || 0)} DZD. Le taux moyen reste inchangé.
                   </Typography>
                 </Grid>
               )}
-              <Grid item xs={12}>
-                <CustomTextField fullWidth label='Motif de l’ajustement' value={observation}
-                  onChange={event => setObservation(event.target.value)} inputProps={{ maxLength: 255 }} required />
+              <Grid item xs={12} md={typeAjustement === 'AUGMENTATION' && modeTaux === 'PERSONNALISE' ? 9 : 12}>
+                <Controller
+                  name='observation'
+                  control={control}
+                  rules={{ required: 'Le motif est obligatoire', maxLength: { value: 255, message: '255 caractères maximum' } }}
+                  render={({ field }) => (
+                    <CustomTextField {...field} fullWidth label='Motif de l’ajustement'
+                      error={Boolean(errors.observation)} helperText={errors.observation?.message}
+                      inputProps={{ maxLength: 255 }} />
+                  )}
+                />
               </Grid>
-              {compte && montant && Number(montant) > 0 && (
+              {compte && lireNombre(montant) > 0 && (
                 <Grid item xs={12}>
-                  <Typography variant='body2' color='text.secondary'>
-                    Taux utilisé : {formatMontant(tauxUtilise)} DZD
+                  <Typography variant='caption' color='text.secondary'>
+                    Taux utilisé pour cette opération : {formatMontant(tauxUtilise)} DZD
                     {typeAjustement === 'AUGMENTATION' && modeTaux === 'PERSONNALISE'
-                      ? ' — le taux moyen du compte sera recalculé après l’ajustement.'
+                      ? ' · le taux moyen sera recalculé.'
                       : ''}
                   </Typography>
                 </Grid>
               )}
-              <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1 }}>
                 <Button type='submit' variant='contained' disabled={submitting}
                   startIcon={<Icon icon='tabler:adjustments' />}>Enregistrer l’ajustement</Button>
               </Grid>
             </Grid>
-          </Box>
+          </form>
         </CardContent>
       </Card>
       <ConfirmDialog
