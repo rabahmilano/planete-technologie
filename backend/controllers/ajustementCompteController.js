@@ -47,6 +47,10 @@ export const creerAjustement = [
           ? tauxActuel
           : modeTaux === "PERSONNALISE" ? arrondir(Number(tauxPersonnalise)) : tauxActuel;
 
+        if (typeAjustement === "AUGMENTATION" && tauxUtilise <= 0) {
+          throw new Error("INVALID_EXCHANGE_RATE");
+        }
+
         if (typeAjustement === "DIMINUTION") {
           const disponible = arrondir(solde - Number(compte.solde_bloque || 0));
           if (disponible < montantAjustement) throw new Error("INSUFFICIENT_FUNDS");
@@ -83,6 +87,7 @@ export const creerAjustement = [
     } catch (error) {
       if (error.message === "COMPTE_NOT_FOUND") return res.status(404).json({ message: "Compte introuvable." });
       if (error.message === "INSUFFICIENT_FUNDS") return res.status(400).json({ message: "Le solde disponible est insuffisant (fonds bloqués déduits)." });
+      if (error.message === "INVALID_EXCHANGE_RATE") return res.status(400).json({ message: "Le taux actuel est nul. Pour augmenter ce compte, saisissez un taux personnalisé." });
       return res.status(500).json({ error: { code: error.code, message: error.message } });
     }
   }
