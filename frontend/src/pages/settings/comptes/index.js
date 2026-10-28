@@ -12,10 +12,13 @@ import ListeComptes from 'src/views/pages/settings/comptes/ListeCompte.js'
 import CrediterCompte from 'src/views/pages/settings/comptes/CrediterCompte.js'
 import TransfertDrawer from 'src/views/pages/settings/comptes/TransfertDrawer'
 import HistoriqueTransfertsDialog from 'src/views/pages/settings/comptes/HistoriqueTransfertsDialog'
+import AjusterCompte from 'src/views/pages/settings/comptes/AjusterCompte'
+import HistoriqueAjustementsDialog from 'src/views/pages/settings/comptes/HistoriqueAjustementsDialog'
 
 const Comptes = () => {
   const [transfertOpen, setTransfertOpen] = useState(false)
   const [historiqueOpen, setHistoriqueOpen] = useState(false)
+  const [historiqueAjustementsOpen, setHistoriqueAjustementsOpen] = useState(false)
 
   return (
     <CompteProvider>
@@ -31,6 +34,14 @@ const Comptes = () => {
                   onClick={() => setTransfertOpen(true)}
                 >
                   Nouveau Transfert
+                </Button>
+                <Button
+                  variant='outlined'
+                  color='secondary'
+                  startIcon={<Icon icon='tabler:adjustments' />}
+                  onClick={() => setHistoriqueAjustementsOpen(true)}
+                >
+                  Historique des ajustements
                 </Button>
                 <Button
                   variant='outlined'
@@ -53,12 +64,17 @@ const Comptes = () => {
           </Grid>
 
           <Grid item xs={12}>
+            <AjusterCompte />
+          </Grid>
+
+          <Grid item xs={12}>
             <ListeComptes />
           </Grid>
         </Grid>
 
         <TransfertDrawer open={transfertOpen} toggle={() => setTransfertOpen(!transfertOpen)} />
         <HistoriqueTransfertsDialog open={historiqueOpen} handleClose={() => setHistoriqueOpen(false)} />
+        <HistoriqueAjustementsDialog open={historiqueAjustementsOpen} handleClose={() => setHistoriqueAjustementsOpen(false)} />
       </DeviseProvider>
     </CompteProvider>
   )
