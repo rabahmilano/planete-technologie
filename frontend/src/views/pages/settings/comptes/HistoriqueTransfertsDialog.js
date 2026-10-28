@@ -72,7 +72,10 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
                 <TableCell sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>Source</TableCell>
                 <TableCell sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>Destination</TableCell>
                 <TableCell align='right' sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>
-                  Montant
+                  Débit
+                </TableCell>
+                <TableCell align='right' sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>
+                  Crédit
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>Observation</TableCell>
                 <TableCell align='center' sx={{ fontWeight: 600, backgroundColor: 'background.default' }}>
@@ -83,7 +86,7 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} align='center' sx={{ py: 10 }}>
+                  <TableCell colSpan={7} align='center' sx={{ py: 10 }}>
                     <CircularProgress size={30} />
                   </TableCell>
                 </TableRow>
@@ -110,6 +113,14 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
                         {formatMontant(row.montant)}{' '}
                         <Typography component='span' variant='caption'>
                           {row.compte_source?.dev_code}
+                        </Typography>
+                      </Typography>
+                    </TableCell>
+                    <TableCell align='right'>
+                      <Typography variant='body1' sx={{ fontWeight: 700 }}>
+                        {formatMontant(row.montant_dest ?? row.montant)}{' '}
+                        <Typography component='span' variant='caption'>
+                          {row.compte_dest?.dev_code}
                         </Typography>
                       </Typography>
                     </TableCell>
@@ -147,7 +158,7 @@ const HistoriqueTransfertsDialog = ({ open, handleClose }) => {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} align='center' sx={{ py: 10 }}>
+                  <TableCell colSpan={7} align='center' sx={{ py: 10 }}>
                     <Typography variant='body2' color='text.secondary'>
                       Aucun transfert enregistré.
                     </Typography>
