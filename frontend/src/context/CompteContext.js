@@ -81,6 +81,44 @@ export const CompteProvider = ({ children }) => {
     }
   }
 
+  const creerAjustement = async data => {
+    try {
+      const reponse = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}ajustements`, data)
+      if (reponse.status === 201) {
+        toast.success(reponse.data.message)
+        fetchComptes()
+        return true
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Erreur lors de l'ajustement")
+      return false
+    }
+  }
+
+  const getAjustements = async () => {
+    try {
+      const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}ajustements`)
+      return reponse.data
+    } catch (error) {
+      toast.error("Erreur lors de la récupération des ajustements")
+      return []
+    }
+  }
+
+  const annulerAjustement = async id => {
+    try {
+      const reponse = await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}ajustements/${id}`)
+      if (reponse.status === 200) {
+        toast.success(reponse.data.message)
+        fetchComptes()
+        return true
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Erreur lors de l'annulation")
+      return false
+    }
+  }
+
   const getTransferts = async () => {
     try {
       const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}transferts/getAllTransferts`)
@@ -120,6 +158,9 @@ export const CompteProvider = ({ children }) => {
     getHistoriqueCredit,
     getTransferts,
     annulerTransfert,
+    creerAjustement,
+    getAjustements,
+    annulerAjustement,
     loading
   }
 

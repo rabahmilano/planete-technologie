@@ -17,6 +17,7 @@ import empruntRoutes from "./routes/empruntRoutes.js";
 import voyageRoutes from "./routes/voyageRouter.js";
 import transfertRoutes from "./routes/transfertRouter.js";
 import sortieExceptionnelleRoutes from "./routes/sortieExceptionnelleRouter.js";
+import ajustementCompteRoutes from "./routes/ajustementCompteRouter.js";
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use("/api/commandes", verifyToken, commandeRoutes);
 app.use("/api/emprunts", verifyToken, empruntRoutes);
 app.use("/api/voyages", verifyToken, voyageRoutes);
 app.use("/api/transferts", verifyToken, transfertRoutes);
+app.use("/api/ajustements", verifyToken, ajustementCompteRoutes);
 app.use(
   "/api/sorties-exceptionnelles",
   verifyToken,
