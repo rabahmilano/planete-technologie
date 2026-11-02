@@ -392,6 +392,13 @@ export const annulerCredit = [
 
         // Les anciennes opérations qui ont débité la Caisse sont identifiées
         // par montant_dzd; les remboursements exceptionnels n'ont pas ce champ.
+        const doitRestituerCaisse =
+          compte.type_cpt === "COMMUN" && compte.designation_cpt !== "Caisse";
+
+        if (doitRestituerCaisse && operation.montant_dzd === null) {
+          throw new Error("LEGACY_CAISSE_DEBIT_UNKNOWN");
+        }
+
         if (operation.montant_dzd !== null) {
           const caisse = await tx.compte.findFirst({
             where: { designation_cpt: "Caisse" },
@@ -424,6 +431,7 @@ export const annulerCredit = [
         CREDIT_NOT_FOUND: "Créditation introuvable.",
         CREDIT_ALREADY_CANCELED: "Cette créditation est déjà annulée.",
         CREDIT_LINKED_TO_REFUND: "Cette créditation est liée au remboursement d'une sortie exceptionnelle. Annulez d'abord cette décision depuis le module concerné.",
+        LEGACY_CAISSE_DEBIT_UNKNOWN: "Cette ancienne créditation a pu débiter la Caisse, mais le montant exact n'a pas été conservé. Son annulation automatique est donc bloquée pour éviter une erreur de solde.",
         INSUFFICIENT_ACCOUNT_FUNDS: "Annulation impossible : le solde disponible du compte est insuffisant.",
         INVALID_REVERSE_VALUATION: "Annulation impossible : le taux moyen recalculé serait négatif.",
         CAISSE_NOT_FOUND: "Le compte Caisse est introuvable.",
