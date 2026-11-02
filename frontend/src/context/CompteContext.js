@@ -57,6 +57,20 @@ export const CompteProvider = ({ children }) => {
     }
   }
 
+  const annulerCredit = async id => {
+    try {
+      const reponse = await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/annuler-credit/${id}`)
+      if (reponse.status === 200) {
+        toast.success(reponse.data.message)
+        fetchComptes()
+        return true
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Erreur lors de l'annulation de la créditation")
+      return false
+    }
+  }
+
   const getHistoriqueCredit = async id => {
     try {
       const reponse = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}comptes/historique-credit/${id}`)
@@ -156,6 +170,7 @@ export const CompteProvider = ({ children }) => {
     crediter,
     transferer,
     getHistoriqueCredit,
+    annulerCredit,
     getTransferts,
     annulerTransfert,
     creerAjustement,
