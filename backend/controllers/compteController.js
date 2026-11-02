@@ -94,6 +94,8 @@ export const crediterCompte = [
         const tauxAjout = fromCents(tauxCentimes);
         const tauxValorisation = arrondir(tauxEffectif);
 
+        let montantDzdCaisse = null;
+
         if (
           infoCompte.type_cpt === "COMMUN" &&
           infoCompte.designation_cpt !== "Caisse"
