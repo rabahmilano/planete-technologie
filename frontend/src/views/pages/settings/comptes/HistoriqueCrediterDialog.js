@@ -2,6 +2,9 @@ import { useState, useEffect, forwardRef, useMemo } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogContent from '@mui/material/DialogContent'
 import IconButton from '@mui/material/IconButton'
+import Tooltip from '@mui/material/Tooltip'
+import Chip from '@mui/material/Chip'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import Typography from '@mui/material/Typography'
 import Slide from '@mui/material/Slide'
 import Box from '@mui/material/Box'
@@ -36,10 +39,12 @@ const Transition = forwardRef(function Transition(props, ref) {
 
 const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
   const theme = useTheme()
-  const { getHistoriqueCredit } = useCompte()
+  const { getHistoriqueCredit, annulerCredit } = useCompte()
 
   const [historique, setHistorique] = useState([])
   const [loading, setLoading] = useState(false)
+  const [creditToCancel, setCreditToCancel] = useState(null)
+  const [canceling, setCanceling] = useState(false)
 
   useEffect(() => {
     if (open && compte) {
@@ -60,6 +65,7 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
     let totalDzd = 0
 
     historique.forEach(op => {
+      if (op.isAnnule) return
       const montant = parseFloat(op.montant_op || 0)
       const taux = parseFloat(op.taux_change || 0)
       totalInjecte += montant
@@ -70,6 +76,20 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
 
     return { totalInjecte, totalDzd, tauxMoyen }
   }, [historique])
+
+  const handleAnnulerCredit = async () => {
+    if (!creditToCancel || canceling) return
+    setCanceling(true)
+    try {
+      if (await annulerCredit(creditToCancel.id_op_crd)) {
+        const data = await getHistoriqueCredit(compte.id_cpt)
+        setHistorique(data)
+        setCreditToCancel(null)
+      }
+    } finally {
+      setCanceling(false)
+    }
+  }
 
   return (
     <Dialog
@@ -253,7 +273,7 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
                   const dotColor = stringToColor(dateTexte)
 
                   return (
-                    <TimelineItem key={row.id_op_crd} sx={{ minHeight: 120 }}>
+                    <TimelineItem key={row.id_op_crd} sx={{ minHeight: 120, opacity: row.isAnnule ? 0.55 : 1 }}>
                       <TimelineOppositeContent sx={{ m: 'auto 0' }}>
                         <Typography variant='body1' sx={{ color: 'text.secondary', fontWeight: 500 }}>
                           {dateTexte}
@@ -277,7 +297,7 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
 
                       <TimelineContent sx={{ m: 'auto 0', py: 2 }}>
                         <Typography variant='h5' sx={{ fontWeight: 800, color: 'text.primary', mb: 1 }}>
-                          + {formatMontant(row.montant_op)}{' '}
+                          {row.isAnnule ? 'ANNULÉ · ' : '+ '}{formatMontant(row.montant_op)}{' '}
                           <Typography
                             component='span'
                             variant='subtitle1'
@@ -302,6 +322,14 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
                           />
                           Taux : {formatMontant(row.taux_change)}
                         </Typography>
+                        {!row.isAnnule && (
+                          <Tooltip title='Annuler cette créditation'>
+                            <IconButton size='small' color='error' sx={{ mt: 1 }} onClick={() => setCreditToCancel(row)}>
+                              <Icon icon='tabler:arrow-back-up' />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        {row.isAnnule && <Chip size='small' color='error' label='Annulé' sx={{ mt: 1 }} />}
                       </TimelineContent>
                     </TimelineItem>
                   )
@@ -340,6 +368,29 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
         </Grid>
       </DialogContent>
     </Dialog>
+      <ConfirmDialog
+        open={Boolean(creditToCancel)}
+        loading={canceling}
+        loadingText='Annulation en cours…'
+        handleClose={() => { if (!canceling) setCreditToCancel(null) }}
+        handleConfirm={handleAnnulerCredit}
+        title='Confirmer l’annulation de la créditation'
+        confirmText='Confirmer l’annulation'
+        cancelText='Retour à l’historique'
+        actionType='warning'
+        content={
+          <Box>
+            <Typography sx={{ mb: 3 }}>
+              Le montant sera retiré du compte et son taux moyen sera recalculé. Cette opération restera visible dans l’historique avec le statut « Annulé ».
+            </Typography>
+            {creditToCancel && (
+              <Typography fontWeight={600}>
+                {formatMontant(creditToCancel.montant_op)} {compte?.dev_code} — {dayjs(creditToCancel.date_op).format('DD/MM/YYYY')}
+              </Typography>
+            )}
+          </Box>
+        }
+      />
   )
 }
 
