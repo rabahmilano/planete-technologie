@@ -160,7 +160,8 @@ export const crediterCompte = [
             montant_op: montantAjout,
             taux_change:
               strategie === "DZD_PAYE" ? tauxValorisation : tauxAjout,
-            montant_dzd: montantDzdCaisse,
+            montant_dzd: montantPayeDzd,
+            caisse_debitee: montantDzdCaisse !== null,
             compte: {
               connect: {
                 id_cpt: cptIdInt,
@@ -385,7 +386,7 @@ export const annulerCredit = [
         let nouveauTaux = 0;
         if (nouveauSolde > 0) {
           nouveauTaux = arrondir(
-            (soldeActuel * tauxActuel - montant * tauxCredit) / nouveauSolde,
+            (soldeActuel * tauxActuel - Number(operation.montant_dzd ?? montant * tauxCredit)) / nouveauSolde,
           );
           if (nouveauTaux < 0) throw new Error("INVALID_REVERSE_VALUATION");
         }
@@ -395,11 +396,11 @@ export const annulerCredit = [
         const doitRestituerCaisse =
           compte.type_cpt === "COMMUN" && compte.designation_cpt !== "Caisse";
 
-        if (doitRestituerCaisse && operation.montant_dzd === null) {
+        if (doitRestituerCaisse && operation.caisse_debitee === null) {
           throw new Error("LEGACY_CAISSE_DEBIT_UNKNOWN");
         }
 
-        if (operation.montant_dzd !== null) {
+        if (operation.caisse_debitee === true) {
           const caisse = await tx.compte.findFirst({
             where: { designation_cpt: "Caisse" },
             select: { id_cpt: true },
