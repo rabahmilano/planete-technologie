@@ -135,6 +135,7 @@ export const crediterCompte = [
           if (debitCaisse.count !== 1) {
             throw new Error("INSUFFICIENT_FUNDS");
           }
+          montantDzdCaisse = montantPayeDzd;
         }
 
         const soldeAncien = Number(infoCompte.solde_actuel || 0);
@@ -159,6 +160,7 @@ export const crediterCompte = [
             montant_op: montantAjout,
             taux_change:
               strategie === "DZD_PAYE" ? tauxValorisation : tauxAjout,
+            montant_dzd: montantDzdCaisse,
             compte: {
               connect: {
                 id_cpt: cptIdInt,
@@ -338,6 +340,99 @@ export const getAllComptes = async (req, res) => {
       .json({ error: { code: error.code, message: error.message } });
   }
 };
+
+export const annulerCredit = [
+  async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      return res.status(400).json({ message: "Identifiant de créditation invalide." });
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const operation = await tx.crediter.findUnique({
+          where: { id_op_crd: id },
+          include: {
+            compte: {
+              select: {
+                solde_actuel: true,
+                solde_bloque: true,
+                taux_change_actuel: true,
+                type_cpt: true,
+                designation_cpt: true,
+              },
+            },
+            sortie_remboursee: { select: { id_sortie: true } },
+          },
+        });
+
+        if (!operation) throw new Error("CREDIT_NOT_FOUND");
+        if (operation.isAnnule) throw new Error("CREDIT_ALREADY_CANCELED");
+        if (operation.sortie_remboursee) throw new Error("CREDIT_LINKED_TO_REFUND");
+
+        const compte = operation.compte;
+        const montant = Number(operation.montant_op);
+        const tauxCredit = Number(operation.taux_change);
+        const soldeActuel = Number(compte.solde_actuel || 0);
+        const soldeBloque = Number(compte.solde_bloque || 0);
+        const tauxActuel = Number(compte.taux_change_actuel || 0);
+        const nouveauSolde = arrondir(soldeActuel - montant);
+
+        if (montant <= 0 || nouveauSolde < 0 || nouveauSolde - soldeBloque < 0) {
+          throw new Error("INSUFFICIENT_ACCOUNT_FUNDS");
+        }
+
+        let nouveauTaux = 0;
+        if (nouveauSolde > 0) {
+          nouveauTaux = arrondir(
+            (soldeActuel * tauxActuel - montant * tauxCredit) / nouveauSolde,
+          );
+          if (nouveauTaux < 0) throw new Error("INVALID_REVERSE_VALUATION");
+        }
+
+        // Les anciennes opérations qui ont débité la Caisse sont identifiées
+        // par montant_dzd; les remboursements exceptionnels n'ont pas ce champ.
+        if (operation.montant_dzd !== null) {
+          const caisse = await tx.compte.findFirst({
+            where: { designation_cpt: "Caisse" },
+            select: { id_cpt: true },
+          });
+          if (!caisse) throw new Error("CAISSE_NOT_FOUND");
+          await tx.compte.update({
+            where: { id_cpt: caisse.id_cpt },
+            data: { solde_actuel: { increment: Number(operation.montant_dzd) } },
+          });
+        }
+
+        await tx.compte.update({
+          where: { id_cpt: operation.cpt_id },
+          data: {
+            solde_actuel: { decrement: montant },
+            taux_change_actuel: nouveauTaux,
+          },
+        });
+
+        await tx.crediter.update({
+          where: { id_op_crd: id },
+          data: { isAnnule: true },
+        });
+      });
+
+      return res.status(200).json({ message: "Créditation annulée et solde recalculé." });
+    } catch (error) {
+      const messages = {
+        CREDIT_NOT_FOUND: "Créditation introuvable.",
+        CREDIT_ALREADY_CANCELED: "Cette créditation est déjà annulée.",
+        CREDIT_LINKED_TO_REFUND: "Cette créditation est liée au remboursement d'une sortie exceptionnelle. Annulez d'abord cette décision depuis le module concerné.",
+        INSUFFICIENT_ACCOUNT_FUNDS: "Annulation impossible : le solde disponible du compte est insuffisant.",
+        INVALID_REVERSE_VALUATION: "Annulation impossible : le taux moyen recalculé serait négatif.",
+        CAISSE_NOT_FOUND: "Le compte Caisse est introuvable.",
+      };
+      const status = error.message === "CREDIT_NOT_FOUND" || error.message === "CAISSE_NOT_FOUND" ? 404 : 409;
+      return res.status(status).json({ message: messages[error.message] || "Erreur lors de l'annulation de la créditation." });
+    }
+  },
+];
 
 export const getHistoriqueCredit = async (req, res) => {
   const { id } = req.params;
