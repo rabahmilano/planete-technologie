@@ -138,6 +138,7 @@ model crediter {
   montant_op  Decimal  @db.Decimal(10, 2)
   taux_change Decimal  @db.Decimal(10, 2)
   isAnnule    Boolean  @default(false)
+  montant_dzd Decimal? @db.Decimal(10, 2)
 
   compte compte @relation(fields: [cpt_id], references: [id_cpt])
   sortie_remboursee sortie_exceptionnelle?
