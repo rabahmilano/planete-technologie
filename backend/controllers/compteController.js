@@ -94,8 +94,6 @@ export const crediterCompte = [
         const tauxAjout = fromCents(tauxCentimes);
         const tauxValorisation = arrondir(tauxEffectif);
 
-        let montantDzdCaisse = null;
-
         if (
           infoCompte.type_cpt === "COMMUN" &&
           infoCompte.designation_cpt !== "Caisse"
@@ -137,7 +135,6 @@ export const crediterCompte = [
           if (debitCaisse.count !== 1) {
             throw new Error("INSUFFICIENT_FUNDS");
           }
-          montantDzdCaisse = montantPayeDzd;
         }
 
         const soldeAncien = Number(infoCompte.solde_actuel || 0);
