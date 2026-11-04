@@ -69,7 +69,7 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
       const montant = parseFloat(op.montant_op || 0)
       const taux = parseFloat(op.taux_change || 0)
       totalInjecte += montant
-      totalDzd += montant * taux
+      totalDzd += op.montant_dzd != null ? parseFloat(op.montant_dzd) : montant * taux
     })
 
     const tauxMoyen = totalInjecte > 0 ? totalDzd / totalInjecte : 0
@@ -269,7 +269,7 @@ const HistoriqueCrediterDialog = ({ open, handleClose, compte }) => {
             ) : historique.length > 0 ? (
               <Timeline position='alternate' sx={{ p: 0, m: 0 }}>
                 {historique.map(row => {
-                  const eqDzd = parseFloat(row.montant_op) * parseFloat(row.taux_change)
+                  const eqDzd = row.montant_dzd != null ? parseFloat(row.montant_dzd) : parseFloat(row.montant_op) * parseFloat(row.taux_change)
                   const dateTexte = dayjs(row.date_op).format('DD MMMM YYYY')
                   const dotColor = stringToColor(dateTexte)
 
