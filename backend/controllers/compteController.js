@@ -159,6 +159,7 @@ export const crediterCompte = [
             montant_op: montantAjout,
             taux_change:
               strategie === "DZD_PAYE" ? tauxValorisation : tauxAjout,
+            montant_dzd: montantPayeDzd,
             compte: {
               connect: {
                 id_cpt: cptIdInt,
@@ -370,8 +371,17 @@ export const annulerCredit = [
 
         const compte = operation.compte;
         const montant = Number(operation.montant_op);
+        const montantDzd = operation.montant_dzd === null || operation.montant_dzd === undefined
+          ? null
+          : Number(operation.montant_dzd);
         const tauxCredit = Number(operation.taux_change);
         const soldeActuel = Number(compte.solde_actuel || 0);
+
+        // Ne jamais reconstituer ce montant depuis un taux arrondi : les centimes
+        // exacts débités à l'origine doivent être ceux utilisés pour l'annulation.
+        if (montantDzd === null || !Number.isFinite(montantDzd)) {
+          throw new Error("MISSING_EXACT_DZD_AMOUNT");
+        }
         const soldeBloque = Number(compte.solde_bloque || 0);
         const tauxActuel = Number(compte.taux_change_actuel || 0);
         const nouveauSolde = arrondir(soldeActuel - montant);
@@ -383,13 +393,11 @@ export const annulerCredit = [
         let nouveauTaux = 0;
         if (nouveauSolde > 0) {
           nouveauTaux = arrondir(
-            (soldeActuel * tauxActuel - montant * tauxCredit) / nouveauSolde,
+            (soldeActuel * tauxActuel - montantDzd) / nouveauSolde,
           );
           if (nouveauTaux < 0) throw new Error("INVALID_REVERSE_VALUATION");
         }
 
-        // Les anciennes opérations qui ont débité la Caisse sont identifiées
-        // par montant_dzd; les remboursements exceptionnels n'ont pas ce champ.
         const doitRestituerCaisse =
           compte.type_cpt === "COMMUN" && compte.designation_cpt !== "Caisse";
 
@@ -401,7 +409,7 @@ export const annulerCredit = [
           if (!caisse) throw new Error("CAISSE_NOT_FOUND");
           await tx.compte.update({
             where: { id_cpt: caisse.id_cpt },
-            data: { solde_actuel: { increment: arrondir(montant * tauxCredit) } },
+            data: { solde_actuel: { increment: montantDzd } },
           });
         }
 
@@ -427,6 +435,7 @@ export const annulerCredit = [
         CREDIT_LINKED_TO_REFUND: "Cette créditation est liée au remboursement d'une sortie exceptionnelle. Annulez d'abord cette décision depuis le module concerné.",
         INSUFFICIENT_ACCOUNT_FUNDS: "Annulation impossible : le solde disponible du compte est insuffisant.",
         INVALID_REVERSE_VALUATION: "Annulation impossible : le taux moyen recalculé serait négatif.",
+        MISSING_EXACT_DZD_AMOUNT: "Cette ancienne créditation ne contient pas le montant exact en DZD. Son annulation est bloquée pour éviter une erreur de solde.",
         CAISSE_NOT_FOUND: "Le compte Caisse est introuvable.",
       };
       const status = error.message === "CREDIT_NOT_FOUND" || error.message === "CAISSE_NOT_FOUND" ? 404 : 409;
