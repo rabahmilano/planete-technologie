@@ -1,5 +1,3 @@
--- À exécuter une seule fois sur TiDB Cloud avant le déploiement du backend.
+-- À exécuter une seule fois sur TiDB Cloud si la colonne n'existe pas déjà.
 ALTER TABLE crediter
-  ADD COLUMN isAnnule BOOLEAN NOT NULL DEFAULT FALSE,
-  ADD COLUMN montant_dzd DECIMAL(10, 2) NULL,
-  ADD COLUMN caisse_debitee BOOLEAN NULL;
+  ADD COLUMN isAnnule BOOLEAN NOT NULL DEFAULT FALSE;
