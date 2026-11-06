@@ -42,7 +42,7 @@ const defaultValues = {
 const CrediterCompte = () => {
   const { tousLesComptes, crediter } = useCompte()
   const [devise, setDevise] = useState('')
-  const [strategie, setStrategie] = useState('DZD_PAYE')
+  const [strategie, setStrategie] = useState('MONTANTS_DIRECTS')
   const [isTauxEnabled, setIsTauxEnabled] = useState(false)
   const [montantEstime, setMontantEstime] = useState(0)
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
@@ -54,7 +54,8 @@ const CrediterCompte = () => {
     handleSubmit,
     formState: { errors },
     getValues,
-    reset
+    reset,
+    resetField
   } = useForm({ defaultValues })
 
   const handleCompteChange = newCompte => {
@@ -93,12 +94,23 @@ const CrediterCompte = () => {
     const tauxCentimes = convertirEnCentimes(tauxSaisi)
     if (montantCentimes <= 0 || tauxCentimes <= 0) return 0
 
+    if (mode === 'MONTANTS_DIRECTS') return tauxCentimes / 100
+
     if (mode === 'DZD_PAYE') {
       const deviseCentimes = Math.floor((montantCentimes * 100) / tauxCentimes)
       return deviseCentimes / 100
     }
 
-    return (montantCentimes * tauxCentimes) / 10000
+    const coutEnCentimes = Math.round((montantCentimes * tauxCentimes) / 100)
+    return coutEnCentimes / 100
+  }
+
+  const calculerTauxEffectif = (montantPaye, montantCredite) => {
+    const montantPayeCentimes = convertirEnCentimes(montantPaye)
+    const montantCrediteCentimes = convertirEnCentimes(montantCredite)
+    if (montantPayeCentimes <= 0 || montantCrediteCentimes <= 0) return 0
+
+    return montantPayeCentimes / montantCrediteCentimes
   }
 
   const updateTotalMontantDZD = () => {
@@ -111,8 +123,11 @@ const CrediterCompte = () => {
 
   const handleStrategieChange = event => {
     const nextStrategie = event.target.value
+    resetField('mnt', { defaultValue: '' })
+    resetField('taux', { defaultValue: '' })
     setStrategie(nextStrategie)
-    setMontantEstime(calculerEstimation(nextStrategie, getValues('mnt'), getValues('taux')))
+    setIsTauxEnabled(false)
+    setMontantEstime(0)
   }
 
   const onSubmit = data => {
@@ -139,7 +154,7 @@ const CrediterCompte = () => {
         setMontantEstime(0)
         setDevise('')
         setIsTauxEnabled(false)
-        setStrategie('DZD_PAYE')
+        setStrategie('MONTANTS_DIRECTS')
         setIsConfirmationOpen(false)
         setOperationEnAttente(null)
       }
@@ -164,6 +179,10 @@ const CrediterCompte = () => {
     operationEnAttente?.montantSaisi,
     operationEnAttente?.tauxChange
   )
+  const tauxEffectifConfirme =
+    operationEnAttente?.strategieCredit === 'MONTANTS_DIRECTS'
+      ? calculerTauxEffectif(operationEnAttente?.montantSaisi, operationEnAttente?.tauxChange)
+      : tauxConfirme
 
   return (
     <>
@@ -188,6 +207,7 @@ const CrediterCompte = () => {
                   label='Mode de calcul'
                   onChange={handleStrategieChange}
                 >
+                  <MenuItem value='MONTANTS_DIRECTS'>Montant payé en DZD + montant crédité en devise</MenuItem>
                   <MenuItem value='DZD_PAYE'>Montant payé en DZD → montant crédité en devise</MenuItem>
                   <MenuItem value='DEVISE_RECUE'>Montant reçu en devise → coût calculé en DZD</MenuItem>
                 </Select>
@@ -255,7 +275,7 @@ const CrediterCompte = () => {
                 render={({ field: { value, onChange } }) => (
                   <CustomTextField
                     fullWidth
-                    label={strategie === 'DZD_PAYE' ? 'Montant payé en DZD' : 'Montant total en devise'}
+                    label={strategie === 'DEVISE_RECUE' ? 'Montant total en devise' : 'Montant payé en DZD'}
                     autoComplete='off'
                     value={value}
                     onChange={e => {
@@ -266,7 +286,7 @@ const CrediterCompte = () => {
                     {...(errors.mnt && { helperText: 'Doit être supérieur à 0' })}
                     InputProps={{
                       inputComponent: CleaveInput,
-                      endAdornment: <InputAdornment position='end'>{strategie === 'DZD_PAYE' ? 'DZD' : (devise || '---')}</InputAdornment>
+                      endAdornment: <InputAdornment position='end'>{strategie === 'DEVISE_RECUE' ? (devise || '---') : 'DZD'}</InputAdornment>
                     }}
                   />
                 )}
@@ -282,7 +302,7 @@ const CrediterCompte = () => {
                   <CustomTextField
                     fullWidth
                     value={value}
-                    label='Taux de change'
+                    label={strategie === 'MONTANTS_DIRECTS' ? 'Montant crédité en devise' : 'Taux de change'}
                     placeholder='1.00'
                     onChange={e => {
                       onChange(e)
@@ -294,7 +314,7 @@ const CrediterCompte = () => {
                     {...(errors.taux && { helperText: 'Doit être supérieur à 0' })}
                     InputProps={{
                       inputComponent: CleaveInput,
-                      endAdornment: <InputAdornment position='end'>DZD</InputAdornment>
+                      endAdornment: <InputAdornment position='end'>{strategie === 'MONTANTS_DIRECTS' ? (devise || '---') : 'DZD'}</InputAdornment>
                     }}
                   />
                 )}
@@ -305,11 +325,17 @@ const CrediterCompte = () => {
               <CustomTextField
                 fullWidth
                 type='text'
-                label={strategie === 'DZD_PAYE' ? 'Montant estimé en devise' : 'Coût estimé en DZD'}
-                value={formatMontant(montantEstime)}
+                label={
+                  strategie === 'MONTANTS_DIRECTS'
+                    ? 'Taux de change calculé'
+                    : strategie === 'DZD_PAYE'
+                      ? 'Montant estimé en devise'
+                      : 'Coût estimé en DZD'
+                }
+                value={formatMontant(strategie === 'MONTANTS_DIRECTS' ? calculerTauxEffectif(getValues('mnt'), getValues('taux')) : montantEstime)}
                 disabled
                 InputProps={{
-                  endAdornment: <InputAdornment position='end'>{strategie === 'DZD_PAYE' ? (devise || '---') : 'DZD'}</InputAdornment>
+                  endAdornment: <InputAdornment position='end'>{strategie === 'DEVISE_RECUE' || strategie === 'MONTANTS_DIRECTS' ? 'DZD' : (devise || '---')}</InputAdornment>
                 }}
               />
             </Grid>
@@ -350,22 +376,29 @@ const CrediterCompte = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <Typography variant='body2' color='text.secondary'>
-                {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant payé' : 'Montant reçu'}
+                {operationEnAttente?.strategieCredit === 'DEVISE_RECUE' ? 'Montant reçu' : 'Montant payé'}
               </Typography>
               <Typography fontWeight={600}>
-                {formatMontant(montantConfirme)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'DZD' : (compteSelectionne?.dev_code || '')}
+                {formatMontant(montantConfirme)} {operationEnAttente?.strategieCredit === 'DEVISE_RECUE' ? (compteSelectionne?.dev_code || '') : 'DZD'}
               </Typography>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <Typography variant='body2' color='text.secondary'>Taux de change</Typography>
-              <Typography fontWeight={600}>{formatMontant(tauxConfirme)} DZD</Typography>
+              <Typography variant='body2' color='text.secondary'>
+                {operationEnAttente?.strategieCredit === 'MONTANTS_DIRECTS' ? 'Montant crédité' : 'Taux de change'}
+              </Typography>
+              <Typography fontWeight={600}>
+                {formatMontant(tauxEffectifConfirme)}{' '}
+                {operationEnAttente?.strategieCredit === 'MONTANTS_DIRECTS'
+                  ? `DZD/${compteSelectionne?.dev_code || 'devise'}`
+                  : 'DZD'}
+              </Typography>
             </Grid>
             <Grid item xs={12}>
               <Typography variant='body2' color='text.secondary'>
-                {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? 'Montant estimé qui sera crédité' : 'Coût estimé en DZD'}
+                {operationEnAttente?.strategieCredit !== 'DEVISE_RECUE' ? 'Montant qui sera crédité' : 'Coût estimé en DZD'}
               </Typography>
               <Typography variant='h6' color='primary'>
-                {formatMontant(estimationConfirmee)} {operationEnAttente?.strategieCredit === 'DZD_PAYE' ? (compteSelectionne?.dev_code || '') : 'DZD'}
+                {formatMontant(estimationConfirmee)} {operationEnAttente?.strategieCredit !== 'DEVISE_RECUE' ? (compteSelectionne?.dev_code || '') : 'DZD'}
               </Typography>
               <Typography variant='caption' color='text.secondary'>
                 Cette estimation est informative. Le backend recalcule les montants avant l'enregistrement.

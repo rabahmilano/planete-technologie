@@ -29,7 +29,7 @@ export const crediterCompte = [
     .withMessage("La date d'opération est invalide"),
   body("strategieCredit")
     .optional()
-    .isIn(["DEVISE_RECUE", "DZD_PAYE"])
+    .isIn(["DEVISE_RECUE", "DZD_PAYE", "MONTANTS_DIRECTS"])
     .withMessage("La stratégie de crédit est invalide"),
 
   async (req, res) => {
@@ -39,7 +39,7 @@ export const crediterCompte = [
     }
 
     const { compteId, montantSaisi, tauxChange, dateOperation } = req.body;
-    const strategie = req.body.strategieCredit || "DEVISE_RECUE";
+    const strategie = req.body.strategieCredit || "MONTANTS_DIRECTS";
 
     const toCents = (value) => {
       const [whole, fraction = ""] = String(value).split(".");
@@ -74,7 +74,11 @@ export const crediterCompte = [
         let montantADeduireCentimes;
         let tauxEffectif;
 
-        if (strategie === "DZD_PAYE") {
+        if (strategie === "MONTANTS_DIRECTS") {
+          montantADeduireCentimes = montantSaisiCentimes;
+          montantAjoutCentimes = tauxCentimes;
+          tauxEffectif = montantADeduireCentimes / montantAjoutCentimes;
+        } else if (strategie === "DZD_PAYE") {
           montantADeduireCentimes = montantSaisiCentimes;
           montantAjoutCentimes = truncateToCents(
             montantSaisiCentimes,
@@ -159,7 +163,7 @@ export const crediterCompte = [
             date_op: new Date(dateOperation),
             montant_op: montantAjout,
             taux_change:
-              strategie === "DZD_PAYE" ? tauxValorisation : tauxAjout,
+              strategie === "DEVISE_RECUE" ? tauxAjout : tauxValorisation,
             montant_dzd: montantPayeDzd,
             compte: {
               connect: {
