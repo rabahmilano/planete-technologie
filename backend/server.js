@@ -18,6 +18,11 @@ import voyageRoutes from "./routes/voyageRouter.js";
 import transfertRoutes from "./routes/transfertRouter.js";
 import sortieExceptionnelleRoutes from "./routes/sortieExceptionnelleRouter.js";
 import ajustementCompteRoutes from "./routes/ajustementCompteRouter.js";
+import familleRoutes from "./routes/familleRouter.js";
+import produitEcommerceRoutes from "./routes/produitEcommerceRouter.js";
+import codePromoRoutes from "./routes/codePromoRouter.js";
+import commandeWebRoutes from "./routes/commandeWebRouter.js";
+import tarifLivraisonRoutes from "./routes/tarifLivraisonRouter.js";
 
 const app = express();
 
@@ -80,6 +85,11 @@ app.use("/api/devises", verifyToken, deviseRoutes);
 app.use("/api/comptes", verifyToken, compteRoutes);
 app.use("/api/depenses", verifyToken, depenseRoutes);
 app.use("/api/produits", verifyToken, produitRoutes);
+app.use("/api/produits", verifyToken, produitEcommerceRoutes);
+app.use("/api/familles", verifyToken, familleRoutes);
+app.use("/api/codes-promo", verifyToken, codePromoRoutes);
+app.use("/api/commandes-web", verifyToken, commandeWebRoutes);
+app.use("/api/tarifs-livraison", verifyToken, tarifLivraisonRoutes);
 app.use("/api/commandes", verifyToken, commandeRoutes);
 app.use("/api/emprunts", verifyToken, empruntRoutes);
 app.use("/api/voyages", verifyToken, voyageRoutes);

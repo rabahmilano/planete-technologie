@@ -34,3 +34,89 @@ export const arrondir = (nombre) => {
   // On utilise 10000 pour garder 4 chiffres après la virgule
   return Math.round((nombre + Number.EPSILON) * 10000) / 10000;
 };
+
+export const genererSlug = (texte) => {
+  const base = texte
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "sans-nom";
+};
+
+export const getPrixEffectifProduit = (produit, paliers, quantite) => {
+  const maintenant = new Date();
+  let prix = null;
+
+  if (
+    produit.prix_promo !== null &&
+    produit.prix_promo !== undefined &&
+    produit.debut_promo &&
+    produit.fin_promo &&
+    new Date(produit.debut_promo) <= maintenant &&
+    maintenant <= new Date(produit.fin_promo)
+  ) {
+    prix = parseFloat(produit.prix_promo);
+  } else if (
+    produit.prix_vente !== null &&
+    produit.prix_vente !== undefined
+  ) {
+    prix = parseFloat(produit.prix_vente);
+  }
+
+  if (prix === null) return null;
+
+  const palier = (paliers || [])
+    .filter((p) => p.quantite_min <= quantite)
+    .sort((a, b) => b.quantite_min - a.quantite_min)[0];
+
+  if (palier) return parseFloat(palier.prix_unitaire);
+
+  return prix;
+};
+
+export const verifierCodePromoValide = (codePromo, montantProduits) => {
+  if (!codePromo) {
+    return { valide: false, message: "Code promo introuvable." };
+  }
+  if (!codePromo.est_actif_promo) {
+    return { valide: false, message: "Code promo désactivé." };
+  }
+
+  const aujourdHui = new Date();
+  aujourdHui.setHours(0, 0, 0, 0);
+  if (new Date(codePromo.date_expiration) < aujourdHui) {
+    return { valide: false, message: "Code promo expiré." };
+  }
+
+  if (codePromo.utilisation_actuelle >= codePromo.utilisation_max) {
+    return { valide: false, message: "Code promo épuisé." };
+  }
+
+  if (montantProduits !== undefined && montantProduits !== null) {
+    const montantMin = parseFloat(codePromo.montant_min_promo || 0);
+    if (montantProduits < montantMin) {
+      return {
+        valide: false,
+        message: `Montant minimum de ${montantMin} DZD requis pour ce code promo.`,
+      };
+    }
+  }
+
+  return { valide: true };
+};
+
+export const calculerReductionPromo = (codePromo, montantProduits) => {
+  if (codePromo.type_reduction === "POURCENTAGE") {
+    return arrondir(
+      Math.min(
+        montantProduits,
+        (montantProduits * parseFloat(codePromo.valeur_reduction)) / 100,
+      ),
+    );
+  }
+  return arrondir(
+    Math.min(montantProduits, parseFloat(codePromo.valeur_reduction)),
+  );
+};
