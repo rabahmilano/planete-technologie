@@ -330,7 +330,8 @@ export const verifyCodePromo = [
     .notEmpty()
     .withMessage("Le code promo est obligatoire"),
   body("montant_commande")
-    .optional()
+    .notEmpty()
+    .withMessage("Le montant de la commande est obligatoire")
     .isFloat({ min: 0 })
     .withMessage("Le montant de la commande doit être un nombre positif ou nul"),
 
@@ -347,10 +348,7 @@ export const verifyCodePromo = [
         where: { code: normaliserCode(code) },
       });
 
-      const montant =
-        montant_commande !== undefined
-          ? parseFloat(montant_commande)
-          : undefined;
+      const montant = parseFloat(montant_commande);
       const verification = verifierCodePromoValide(codePromo, montant);
 
       if (!verification.valide) {
@@ -359,10 +357,7 @@ export const verifyCodePromo = [
           .json({ valide: false, message: verification.message });
       }
 
-      const montantReduction =
-        montant !== undefined
-          ? calculerReductionPromo(codePromo, montant)
-          : null;
+      const montantReduction = calculerReductionPromo(codePromo, montant);
 
       res.status(200).json({
         valide: true,
