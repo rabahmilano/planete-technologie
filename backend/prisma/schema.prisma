@@ -77,6 +77,7 @@ model produit {
   fin_promo          DateTime?
   poids_grammes      Int?     @default(500)
   statut_publication String   @default("BROUILLON")
+  est_mis_en_avant   Boolean  @default(false)
   famille_id         Int?
 
   colis                   colis[]
@@ -87,6 +88,9 @@ model produit {
   paliers                 palier_prix[]
   historiques_prix_vente  historique_prix_vente[]
   lignes_web              ligne_commande_web[]
+
+  @@index([statut_publication])
+  @@index([famille_id])
 }
 
 model commande {
@@ -371,6 +375,8 @@ model famille_produit {
   id_famille         Int    @id
   nom_famille        String @db.VarChar(100)
   slug_famille       String @unique @db.VarChar(100)
+  image_famille      String? @db.VarChar(500)
+  ordre_famille      Int @default(0)
   famille_parente_id Int?
 
   famille_parente famille_produit?  @relation("HierarchieFamille", fields: [famille_parente_id], references: [id_famille])
@@ -382,6 +388,7 @@ model image_produit {
   id_img         Int     @id
   url_image      String  @db.VarChar(255)
   est_principale Boolean @default(false)
+  ordre_image    Int     @default(0)
   prd_id         Int
 
   produit produit @relation(fields: [prd_id], references: [id_prd])
@@ -413,6 +420,8 @@ model code_promo {
   type_reduction       String
   valeur_reduction     Decimal  @db.Decimal(10, 2)
   date_expiration      DateTime @db.Date()
+  montant_min_promo    Decimal? @db.Decimal(10, 2) @default(0)
+  est_actif_promo      Boolean @default(true)
   utilisation_max      Int
   utilisation_actuelle Int      @default(0)
 
@@ -425,26 +434,46 @@ model commande_web {
   nom_client          String   @db.VarChar(100)
   telephone           String   @db.VarChar(20)
   wilaya              String   @db.VarChar(50)
+  code_wilaya         Int?
   commune             String   @db.VarChar(100)
   adresse_exacte      String?  @db.Text
   type_livraison      String
+  bureau_livraison    String?  @db.VarChar(200)
   frais_livraison     Decimal  @db.Decimal(10, 2)
+  montant_produits    Decimal  @db.Decimal(10, 2)
+  montant_reduction   Decimal  @db.Decimal(10, 2) @default(0)
   montant_total_final Decimal  @db.Decimal(10, 2)
   statut_commande     String   @default("NOUVELLE")
+  statut_paiement     String   @default("NON_PAYE")
   code_tracking       String?  @db.VarChar(100)
   code_promo_id       Int?
+  note_admin          String?  @db.Text
 
   promo  code_promo?         @relation(fields: [code_promo_id], references: [id_code])
   lignes ligne_commande_web[]
+
+  @@index([statut_commande])
 }
 
 model ligne_commande_web {
   id_ligne              Int     @id
   quantite              Int
   prix_unitaire_facture Decimal @db.Decimal(10, 2)
+  designation_facturee  String? @db.VarChar(200)
   cmd_web_id            Int
   prd_id                Int
 
   commande commande_web @relation(fields: [cmd_web_id], references: [id_cmd_web])
   produit  produit      @relation(fields: [prd_id], references: [id_prd])
+}
+
+model tarif_livraison {
+  id_tarif              Int     @id
+  code_wilaya_tarif     Int
+  nom_wilaya_tarif      String  @db.VarChar(100)
+  type_livraison_tarif  String  @db.VarChar(20)
+  prix_livraison_tarif  Decimal @db.Decimal(10, 2)
+  actif_tarif           Boolean @default(true)
+
+  @@unique([code_wilaya_tarif, type_livraison_tarif])
 }
