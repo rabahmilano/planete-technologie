@@ -11,6 +11,10 @@ import {
   creerCommandeInterne,
   supprimerCommandeInterne,
 } from "./commandeController.js";
+import {
+  creerColisDepuisCommande,
+  estConfigure as yalidineConfigure,
+} from "../config/yalidine.js";
 
 const STATUTS_COMMANDE = [
   "NOUVELLE",
@@ -118,6 +122,152 @@ const inclureCommande = {
   },
 };
 
+export const creerCommandeWebInterne = async (tx, donnees) => {
+  const {
+    nom_client,
+    telephone,
+    wilaya,
+    code_wilaya,
+    commune,
+    adresse_exacte,
+    type_livraison,
+    bureau_livraison,
+    frais_livraison,
+    lignes,
+    code_promo,
+  } = donnees;
+
+  let codePromoRecord = null;
+  if (code_promo) {
+    codePromoRecord = await tx.code_promo.findUnique({
+      where: { code: code_promo.trim().toUpperCase() },
+    });
+    if (!codePromoRecord) {
+      throw new Error("CODE_PROMO_INTROUVABLE");
+    }
+  }
+
+  const lignesValorisees = [];
+  let montantProduits = 0;
+
+  for (const ligne of lignes) {
+    const prdId = parseInt(ligne.prd_id, 10);
+    const quantite = parseInt(ligne.quantite, 10);
+
+    const produit = await tx.produit.findUnique({
+      where: { id_prd: prdId },
+      include: { paliers: true },
+    });
+    if (!produit) {
+      throw new Error(`PRODUIT_NOT_FOUND:${prdId}`);
+    }
+    if (produit.statut_publication !== "PUBLIE") {
+      throw new Error(`PRODUIT_NON_PUBLIE:${prdId}`);
+    }
+
+    const disponible =
+      produit.qte_dispo - produit.qte_reservee;
+    if (quantite > disponible) {
+      throw new Error(`STOCK_INSUFFISANT:${prdId}`);
+    }
+
+    const prixUnitaire = getPrixEffectifProduit(
+      produit,
+      produit.paliers,
+      quantite,
+    );
+    if (prixUnitaire === null) {
+      throw new Error(`PRIX_MANQUANT:${prdId}`);
+    }
+
+    montantProduits = arrondir(
+      montantProduits + prixUnitaire * quantite,
+    );
+    lignesValorisees.push({
+      prd_id: prdId,
+      quantite,
+      prix_unitaire_facture: prixUnitaire,
+      designation_facturee: produit.designation_prd,
+    });
+  }
+
+  let montantReduction = 0;
+  if (codePromoRecord) {
+    const verification = verifierCodePromoValide(
+      codePromoRecord,
+      montantProduits,
+    );
+    if (!verification.valide) {
+      throw new Error(`CODE_PROMO_INVALIDE:${verification.message}`);
+    }
+    montantReduction = calculerReductionPromo(
+      codePromoRecord,
+      montantProduits,
+    );
+  }
+
+  const montantTotalFinal = arrondir(
+    montantProduits -
+      montantReduction +
+      parseFloat(frais_livraison),
+  );
+
+  const idCmdWeb = await getMaxValue("commande_web", "id_cmd_web", null);
+
+  const commande = await tx.commande_web.create({
+    data: {
+      id_cmd_web: idCmdWeb,
+      nom_client: nom_client.trim(),
+      telephone: telephone.trim(),
+      wilaya: wilaya.trim(),
+      code_wilaya:
+        code_wilaya !== undefined ? parseInt(code_wilaya, 10) : null,
+      commune: commune.trim(),
+      adresse_exacte: adresse_exacte || null,
+      type_livraison,
+      bureau_livraison: bureau_livraison || null,
+      frais_livraison: parseFloat(frais_livraison),
+      montant_produits: montantProduits,
+      montant_reduction: montantReduction,
+      montant_total_final: montantTotalFinal,
+      statut_commande: "NOUVELLE",
+      code_promo_id: codePromoRecord ? codePromoRecord.id_code : null,
+    },
+  });
+
+  const maxLigne = await tx.ligne_commande_web.aggregate({
+    _max: { id_ligne: true },
+  });
+  let prochainIdLigne = (maxLigne._max.id_ligne ?? 0) + 1;
+
+  for (const ligne of lignesValorisees) {
+    const idLigne = prochainIdLigne++;
+    await tx.ligne_commande_web.create({
+      data: {
+        id_ligne: idLigne,
+        quantite: ligne.quantite,
+        prix_unitaire_facture: ligne.prix_unitaire_facture,
+        designation_facturee: ligne.designation_facturee,
+        cmd_web_id: idCmdWeb,
+        prd_id: ligne.prd_id,
+      },
+    });
+    await tx.produit.update({
+      where: { id_prd: ligne.prd_id },
+      data: { qte_reservee: { increment: ligne.quantite } },
+    });
+  }
+
+  if (codePromoRecord) {
+    await tx.code_promo.update({
+      where: { id_code: codePromoRecord.id_code },
+      data: { utilisation_actuelle: { increment: 1 } },
+    });
+  }
+
+  return commande;
+};
+
 export const createCommandeWeb = [
   body("nom_client")
     .isString()
@@ -207,137 +357,21 @@ export const createCommandeWeb = [
     }
 
     try {
-      const commandeCreee = await prisma.$transaction(async (tx) => {
-        let codePromoRecord = null;
-        if (code_promo) {
-          codePromoRecord = await tx.code_promo.findUnique({
-            where: { code: code_promo.trim().toUpperCase() },
-          });
-          if (!codePromoRecord) {
-            throw new Error("CODE_PROMO_INTROUVABLE");
-          }
-        }
-
-        const lignesValorisees = [];
-        let montantProduits = 0;
-
-        for (const ligne of lignes) {
-          const prdId = parseInt(ligne.prd_id, 10);
-          const quantite = parseInt(ligne.quantite, 10);
-
-          const produit = await tx.produit.findUnique({
-            where: { id_prd: prdId },
-            include: { paliers: true },
-          });
-          if (!produit) {
-            throw new Error(`PRODUIT_NOT_FOUND:${prdId}`);
-          }
-          if (produit.statut_publication !== "PUBLIE") {
-            throw new Error(`PRODUIT_NON_PUBLIE:${prdId}`);
-          }
-
-          const disponible =
-            produit.qte_dispo - produit.qte_reservee;
-          if (quantite > disponible) {
-            throw new Error(`STOCK_INSUFFISANT:${prdId}`);
-          }
-
-          const prixUnitaire = getPrixEffectifProduit(
-            produit,
-            produit.paliers,
-            quantite,
-          );
-          if (prixUnitaire === null) {
-            throw new Error(`PRIX_MANQUANT:${prdId}`);
-          }
-
-          montantProduits = arrondir(
-            montantProduits + prixUnitaire * quantite,
-          );
-          lignesValorisees.push({
-            prd_id: prdId,
-            quantite,
-            prix_unitaire_facture: prixUnitaire,
-            designation_facturee: produit.designation_prd,
-          });
-        }
-
-        let montantReduction = 0;
-        if (codePromoRecord) {
-          const verification = verifierCodePromoValide(
-            codePromoRecord,
-            montantProduits,
-          );
-          if (!verification.valide) {
-            throw new Error(`CODE_PROMO_INVALIDE:${verification.message}`);
-          }
-          montantReduction = calculerReductionPromo(
-            codePromoRecord,
-            montantProduits,
-          );
-        }
-
-        const montantTotalFinal = arrondir(
-          montantProduits -
-            montantReduction +
-            parseFloat(frais_livraison),
-        );
-
-        const idCmdWeb = await getMaxValue("commande_web", "id_cmd_web", null);
-
-        const commande = await tx.commande_web.create({
-          data: {
-            id_cmd_web: idCmdWeb,
-            nom_client: nom_client.trim(),
-            telephone: telephone.trim(),
-            wilaya: wilaya.trim(),
-            code_wilaya:
-              code_wilaya !== undefined ? parseInt(code_wilaya, 10) : null,
-            commune: commune.trim(),
-            adresse_exacte: adresse_exacte || null,
-            type_livraison,
-            bureau_livraison: bureau_livraison || null,
-            frais_livraison: parseFloat(frais_livraison),
-            montant_produits: montantProduits,
-            montant_reduction: montantReduction,
-            montant_total_final: montantTotalFinal,
-            statut_commande: "NOUVELLE",
-            code_promo_id: codePromoRecord ? codePromoRecord.id_code : null,
-          },
-        });
-
-        const maxLigne = await tx.ligne_commande_web.aggregate({
-          _max: { id_ligne: true },
-        });
-        let prochainIdLigne = (maxLigne._max.id_ligne ?? 0) + 1;
-
-        for (const ligne of lignesValorisees) {
-          const idLigne = prochainIdLigne++;
-          await tx.ligne_commande_web.create({
-            data: {
-              id_ligne: idLigne,
-              quantite: ligne.quantite,
-              prix_unitaire_facture: ligne.prix_unitaire_facture,
-              designation_facturee: ligne.designation_facturee,
-              cmd_web_id: idCmdWeb,
-              prd_id: ligne.prd_id,
-            },
-          });
-          await tx.produit.update({
-            where: { id_prd: ligne.prd_id },
-            data: { qte_reservee: { increment: ligne.quantite } },
-          });
-        }
-
-        if (codePromoRecord) {
-          await tx.code_promo.update({
-            where: { id_code: codePromoRecord.id_code },
-            data: { utilisation_actuelle: { increment: 1 } },
-          });
-        }
-
-        return commande;
-      });
+      const commandeCreee = await prisma.$transaction((tx) =>
+        creerCommandeWebInterne(tx, {
+          nom_client,
+          telephone,
+          wilaya,
+          code_wilaya,
+          commune,
+          adresse_exacte,
+          type_livraison,
+          bureau_livraison,
+          frais_livraison,
+          lignes,
+          code_promo,
+        }),
+      );
 
       const commandeComplete = await prisma.commande_web.findUnique({
         where: { id_cmd_web: commandeCreee.id_cmd_web },
@@ -620,6 +654,41 @@ export const updateStatutCommandeWeb = [
           include: inclureCommande,
         });
       });
+
+      if (
+        statut_commande === "CONFIRMEE" &&
+        yalidineConfigure() &&
+        !commandeModifiee.code_tracking
+      ) {
+        try {
+          const lignesAvecPoids = await Promise.all(
+            commandeModifiee.lignes.map(async (ligne) => {
+              const produit = await prisma.produit.findUnique({
+                where: { id_prd: ligne.prd_id },
+                select: { poids_grammes: true },
+              });
+              return {
+                ...ligne,
+                poids_grammes: produit?.poids_grammes || 500,
+              };
+            }),
+          );
+          const colis = await creerColisDepuisCommande(
+            commandeModifiee,
+            lignesAvecPoids,
+          );
+          await prisma.commande_web.update({
+            where: { id_cmd_web: idCommande },
+            data: { code_tracking: colis.tracking },
+          });
+          commandeModifiee.code_tracking = colis.tracking;
+        } catch (erreur) {
+          console.error(
+            `Création du colis Yalidine impossible pour la commande ${idCommande} :`,
+            erreur.message,
+          );
+        }
+      }
 
       res.status(200).json(commandeModifiee);
     } catch (error) {

@@ -23,6 +23,7 @@ import produitEcommerceRoutes from "./routes/produitEcommerceRouter.js";
 import codePromoRoutes from "./routes/codePromoRouter.js";
 import commandeWebRoutes from "./routes/commandeWebRouter.js";
 import tarifLivraisonRoutes from "./routes/tarifLivraisonRouter.js";
+import publicRoutes from "./routes/publicRouter.js";
 
 const app = express();
 
@@ -31,6 +32,14 @@ app.use(helmet());
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10000,
+  message: { message: "TOO_MANY_REQUESTS" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const limiteurPublic = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
   message: { message: "TOO_MANY_REQUESTS" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -47,6 +56,8 @@ app.use((req, res, next) => {
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:3001",
+    "http://localhost:3002",
+    "http://127.0.0.1:3002",
     "https://ptech-six.vercel.app",
   ];
 
@@ -80,6 +91,8 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+
+app.use("/api/public", limiteurPublic, publicRoutes);
 
 app.use("/api/devises", verifyToken, deviseRoutes);
 app.use("/api/comptes", verifyToken, compteRoutes);
