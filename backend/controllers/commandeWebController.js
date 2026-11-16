@@ -7,6 +7,10 @@ import {
   verifierCodePromoValide,
   calculerReductionPromo,
 } from "../config/utils.js";
+import {
+  creerCommandeInterne,
+  supprimerCommandeInterne,
+} from "./commandeController.js";
 
 const STATUTS_COMMANDE = [
   "NOUVELLE",
@@ -28,16 +32,46 @@ const libererReservationStock = async (tx, lignes) => {
   }
 };
 
-const solderReservationStock = async (tx, lignes) => {
-  for (const ligne of lignes) {
-    await tx.produit.update({
-      where: { id_prd: ligne.prd_id },
-      data: {
-        qte_dispo: { decrement: ligne.quantite },
-        qte_reservee: { decrement: ligne.quantite },
-      },
-    });
+const appliquerLivraison = async (tx, commande) => {
+  if (commande.commande_interne_id) {
+    throw new Error("COMMANDE_DEJA_LIVREE");
   }
+
+  const idsProduits = commande.lignes.map((ligne) => ligne.prd_id);
+  if (new Set(idsProduits).size !== idsProduits.length) {
+    throw new Error("LIGNES_DUPLIQUEES");
+  }
+
+  const { id_cde } = await creerCommandeInterne(tx, {
+    dateVente: new Date(),
+    produits: commande.lignes.map((ligne) => ({
+      id_prd: ligne.prd_id,
+      quantity: ligne.quantite,
+      unitPrice: parseFloat(ligne.prix_unitaire_facture),
+      totalPrice: arrondir(
+        parseFloat(ligne.prix_unitaire_facture) * ligne.quantite,
+      ),
+    })),
+    totalAmount: parseFloat(commande.montant_produits),
+  });
+
+  await libererReservationStock(tx, commande.lignes);
+
+  return { commande_interne_id: id_cde };
+};
+
+const appliquerAnnulation = async (tx, commande) => {
+  if (commande.commande_interne_id) {
+    try {
+      await supprimerCommandeInterne(tx, commande.commande_interne_id);
+    } catch (error) {
+      if (error.message !== "NOT_FOUND") throw error;
+    }
+    return { commande_interne_id: null };
+  }
+
+  await libererReservationStock(tx, commande.lignes);
+  return {};
 };
 
 const inclureCommande = {
@@ -61,6 +95,9 @@ const inclureCommande = {
       type_reduction: true,
       valeur_reduction: true,
     },
+  },
+  commande_interne: {
+    select: { id_cde: true, date_cde: true, mnt_cde: true },
   },
 };
 
@@ -539,19 +576,24 @@ export const updateStatutCommandeWeb = [
       }
 
       const commandeModifiee = await prisma.$transaction(async (tx) => {
-        if (statut_commande === "ANNULEE") {
-          await libererReservationStock(tx, commande.lignes);
-        }
-        if (statut_commande === "LIVREE") {
-          await solderReservationStock(tx, commande.lignes);
-        }
-
         const dataToUpdate = { statut_commande };
         if (code_tracking !== undefined) {
           dataToUpdate.code_tracking = code_tracking;
         }
         if (note_admin !== undefined) {
           dataToUpdate.note_admin = note_admin;
+        }
+        if (statut_commande === "ANNULEE") {
+          Object.assign(
+            dataToUpdate,
+            await appliquerAnnulation(tx, commande),
+          );
+        }
+        if (statut_commande === "LIVREE") {
+          Object.assign(
+            dataToUpdate,
+            await appliquerLivraison(tx, commande),
+          );
         }
 
         return tx.commande_web.update({
@@ -563,6 +605,30 @@ export const updateStatutCommandeWeb = [
 
       res.status(200).json(commandeModifiee);
     } catch (error) {
+      if (error.message === "COMMANDE_DEJA_LIVREE") {
+        return res.status(400).json({
+          message: "La commande a déjà été enregistrée comme vente.",
+        });
+      }
+      if (error.message === "LIGNES_DUPLIQUEES") {
+        return res.status(400).json({
+          message:
+            "La commande contient deux fois le même produit, livraison impossible.",
+        });
+      }
+      if (error.message === "CAISSE_NOT_FOUND") {
+        return res.status(409).json({
+          message: "Annulation impossible : Le compte 'Caisse' est introuvable.",
+        });
+      }
+      if (
+        error.message.includes("insuffisant") ||
+        error.message.includes("Conflit") ||
+        error.message.includes("Incohérence")
+      ) {
+        return res.status(409).json({ message: error.message });
+      }
+
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -605,9 +671,11 @@ export const annulerCommandeWeb = [
       }
 
       const commandeAnnulee = await prisma.$transaction(async (tx) => {
-        await libererReservationStock(tx, commande.lignes);
-
         const dataToUpdate = { statut_commande: "ANNULEE" };
+        Object.assign(
+          dataToUpdate,
+          await appliquerAnnulation(tx, commande),
+        );
         if (note_admin !== undefined) {
           dataToUpdate.note_admin = note_admin;
         }
@@ -621,6 +689,12 @@ export const annulerCommandeWeb = [
 
       res.status(200).json(commandeAnnulee);
     } catch (error) {
+      if (error.message === "CAISSE_NOT_FOUND") {
+        return res.status(409).json({
+          message: "Annulation impossible : Le compte 'Caisse' est introuvable.",
+        });
+      }
+
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });

@@ -99,6 +99,7 @@ model commande {
   mnt_cde  Decimal  @db.Decimal(10, 4)
 
   ligne_commande ligne_commande[]
+  commandes_web  commande_web[]
 }
 
 model ligne_commande {
@@ -447,10 +448,12 @@ model commande_web {
   statut_paiement     String   @default("NON_PAYE")
   code_tracking       String?  @db.VarChar(100)
   code_promo_id       Int?
+  commande_interne_id Int?
   note_admin          String?  @db.Text
 
-  promo  code_promo?         @relation(fields: [code_promo_id], references: [id_code])
-  lignes ligne_commande_web[]
+  promo            code_promo?         @relation(fields: [code_promo_id], references: [id_code])
+  commande_interne commande?          @relation(fields: [commande_interne_id], references: [id_cde])
+  lignes           ligne_commande_web[]
 
   @@index([statut_commande])
 }
