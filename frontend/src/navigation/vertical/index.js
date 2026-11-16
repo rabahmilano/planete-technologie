@@ -54,6 +54,39 @@ const navigation = () => {
       ]
     },
     {
+      title: 'E-Commerce',
+      icon: 'tabler:shopping-cart',
+      action: 'manage',
+      subject: 'all',
+      children: [
+        {
+          title: 'Familles',
+          path: '/ecommerce/familles',
+          icon: 'tabler:category'
+        },
+        {
+          title: 'Produits e-commerce',
+          path: '/ecommerce/produits',
+          icon: 'tabler:tag'
+        },
+        {
+          title: 'Codes promo',
+          path: '/ecommerce/codes-promo',
+          icon: 'tabler:discount-2'
+        },
+        {
+          title: 'Commandes web',
+          path: '/ecommerce/commandes-web',
+          icon: 'tabler:shopping-bag'
+        },
+        {
+          title: 'Tarifs livraison',
+          path: '/ecommerce/tarifs-livraison',
+          icon: 'tabler:truck-delivery'
+        }
+      ]
+    },
+    {
       title: 'Dépenses',
       icon: 'tabler:receipt-2',
       action: 'manage',
