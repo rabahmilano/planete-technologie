@@ -62,6 +62,10 @@ const appliquerLivraison = async (tx, commande) => {
 
 const appliquerAnnulation = async (tx, commande) => {
   if (commande.commande_interne_id) {
+    await tx.commande_web.update({
+      where: { id_cmd_web: commande.id_cmd_web },
+      data: { commande_interne_id: null },
+    });
     try {
       await supprimerCommandeInterne(tx, commande.commande_interne_id);
     } catch (error) {
@@ -289,12 +293,13 @@ export const createCommandeWeb = [
           },
         });
 
+        const maxLigne = await tx.ligne_commande_web.aggregate({
+          _max: { id_ligne: true },
+        });
+        let prochainIdLigne = (maxLigne._max.id_ligne ?? 0) + 1;
+
         for (const ligne of lignesValorisees) {
-          const idLigne = await getMaxValue(
-            "ligne_commande_web",
-            "id_ligne",
-            null,
-          );
+          const idLigne = prochainIdLigne++;
           await tx.ligne_commande_web.create({
             data: {
               id_ligne: idLigne,
