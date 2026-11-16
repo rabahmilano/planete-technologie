@@ -145,6 +145,7 @@ const ProduitsEcommerceView = () => {
     setProduitSelectionne(detail)
     setFormInfos({
       description: detail.description || '',
+      description_ar: detail.description_ar || '',
       statut_publication: detail.statut_publication || 'BROUILLON',
       est_mis_en_avant: Boolean(detail.est_mis_en_avant),
       famille_id: detail.famille_id ?? '',
@@ -184,6 +185,7 @@ const ProduitsEcommerceView = () => {
   const enregistrerInfos = async () => {
     const donnees = {
       description: formInfos.description || null,
+      description_ar: formInfos.description_ar || null,
       statut_publication: formInfos.statut_publication,
       est_mis_en_avant: formInfos.est_mis_en_avant,
       famille_id: formInfos.famille_id === '' ? null : parseInt(formInfos.famille_id, 10),
@@ -339,6 +341,18 @@ const ProduitsEcommerceView = () => {
                     label='Description'
                     value={formInfos.description || ''}
                     onChange={e => setFormInfos({ ...formInfos, description: e.target.value })}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    label='Description (arabe, optionnel)'
+                    helperText='Texte affiché sur la boutique quand le client choisit l’arabe. Laissez vide pour afficher la description française.'
+                    value={formInfos.description_ar || ''}
+                    onChange={e => setFormInfos({ ...formInfos, description_ar: e.target.value })}
+                    inputProps={{ dir: 'rtl', lang: 'ar' }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>

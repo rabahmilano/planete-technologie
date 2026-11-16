@@ -57,6 +57,28 @@ export const WILAYAS = [
   { code: 56, nom: "Djanet" },
   { code: 57, nom: "El M'Ghair" },
   { code: 58, nom: "El Meniaa" },
+  // 11 nouvelles wilayas (59-69) : loi n° 26-06 du 4 avril 2026 (JO n° 25)
+  // et décret présidentiel n° 26-206 du 25 mai 2026 (JO n° 40).
+  // Prise en charge complète au 1er janvier 2027 ; jusqu'au 31 décembre
+  // 2026, les wilayas mères les administrent. Marquées a_venir : elles
+  // sont connues du système (noms, codes) mais ne sont PAS proposées à
+  // la livraison tant que Yalidine ne les couvre pas (voir getWilayas).
+  // Wilayas mères : Aflou←Laghouat, Barika←Batna, El Kantara←Biskra,
+  // Bir El Ater←Tébessa, El Aricha←Tlemcen, Ksar Chellala←Tiaret,
+  // Aïn Ouessara←Djelfa, Messaad←Djelfa, Ksar El Boukhari←Médéa,
+  // Bou Saâda←M'Sila, El Abiodh Sidi Cheikh←El Bayadh.
+  // Variante d'orthographe rencontrée : « Aïn Oussera ».
+  { code: 59, nom: "Aflou", a_venir: true },
+  { code: 60, nom: "Barika", a_venir: true },
+  { code: 61, nom: "El Kantara", a_venir: true },
+  { code: 62, nom: "Bir El Ater", a_venir: true },
+  { code: 63, nom: "El Aricha", a_venir: true },
+  { code: 64, nom: "Ksar Chellala", a_venir: true },
+  { code: 65, nom: "Aïn Ouessara", a_venir: true },
+  { code: 66, nom: "Messaad", a_venir: true },
+  { code: 67, nom: "Ksar El Boukhari", a_venir: true },
+  { code: 68, nom: "Bou Saâda", a_venir: true },
+  { code: 69, nom: "El Abiodh Sidi Cheikh", a_venir: true },
 ];
 
 export const nomWilaya = (code) => {

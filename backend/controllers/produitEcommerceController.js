@@ -96,6 +96,10 @@ export const updateProduitEcommerce = [
     .optional({ nullable: true })
     .isString()
     .withMessage("La description doit être une chaîne de caractères"),
+  body("description_ar")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("La description arabe doit être une chaîne de caractères"),
   body("qte_dispo")
     .optional()
     .isInt({ min: 0 })
@@ -139,6 +143,7 @@ export const updateProduitEcommerce = [
     const {
       designation_prd,
       description,
+      description_ar,
       qte_dispo,
       poids_grammes,
       slug_prd,
@@ -161,6 +166,9 @@ export const updateProduitEcommerce = [
       }
       if (description !== undefined) {
         dataToUpdate.description = description || null;
+      }
+      if (description_ar !== undefined) {
+        dataToUpdate.description_ar = description_ar || null;
       }
       if (qte_dispo !== undefined) {
         dataToUpdate.qte_dispo = parseInt(qte_dispo, 10);

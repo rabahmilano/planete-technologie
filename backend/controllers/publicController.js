@@ -45,6 +45,7 @@ const formaterProduitPublic = (produit) => {
     slug: produit.slug_prd,
     designation: produit.designation_prd,
     description: produit.description,
+    description_ar: produit.description_ar,
     prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1),
     prix_vente:
       produit.prix_vente === null ? null : parseFloat(produit.prix_vente),
@@ -310,7 +311,10 @@ export const getFamillesPubliques = async (req, res) => {
 };
 
 export const getWilayas = async (req, res) => {
-  res.status(200).json(WILAYAS);
+  // Seules les 58 wilayas couvertes par la livraison sont proposées.
+  // Les 11 nouvelles (59-69, a_venir) existent dans WILAYAS pour préparer
+  // 2027, mais ne sont pas livrables tant que Yalidine ne les couvre pas.
+  res.status(200).json(WILAYAS.filter((wilaya) => !wilaya.a_venir));
 };
 
 export const getCommunesPubliques = async (req, res) => {

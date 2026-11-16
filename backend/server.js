@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
+import path from "path";
+import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import bodyParser from "body-parser";
 import prisma from "./config/dbConfig.js";
@@ -28,6 +30,24 @@ import publicRoutes from "./routes/publicRouter.js";
 const app = express();
 
 app.use(helmet());
+
+// Images produits servies en statique : les URL /images/produits/*.jpg
+// enregistrées en base (table image_produit) deviennent téléchargeables.
+// Dossier persistant, surchargeable par IMAGES_DIR. La CORP est assouplie
+// uniquement pour /images (cross-origin) : la boutique tourne sur une
+// autre origine (port 3002 / domaine Vercel) et doit pouvoir charger les
+// photos ; le reste de l'API garde la CORP same-origin de helmet.
+const IMAGES_DIR =
+  process.env.IMAGES_DIR ||
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "public", "images");
+app.use(
+  "/images",
+  (req, res, next) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    next();
+  },
+  express.static(IMAGES_DIR),
+);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,

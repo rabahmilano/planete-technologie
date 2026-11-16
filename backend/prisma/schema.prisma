@@ -71,6 +71,7 @@ model produit {
   qte_reservee       Int      @default(0)
   slug_prd           String?  @unique @db.VarChar(200)
   description        String?  @db.Text
+  description_ar     String?  @db.Text
   prix_vente         Decimal? @db.Decimal(10, 2)
   prix_promo         Decimal? @db.Decimal(10, 2)
   debut_promo        DateTime?
