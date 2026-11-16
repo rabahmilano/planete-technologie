@@ -33,6 +33,8 @@ import {
   updatePrixProduit,
   getHistoriquePrixProduit,
   addImageProduit,
+  getImageProduits,
+  getPaliersPrix,
   definirImagePrincipale,
   deleteImageProduit,
   addPalierPrix,
@@ -108,10 +110,12 @@ router.patch("/ecommerce/:id/prix", updatePrixProduit);
 router.get("/ecommerce/:id/historique-prix", getHistoriquePrixProduit);
 
 router.post("/images", addImageProduit);
+router.get("/images", getImageProduits);
 router.patch("/images/:id/principale", definirImagePrincipale);
 router.delete("/images/:id", deleteImageProduit);
 
 router.post("/paliers", addPalierPrix);
+router.get("/paliers", getPaliersPrix);
 router.patch("/paliers/:id", updatePalierPrix);
 router.delete("/paliers/:id", deletePalierPrix);
 

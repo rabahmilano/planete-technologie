@@ -2160,6 +2160,44 @@ export const getHistoriquePrixProduit = async (req, res) => {
   }
 };
 
+export const getImageProduits = async (req, res) => {
+  const prdId = parseInt(req.query.prd_id, 10);
+  if (isNaN(prdId)) {
+    return res.status(400).json({ message: "Identifiant produit invalide." });
+  }
+
+  try {
+    const images = await prisma.image_produit.findMany({
+      where: { prd_id: prdId },
+      orderBy: [{ est_principale: "desc" }, { ordre_image: "asc" }],
+    });
+    res.status(200).json(images);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const getPaliersPrix = async (req, res) => {
+  const prdId = parseInt(req.query.prd_id, 10);
+  if (isNaN(prdId)) {
+    return res.status(400).json({ message: "Identifiant produit invalide." });
+  }
+
+  try {
+    const paliers = await prisma.palier_prix.findMany({
+      where: { prd_id: prdId },
+      orderBy: { quantite_min: "asc" },
+    });
+    res.status(200).json(paliers);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
 export const addImageProduit = [
   body("prd_id")
     .isInt()
