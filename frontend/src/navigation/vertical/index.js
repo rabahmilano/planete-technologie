@@ -54,6 +54,34 @@ const navigation = () => {
       ]
     },
     {
+      title: 'E-commerce',
+      icon: 'tabler:shopping-cart',
+      action: 'manage',
+      subject: 'all',
+      children: [
+        {
+          title: 'Familles',
+          path: '/ecommerce/familles',
+          icon: 'tabler:category'
+        },
+        {
+          title: 'Produits boutique',
+          path: '/ecommerce/produits',
+          icon: 'tabler:building-store'
+        },
+        {
+          title: 'Codes promo',
+          path: '/ecommerce/codes-promo',
+          icon: 'tabler:discount-2'
+        },
+        {
+          title: 'Commandes web',
+          path: '/ecommerce/commandes-web',
+          icon: 'tabler:package'
+        }
+      ]
+    },
+    {
       title: 'Dépenses',
       icon: 'tabler:receipt-2',
       action: 'manage',
