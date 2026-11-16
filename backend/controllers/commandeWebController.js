@@ -60,6 +60,17 @@ const appliquerLivraison = async (tx, commande) => {
   return { commande_interne_id: id_cde };
 };
 
+const libererUtilisationPromo = async (tx, commande) => {
+  if (!commande.code_promo_id) return;
+  await tx.code_promo.updateMany({
+    where: {
+      id_code: commande.code_promo_id,
+      utilisation_actuelle: { gt: 0 },
+    },
+    data: { utilisation_actuelle: { decrement: 1 } },
+  });
+};
+
 const appliquerAnnulation = async (tx, commande) => {
   if (commande.commande_interne_id) {
     await tx.commande_web.update({
@@ -71,10 +82,12 @@ const appliquerAnnulation = async (tx, commande) => {
     } catch (error) {
       if (error.message !== "NOT_FOUND") throw error;
     }
+    await libererUtilisationPromo(tx, commande);
     return { commande_interne_id: null };
   }
 
   await libererReservationStock(tx, commande.lignes);
+  await libererUtilisationPromo(tx, commande);
   return {};
 };
 
