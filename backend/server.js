@@ -18,6 +18,9 @@ import voyageRoutes from "./routes/voyageRouter.js";
 import transfertRoutes from "./routes/transfertRouter.js";
 import sortieExceptionnelleRoutes from "./routes/sortieExceptionnelleRouter.js";
 import ajustementCompteRoutes from "./routes/ajustementCompteRouter.js";
+import familleRoutes from "./routes/familleRouter.js";
+import codePromoRoutes from "./routes/codePromoRouter.js";
+import commandeWebRoutes from "./routes/commandeWebRouter.js";
 
 const app = express();
 
@@ -90,6 +93,9 @@ app.use(
   verifyToken,
   sortieExceptionnelleRoutes,
 );
+app.use("/api/familles", verifyToken, familleRoutes);
+app.use("/api/codes-promo", verifyToken, codePromoRoutes);
+app.use("/api/commandes-web", verifyToken, commandeWebRoutes);
 app.use((req, res, next) => {
   res.status(404).json({ message: "Route not found" });
 });

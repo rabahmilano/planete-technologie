@@ -26,6 +26,18 @@ import {
   getAllAnalytics,
   getVentesRecentesEtTopProduits,
   getRollingKpis,
+  getProduitsEcommerce,
+  updateProduitEcommerce,
+  updateDescriptionProduit,
+  updateStatutPublication,
+  updatePrixProduit,
+  getHistoriquePrixProduit,
+  addImageProduit,
+  definirImagePrincipale,
+  deleteImageProduit,
+  addPalierPrix,
+  updatePalierPrix,
+  deletePalierPrix,
 } from "../controllers/produitController.js";
 
 import { Router } from "express";
@@ -87,4 +99,20 @@ router.get(
   "/dashboard/ventes-recentes-top-produits",
   getVentesRecentesEtTopProduits,
 );
+
+router.get("/ecommerce/liste", getProduitsEcommerce);
+router.patch("/ecommerce/:id", updateProduitEcommerce);
+router.patch("/ecommerce/:id/description", updateDescriptionProduit);
+router.patch("/ecommerce/:id/statut", updateStatutPublication);
+router.patch("/ecommerce/:id/prix", updatePrixProduit);
+router.get("/ecommerce/:id/historique-prix", getHistoriquePrixProduit);
+
+router.post("/images", addImageProduit);
+router.patch("/images/:id/principale", definirImagePrincipale);
+router.delete("/images/:id", deleteImageProduit);
+
+router.post("/paliers", addPalierPrix);
+router.patch("/paliers/:id", updatePalierPrix);
+router.delete("/paliers/:id", deletePalierPrix);
+
 export default router;

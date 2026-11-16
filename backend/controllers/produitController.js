@@ -5,7 +5,12 @@ import "dayjs/locale/fr.js";
 
 dayjs.locale("fr");
 
-import { getMaxValue, arrondir } from "../config/utils.js";
+import {
+  getMaxValue,
+  arrondir,
+  genererSlug,
+  estEnPromotion,
+} from "../config/utils.js";
 
 export const addCatProduit = [
   body("desCat")
@@ -1743,5 +1748,702 @@ export const getRollingKpis = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: { message: error.message } });
+  }
+};
+
+const STATUTS_PUBLICATION = ["BROUILLON", "PUBLIE", "ARCHIVE"];
+
+const trouverSlugProduitUnique = async (base, excludeId = null) => {
+  let candidat = base;
+  let suffixe = 2;
+  while (true) {
+    const existant = await prisma.produit.findFirst({
+      where: {
+        slug_prd: candidat,
+        ...(excludeId ? { id_prd: { not: excludeId } } : {}),
+      },
+    });
+    if (!existant) return candidat;
+    candidat = `${base}-${suffixe}`;
+    suffixe++;
+  }
+};
+
+export const getProduitsEcommerce = async (req, res) => {
+  const { page = 1, limit = 25, search = "", statut, familleId } = req.query;
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 25;
+  const skip = (pageNum - 1) * limitNum;
+
+  const whereClause = {
+    designation_prd: { contains: search },
+  };
+
+  if (statut && STATUTS_PUBLICATION.includes(statut)) {
+    whereClause.statut_publication = statut;
+  }
+  if (familleId && !isNaN(parseInt(familleId, 10))) {
+    whereClause.famille_id = parseInt(familleId, 10);
+  }
+
+  try {
+    const [produits, total] = await prisma.$transaction([
+      prisma.produit.findMany({
+        where: whereClause,
+        select: {
+          id_prd: true,
+          designation_prd: true,
+          slug_prd: true,
+          description: true,
+          qte_dispo: true,
+          qte_reservee: true,
+          prix_vente: true,
+          prix_promo: true,
+          debut_promo: true,
+          fin_promo: true,
+          poids_grammes: true,
+          statut_publication: true,
+          est_mis_en_avant: true,
+          famille: { select: { id_famille: true, nom_famille: true } },
+          images: {
+            where: { est_principale: true },
+            take: 1,
+            select: { id_img: true, url_image: true },
+          },
+          _count: { select: { paliers: true, images: true } },
+        },
+        orderBy: { designation_prd: "asc" },
+        skip,
+        take: limitNum,
+      }),
+      prisma.produit.count({ where: whereClause }),
+    ]);
+
+    const maintenant = new Date();
+    res.status(200).json({
+      produits: produits.map((produit) => ({
+        ...produit,
+        promo_active: estEnPromotion(produit, maintenant),
+      })),
+      total,
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const updateProduitEcommerce = [
+  body("designation_prd")
+    .optional()
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("La désignation ne peut pas être vide")
+    .isLength({ max: 150 })
+    .withMessage("La désignation ne peut pas dépasser 150 caractères"),
+  body("qte_dispo")
+    .optional({ nullable: true })
+    .isInt({ min: 0 })
+    .withMessage("La quantité disponible doit être un entier positif"),
+  body("poids_grammes")
+    .optional({ nullable: true })
+    .isInt({ min: 0 })
+    .withMessage("Le poids doit être un entier positif"),
+  body("slug_prd")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage("Le slug ne peut pas dépasser 200 caractères"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const idPrd = parseInt(req.params.id, 10);
+    if (isNaN(idPrd)) {
+      return res.status(400).json({ message: "Identifiant invalide." });
+    }
+
+    const { designation_prd, qte_dispo, poids_grammes, slug_prd } = req.body;
+
+    try {
+      const produit = await prisma.produit.findUnique({
+        where: { id_prd: idPrd },
+        select: { id_prd: true },
+      });
+      if (!produit) {
+        return res.status(404).json({ message: "Produit non trouvé." });
+      }
+
+      const data = {};
+
+      if (designation_prd !== undefined) {
+        data.designation_prd = designation_prd.trim();
+      }
+      if (qte_dispo !== undefined && qte_dispo !== null) {
+        data.qte_dispo = parseInt(qte_dispo, 10);
+      }
+      if (poids_grammes !== undefined && poids_grammes !== null) {
+        data.poids_grammes = parseInt(poids_grammes, 10);
+      }
+      if (slug_prd !== undefined) {
+        if (slug_prd === null) {
+          data.slug_prd = null;
+        } else {
+          const slugNettoye = slug_prd.trim();
+          if (slugNettoye) {
+            const existant = await prisma.produit.findFirst({
+              where: { slug_prd: slugNettoye, id_prd: { not: idPrd } },
+            });
+            if (existant) {
+              return res
+                .status(409)
+                .json({ message: "Ce slug est déjà utilisé par un autre produit." });
+            }
+            data.slug_prd = slugNettoye;
+          } else {
+            data.slug_prd = null;
+          }
+        }
+      }
+
+      if (Object.keys(data).length === 0) {
+        return res.status(400).json({ message: "Aucune donnée à mettre à jour." });
+      }
+
+      const produitMAJ = await prisma.produit.update({
+        where: { id_prd: idPrd },
+        data,
+        select: {
+          id_prd: true,
+          designation_prd: true,
+          slug_prd: true,
+          qte_dispo: true,
+          poids_grammes: true,
+        },
+      });
+
+      res.status(200).json(produitMAJ);
+    } catch (error) {
+      if (error.code === "P2002") {
+        return res
+          .status(409)
+          .json({ message: "Ce slug est déjà utilisé par un autre produit." });
+      }
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const updateDescriptionProduit = [
+  body("description")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .withMessage("La description doit être une chaîne de caractères"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const idPrd = parseInt(req.params.id, 10);
+    if (isNaN(idPrd)) {
+      return res.status(400).json({ message: "Identifiant invalide." });
+    }
+
+    const { description } = req.body;
+    if (description === undefined) {
+      return res.status(400).json({ message: "La description est requise." });
+    }
+
+    try {
+      const produit = await prisma.produit.findUnique({
+        where: { id_prd: idPrd },
+        select: { id_prd: true },
+      });
+      if (!produit) {
+        return res.status(404).json({ message: "Produit non trouvé." });
+      }
+
+      const produitMAJ = await prisma.produit.update({
+        where: { id_prd: idPrd },
+        data: { description: description === null ? null : description.trim() },
+        select: { id_prd: true, designation_prd: true, description: true },
+      });
+
+      res.status(200).json(produitMAJ);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const updateStatutPublication = [
+  body("statutPublication")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Le statut de publication est obligatoire")
+    .isIn(STATUTS_PUBLICATION)
+    .withMessage("Statut invalide (BROUILLON, PUBLIE, ARCHIVE)"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const idPrd = parseInt(req.params.id, 10);
+    if (isNaN(idPrd)) {
+      return res.status(400).json({ message: "Identifiant invalide." });
+    }
+
+    try {
+      const produit = await prisma.produit.findUnique({
+        where: { id_prd: idPrd },
+        select: { id_prd: true },
+      });
+      if (!produit) {
+        return res.status(404).json({ message: "Produit non trouvé." });
+      }
+
+      const produitMAJ = await prisma.produit.update({
+        where: { id_prd: idPrd },
+        data: { statut_publication: req.body.statutPublication.trim() },
+        select: { id_prd: true, designation_prd: true, statut_publication: true },
+      });
+
+      res.status(200).json(produitMAJ);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const updatePrixProduit = [
+  body("prixVente")
+    .isFloat({ gt: 0 })
+    .withMessage("Le prix de vente doit être supérieur à 0"),
+  body("prixPromo")
+    .optional({ nullable: true })
+    .isFloat({ gt: 0 })
+    .withMessage("Le prix promo doit être supérieur à 0"),
+  body("debutPromo")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("La date de début de promo doit être une date valide"),
+  body("finPromo")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("La date de fin de promo doit être une date valide"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const idPrd = parseInt(req.params.id, 10);
+    if (isNaN(idPrd)) {
+      return res.status(400).json({ message: "Identifiant invalide." });
+    }
+
+    const prixVente = parseFloat(req.body.prixVente);
+    const prixPromo =
+      req.body.prixPromo !== undefined && req.body.prixPromo !== null
+        ? parseFloat(req.body.prixPromo)
+        : null;
+    const debutPromo = req.body.debutPromo ? new Date(req.body.debutPromo) : null;
+    const finPromo = req.body.finPromo ? new Date(req.body.finPromo) : null;
+
+    if (prixPromo !== null && (!debutPromo || !finPromo)) {
+      return res.status(400).json({
+        message:
+          "Les dates de début et de fin sont obligatoires pour une promotion.",
+      });
+    }
+    if (prixPromo !== null && finPromo <= debutPromo) {
+      return res.status(400).json({
+        message: "La fin de la promotion doit être après son début.",
+      });
+    }
+
+    try {
+      const resultat = await prisma.$transaction(async (tx) => {
+        const produit = await tx.produit.findUnique({ where: { id_prd: idPrd } });
+        if (!produit) throw new Error("PRODUIT_NOT_FOUND");
+
+        const ancienPrix =
+          produit.prix_vente !== null ? parseFloat(produit.prix_vente) : null;
+
+        await tx.produit.update({
+          where: { id_prd: idPrd },
+          data: {
+            prix_vente: prixVente,
+            prix_promo: prixPromo,
+            debut_promo: debutPromo,
+            fin_promo: finPromo,
+          },
+        });
+
+        if (ancienPrix === null || ancienPrix !== prixVente) {
+          await tx.historique_prix_vente.updateMany({
+            where: { prd_id: idPrd, date_fin: null },
+            data: { date_fin: new Date() },
+          });
+
+          const idHistorique = await getMaxValue(
+            "historique_prix_vente",
+            "id_historique",
+            null,
+          );
+
+          await tx.historique_prix_vente.create({
+            data: {
+              id_historique: idHistorique,
+              ancien_prix: ancienPrix ?? 0,
+              nouveau_prix: prixVente,
+              date_debut: new Date(),
+              prd_id: idPrd,
+            },
+          });
+        }
+
+        return { ancienPrix };
+      });
+
+      res.status(200).json({
+        message: "Prix mis à jour avec succès.",
+        ancien_prix: resultat.ancienPrix,
+        nouveau_prix: prixVente,
+      });
+    } catch (error) {
+      if (error.message === "PRODUIT_NOT_FOUND") {
+        return res.status(404).json({ message: "Produit non trouvé." });
+      }
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const getHistoriquePrixProduit = async (req, res) => {
+  const idPrd = parseInt(req.params.id, 10);
+  if (isNaN(idPrd)) {
+    return res.status(400).json({ message: "Identifiant invalide." });
+  }
+
+  try {
+    const historique = await prisma.historique_prix_vente.findMany({
+      where: { prd_id: idPrd },
+      orderBy: { date_debut: "desc" },
+    });
+    res.status(200).json(historique);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const addImageProduit = [
+  body("prd_id")
+    .isInt()
+    .withMessage("Le produit est invalide"),
+  body("url_image")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("L'URL de l'image est obligatoire")
+    .isLength({ max: 255 })
+    .withMessage("L'URL de l'image ne peut pas dépasser 255 caractères"),
+  body("est_principale")
+    .optional()
+    .isBoolean()
+    .withMessage("est_principale doit être un booléen"),
+  body("ordre_image")
+    .optional({ nullable: true })
+    .isInt()
+    .withMessage("L'ordre doit être un entier"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const prdId = parseInt(req.body.prd_id, 10);
+
+    try {
+      const image = await prisma.$transaction(async (tx) => {
+        const produit = await tx.produit.findUnique({
+          where: { id_prd: prdId },
+          select: { id_prd: true },
+        });
+        if (!produit) throw new Error("PRODUIT_NOT_FOUND");
+
+        const nbImages = await tx.image_produit.count({ where: { prd_id: prdId } });
+        const estPrincipale =
+          req.body.est_principale === true || nbImages === 0;
+
+        if (estPrincipale) {
+          await tx.image_produit.updateMany({
+            where: { prd_id: prdId },
+            data: { est_principale: false },
+          });
+        }
+
+        const idImg = await getMaxValue("image_produit", "id_img", null);
+
+        return tx.image_produit.create({
+          data: {
+            id_img: idImg,
+            url_image: req.body.url_image.trim(),
+            est_principale: estPrincipale,
+            ordre_image:
+              req.body.ordre_image !== undefined && req.body.ordre_image !== null
+                ? parseInt(req.body.ordre_image, 10)
+                : nbImages,
+            prd_id: prdId,
+          },
+        });
+      });
+
+      res.status(201).json(image);
+    } catch (error) {
+      if (error.message === "PRODUIT_NOT_FOUND") {
+        return res.status(404).json({ message: "Produit non trouvé." });
+      }
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const definirImagePrincipale = async (req, res) => {
+  const idImg = parseInt(req.params.id, 10);
+  if (isNaN(idImg)) {
+    return res.status(400).json({ message: "Identifiant invalide." });
+  }
+
+  try {
+    const image = await prisma.$transaction(async (tx) => {
+      const img = await tx.image_produit.findUnique({
+        where: { id_img: idImg },
+      });
+      if (!img) throw new Error("IMAGE_NOT_FOUND");
+
+      await tx.image_produit.updateMany({
+        where: { prd_id: img.prd_id },
+        data: { est_principale: false },
+      });
+
+      return tx.image_produit.update({
+        where: { id_img: idImg },
+        data: { est_principale: true },
+      });
+    });
+
+    res.status(200).json(image);
+  } catch (error) {
+    if (error.message === "IMAGE_NOT_FOUND") {
+      return res.status(404).json({ message: "Image non trouvée." });
+    }
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const deleteImageProduit = async (req, res) => {
+  const idImg = parseInt(req.params.id, 10);
+  if (isNaN(idImg)) {
+    return res.status(400).json({ message: "Identifiant invalide." });
+  }
+
+  try {
+    const image = await prisma.image_produit.findUnique({
+      where: { id_img: idImg },
+    });
+    if (!image) {
+      return res.status(404).json({ message: "Image non trouvée." });
+    }
+
+    await prisma.image_produit.delete({ where: { id_img: idImg } });
+
+    res.status(200).json({ message: "Image supprimée avec succès." });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const addPalierPrix = [
+  body("prd_id")
+    .isInt()
+    .withMessage("Le produit est invalide"),
+  body("quantite_min")
+    .isInt({ gt: 1 })
+    .withMessage("La quantité minimale doit être un entier au moins égal à 2"),
+  body("prix_unitaire")
+    .isFloat({ gt: 0 })
+    .withMessage("Le prix unitaire doit être supérieur à 0"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const prdId = parseInt(req.body.prd_id, 10);
+    const quantiteMin = parseInt(req.body.quantite_min, 10);
+    const prixUnitaire = parseFloat(req.body.prix_unitaire);
+
+    try {
+      const produit = await prisma.produit.findUnique({
+        where: { id_prd: prdId },
+        select: { id_prd: true },
+      });
+      if (!produit) {
+        return res.status(404).json({ message: "Produit non trouvé." });
+      }
+
+      const doublon = await prisma.palier_prix.findFirst({
+        where: { prd_id: prdId, quantite_min: quantiteMin },
+      });
+      if (doublon) {
+        return res.status(409).json({
+          message: `Un palier existe déjà pour une quantité minimale de ${quantiteMin}.`,
+        });
+      }
+
+      const idPalier = await getMaxValue("palier_prix", "id_palier", null);
+
+      const palier = await prisma.palier_prix.create({
+        data: {
+          id_palier: idPalier,
+          quantite_min: quantiteMin,
+          prix_unitaire: prixUnitaire,
+          prd_id: prdId,
+        },
+      });
+
+      res.status(201).json(palier);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const updatePalierPrix = [
+  body("quantite_min")
+    .optional()
+    .isInt({ gt: 1 })
+    .withMessage("La quantité minimale doit être un entier au moins égal à 2"),
+  body("prix_unitaire")
+    .optional()
+    .isFloat({ gt: 0 })
+    .withMessage("Le prix unitaire doit être supérieur à 0"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const idPalier = parseInt(req.params.id, 10);
+    if (isNaN(idPalier)) {
+      return res.status(400).json({ message: "Identifiant invalide." });
+    }
+
+    const { quantite_min, prix_unitaire } = req.body;
+
+    try {
+      const palier = await prisma.palier_prix.findUnique({
+        where: { id_palier: idPalier },
+      });
+      if (!palier) {
+        return res.status(404).json({ message: "Palier non trouvé." });
+      }
+
+      const data = {};
+
+      if (quantite_min !== undefined) {
+        const nouvelleQuantite = parseInt(quantite_min, 10);
+        const doublon = await prisma.palier_prix.findFirst({
+          where: {
+            prd_id: palier.prd_id,
+            quantite_min: nouvelleQuantite,
+            id_palier: { not: idPalier },
+          },
+        });
+        if (doublon) {
+          return res.status(409).json({
+            message: `Un palier existe déjà pour une quantité minimale de ${nouvelleQuantite}.`,
+          });
+        }
+        data.quantite_min = nouvelleQuantite;
+      }
+      if (prix_unitaire !== undefined) {
+        data.prix_unitaire = parseFloat(prix_unitaire);
+      }
+
+      if (Object.keys(data).length === 0) {
+        return res.status(400).json({ message: "Aucune donnée à mettre à jour." });
+      }
+
+      const palierMAJ = await prisma.palier_prix.update({
+        where: { id_palier: idPalier },
+        data,
+      });
+
+      res.status(200).json(palierMAJ);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const deletePalierPrix = async (req, res) => {
+  const idPalier = parseInt(req.params.id, 10);
+  if (isNaN(idPalier)) {
+    return res.status(400).json({ message: "Identifiant invalide." });
+  }
+
+  try {
+    const palier = await prisma.palier_prix.findUnique({
+      where: { id_palier: idPalier },
+    });
+    if (!palier) {
+      return res.status(404).json({ message: "Palier non trouvé." });
+    }
+
+    await prisma.palier_prix.delete({ where: { id_palier: idPalier } });
+
+    res.status(200).json({ message: "Palier supprimé avec succès." });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
   }
 };
