@@ -65,13 +65,28 @@ model colis_voyage {
 }
 
 model produit {
-  id_prd          Int    @id
-  designation_prd String @db.VarChar(150)
-  qte_dispo       Int    @default(0)
+  id_prd             Int      @id
+  designation_prd    String   @db.VarChar(150)
+  qte_dispo          Int      @default(0)
+  qte_reservee       Int      @default(0)
+  slug_prd           String?  @unique @db.VarChar(200)
+  description        String?  @db.Text
+  prix_vente         Decimal? @db.Decimal(10, 2)
+  prix_promo         Decimal? @db.Decimal(10, 2)
+  debut_promo        DateTime?
+  fin_promo          DateTime?
+  poids_grammes      Int?     @default(500)
+  statut_publication String   @default("BROUILLON")
+  famille_id         Int?
 
-  colis          colis[]
-  ligne_commande ligne_commande[]
+  colis                   colis[]
+  ligne_commande          ligne_commande[]
   sorties_exceptionnelles sortie_exceptionnelle[]
+  famille                 famille_produit?        @relation(fields: [famille_id], references: [id_famille])
+  images                  image_produit[]
+  paliers                 palier_prix[]
+  historiques_prix_vente  historique_prix_vente[]
+  lignes_web              ligne_commande_web[]
 }
 
 model commande {
@@ -350,4 +365,86 @@ model ajustement_compte {
   compte compte @relation(fields: [cpt_id], references: [id_cpt])
 
   @@index([cpt_id, date_ajustement])
+}
+
+model famille_produit {
+  id_famille         Int    @id
+  nom_famille        String @db.VarChar(100)
+  slug_famille       String @unique @db.VarChar(100)
+  famille_parente_id Int?
+
+  famille_parente famille_produit?  @relation("HierarchieFamille", fields: [famille_parente_id], references: [id_famille])
+  sous_familles     famille_produit[] @relation("HierarchieFamille")
+  produits          produit[]
+}
+
+model image_produit {
+  id_img         Int     @id
+  url_image      String  @db.VarChar(255)
+  est_principale Boolean @default(false)
+  prd_id         Int
+
+  produit produit @relation(fields: [prd_id], references: [id_prd])
+}
+
+model palier_prix {
+  id_palier     Int     @id
+  quantite_min  Int
+  prix_unitaire Decimal @db.Decimal(10, 2)
+  prd_id        Int
+
+  produit produit @relation(fields: [prd_id], references: [id_prd])
+}
+
+model historique_prix_vente {
+  id_historique Int      @id
+  ancien_prix   Decimal  @db.Decimal(10, 2)
+  nouveau_prix  Decimal  @db.Decimal(10, 2)
+  date_debut    DateTime @default(now())
+  date_fin      DateTime?
+  prd_id        Int
+
+  produit produit @relation(fields: [prd_id], references: [id_prd])
+}
+
+model code_promo {
+  id_code              Int      @id
+  code                 String   @unique @db.VarChar(50)
+  type_reduction       String
+  valeur_reduction     Decimal  @db.Decimal(10, 2)
+  date_expiration      DateTime @db.Date()
+  utilisation_max      Int
+  utilisation_actuelle Int      @default(0)
+
+  commandes commande_web[]
+}
+
+model commande_web {
+  id_cmd_web          Int      @id
+  date_creation       DateTime @default(now())
+  nom_client          String   @db.VarChar(100)
+  telephone           String   @db.VarChar(20)
+  wilaya              String   @db.VarChar(50)
+  commune             String   @db.VarChar(100)
+  adresse_exacte      String?  @db.Text
+  type_livraison      String
+  frais_livraison     Decimal  @db.Decimal(10, 2)
+  montant_total_final Decimal  @db.Decimal(10, 2)
+  statut_commande     String   @default("NOUVELLE")
+  code_tracking       String?  @db.VarChar(100)
+  code_promo_id       Int?
+
+  promo  code_promo?         @relation(fields: [code_promo_id], references: [id_code])
+  lignes ligne_commande_web[]
+}
+
+model ligne_commande_web {
+  id_ligne              Int     @id
+  quantite              Int
+  prix_unitaire_facture Decimal @db.Decimal(10, 2)
+  cmd_web_id            Int
+  prd_id                Int
+
+  commande commande_web @relation(fields: [cmd_web_id], references: [id_cmd_web])
+  produit  produit      @relation(fields: [prd_id], references: [id_prd])
 }
