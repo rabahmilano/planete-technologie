@@ -78,6 +78,20 @@ export const ProduitEcommerceProvider = ({ children }) => {
     }
   }
 
+  const uploaderImage = async (id, fichier, ordre_image = 0) => {
+    try {
+      const donnees = new FormData()
+      donnees.append('image', fichier)
+      donnees.append('ordre_image', String(ordre_image))
+      await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/upload`, donnees)
+      toast.success('Image téléversée')
+      return true
+    } catch (error) {
+      erreurValidation(error)
+      return false
+    }
+  }
+
   const supprimerImage = async (id, idImage) => {
     try {
       await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/${idImage}`)
@@ -141,6 +155,7 @@ export const ProduitEcommerceProvider = ({ children }) => {
         modifierPrix,
         fetchHistoriquePrix,
         ajouterImage,
+        uploaderImage,
         supprimerImage,
         definirImagePrincipale,
         ajouterPalier,

@@ -95,6 +95,7 @@ const ProduitsEcommerceView = () => {
     modifierPrix,
     fetchHistoriquePrix: fetchHistoriquePrixVente,
     ajouterImage,
+    uploaderImage,
     supprimerImage,
     definirImagePrincipale,
     ajouterPalier,
@@ -116,6 +117,7 @@ const ProduitsEcommerceView = () => {
   const [formPrix, setFormPrix] = useState({})
   const [historique, setHistorique] = useState([])
   const [nouvelleImage, setNouvelleImage] = useState({ url_image: '', ordre_image: '' })
+  const [fichierImage, setFichierImage] = useState(null)
   const [nouveauPalier, setNouveauPalier] = useState({ quantite_min: '', prix_unitaire: '' })
 
   const chargerListe = async () => {
@@ -569,6 +571,45 @@ const ProduitsEcommerceView = () => {
                     }}
                   >
                     Ajouter
+                  </Button>
+                </Grid>
+              </Grid>
+              <Grid container spacing={4} sx={{ mt: 1 }}>
+                <Grid item xs={12} sm={10}>
+                  <Button variant='outlined' component='label' fullWidth>
+                    Choisir un fichier (JPEG, PNG, WebP — max 5 Mo)
+                    <input
+                      type='file'
+                      hidden
+                      accept='image/jpeg,image/png,image/webp'
+                      onChange={e => setFichierImage(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+                    />
+                  </Button>
+                  {fichierImage && (
+                    <Typography variant='body2' sx={{ mt: 2 }}>
+                      {fichierImage.name} — {(fichierImage.size / 1024).toFixed(0)} Ko
+                    </Typography>
+                  )}
+                </Grid>
+                <Grid item xs={12} sm={2}>
+                  <Button
+                    variant='contained'
+                    fullWidth
+                    disabled={!fichierImage}
+                    onClick={async () => {
+                      if (
+                        await uploaderImage(
+                          produitSelectionne.id_prd,
+                          fichierImage,
+                          nouvelleImage.ordre_image === '' ? 0 : parseInt(nouvelleImage.ordre_image, 10)
+                        )
+                      ) {
+                        setFichierImage(null)
+                        await rafraichirDetail(produitSelectionne.id_prd)
+                      }
+                    }}
+                  >
+                    Téléverser
                   </Button>
                 </Grid>
               </Grid>

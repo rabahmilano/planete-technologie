@@ -389,6 +389,7 @@ model famille_produit {
 model image_produit {
   id_img         Int     @id
   url_image      String  @db.VarChar(255)
+  public_id      String? @db.VarChar(255)
   est_principale Boolean @default(false)
   ordre_image    Int     @default(0)
   prd_id         Int

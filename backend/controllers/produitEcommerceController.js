@@ -1,5 +1,11 @@
 import prisma from "../config/dbConfig.js";
 import { body, validationResult } from "express-validator";
+import multer from "multer";
+import {
+  isCloudinaryConfigured,
+  uploadImageBuffer,
+  deleteCloudinaryImage,
+} from "../config/cloudinary.js";
 import {
   getMaxValue,
   genererSlug,
@@ -438,6 +444,114 @@ export const addImageProduit = [
   },
 ];
 
+const TYPES_IMAGE_ACCEPTES = ["image/jpeg", "image/png", "image/webp"];
+const TAILLE_MAX_IMAGE = 5 * 1024 * 1024;
+
+const televersementImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: TAILLE_MAX_IMAGE },
+  fileFilter: (req, fichier, cb) => {
+    if (TYPES_IMAGE_ACCEPTES.includes(fichier.mimetype)) cb(null, true);
+    else cb(new Error("TYPE_IMAGE_NON_SUPPORTE"));
+  },
+});
+
+export const uploadImageProduit = async (req, res) => {
+  const idProduit = parseInt(req.params.id, 10);
+  if (isNaN(idProduit)) {
+    return res.status(400).json({ message: "Identifiant invalide." });
+  }
+
+  if (!isCloudinaryConfigured) {
+    return res.status(503).json({
+      message:
+        "Cloudinary n'est pas configuré. Ajoutez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET dans le fichier .env du backend.",
+    });
+  }
+
+  const produit = await prisma.produit.findUnique({
+    where: { id_prd: idProduit },
+    select: { id_prd: true },
+  });
+  if (!produit) {
+    return res.status(404).json({ message: "Produit introuvable." });
+  }
+
+  televersementImage.single("image")(req, res, async (erreur) => {
+    if (erreur) {
+      if (erreur.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({ message: "L'image dépasse 5 Mo." });
+      }
+      if (erreur.message === "TYPE_IMAGE_NON_SUPPORTE") {
+        return res.status(400).json({
+          message: "Format accepté : JPEG, PNG ou WebP.",
+        });
+      }
+      return res.status(400).json({ message: erreur.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Aucun fichier reçu (champ « image »).",
+      });
+    }
+
+    const estPrincipale = req.body.est_principale === "true";
+    const ordreImage = req.body.ordre_image
+      ? parseInt(req.body.ordre_image, 10)
+      : 0;
+
+    let resultat;
+    try {
+      resultat = await uploadImageBuffer(req.file.buffer);
+    } catch (erreur) {
+      return res.status(500).json({
+        message: `Échec de l'envoi vers Cloudinary : ${erreur.message}`,
+      });
+    }
+
+    try {
+      const nouvelleImage = await prisma.$transaction(async (tx) => {
+        const nbImages = await tx.image_produit.count({
+          where: { prd_id: idProduit },
+        });
+        const principale = estPrincipale || nbImages === 0;
+
+        if (principale) {
+          await tx.image_produit.updateMany({
+            where: { prd_id: idProduit },
+            data: { est_principale: false },
+          });
+        }
+
+        const idImage = await getMaxValue("image_produit", "id_img", null);
+
+        return tx.image_produit.create({
+          data: {
+            id_img: idImage,
+            url_image: resultat.secure_url,
+            public_id: resultat.public_id,
+            est_principale: principale,
+            ordre_image: isNaN(ordreImage) ? 0 : ordreImage,
+            prd_id: idProduit,
+          },
+        });
+      });
+
+      res.status(201).json(nouvelleImage);
+    } catch (erreur) {
+      try {
+        await deleteCloudinaryImage(resultat.public_id);
+      } catch (e) {
+        // La ligne n'a pas été créée, l'image reste sur Cloudinary.
+      }
+      res
+        .status(500)
+        .json({ error: { code: erreur.code, message: erreur.message } });
+    }
+  });
+};
+
 export const deleteImageProduit = async (req, res) => {
   const idProduit = parseInt(req.params.id, 10);
   const idImage = parseInt(req.params.idImage, 10);
@@ -469,6 +583,14 @@ export const deleteImageProduit = async (req, res) => {
         }
       }
     });
+
+    if (image.public_id) {
+      try {
+        await deleteCloudinaryImage(image.public_id);
+      } catch (e) {
+        // La ligne est supprimée, l'image reste sur Cloudinary.
+      }
+    }
 
     res.status(200).json({ message: "Image supprimée avec succès." });
   } catch (error) {

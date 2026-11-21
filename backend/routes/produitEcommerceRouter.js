@@ -4,6 +4,7 @@ import {
   updatePrixProduit,
   getHistoriquePrixProduit,
   addImageProduit,
+  uploadImageProduit,
   deleteImageProduit,
   setImagePrincipale,
   addPalier,
@@ -21,6 +22,7 @@ router.patch("/:id/prix", updatePrixProduit);
 router.get("/:id/historique-prix", getHistoriquePrixProduit);
 
 router.post("/:id/images", addImageProduit);
+router.post("/:id/images/upload", uploadImageProduit);
 router.delete("/:id/images/:idImage", deleteImageProduit);
 router.patch("/:id/images/:idImage/principale", setImagePrincipale);
 
