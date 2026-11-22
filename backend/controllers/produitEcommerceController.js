@@ -1,6 +1,6 @@
 import prisma from "../config/dbConfig.js";
 import { body, validationResult } from "express-validator";
-import multer from "multer";
+import { televersementImage } from "../config/multerImage.js";
 import {
   isCloudinaryConfigured,
   uploadImageBuffer,
@@ -11,8 +11,32 @@ import {
   genererSlug,
   getPrixEffectifProduit,
 } from "../config/utils.js";
+import {
+  chargerContextePromotions,
+  promoGagnante as calculerPromoGagnante,
+} from "../config/promotions.js";
 
 const STATUTS_PUBLICATION = ["BROUILLON", "PUBLIE", "ARCHIVE"];
+
+const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MESSAGE_FORMAT_SLUG =
+  "Le slug doit être en minuscules, sans accents ni espaces : lettres a-z, chiffres 0-9 et tirets uniquement (ex. : chargeur-ugreen-30w).";
+
+const NB_IMAGES_MAX = 7;
+
+const verifierPublication = async (produit) => {
+  const manquants = [];
+  if (!produit.description) manquants.push("une description");
+  if (!produit.famille_id) manquants.push("une famille");
+  if (!produit.slug_prd) manquants.push("un slug");
+  if (produit.prix_vente === null || produit.prix_vente === undefined)
+    manquants.push("un prix de vente");
+  const nbImages = await prisma.image_produit.count({
+    where: { prd_id: produit.id_prd },
+  });
+  if (nbImages < 2) manquants.push("au moins 2 images");
+  return manquants;
+};
 
 const appliquerNouveauPrixVente = async (tx, produit, nouveauPrixVente) => {
   const ancienPrix =
@@ -70,19 +94,21 @@ export const getProduitEcommerce = async (req, res) => {
       return res.status(404).json({ message: "Produit introuvable." });
     }
 
-    const maintenant = new Date();
-    const promoActive =
-      produit.prix_promo !== null &&
-      produit.prix_promo !== undefined &&
-      produit.debut_promo &&
-      produit.fin_promo &&
-      new Date(produit.debut_promo) <= maintenant &&
-      maintenant <= new Date(produit.fin_promo);
+    const contextePromotions = await chargerContextePromotions();
+    const gagnante = calculerPromoGagnante(produit, contextePromotions);
 
     res.status(200).json({
       ...produit,
-      prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1),
-      promo_active: promoActive,
+      prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1, gagnante),
+      promo_active: gagnante !== null,
+      promotion_active: gagnante
+        ? {
+            id_promotion: gagnante.promotion.id_promotion,
+            type_reduction: gagnante.promotion.type_reduction,
+            valeur_reduction: parseFloat(gagnante.promotion.valeur_reduction),
+            date_fin: gagnante.promotion.date_fin,
+          }
+        : null,
     });
   } catch (error) {
     res
@@ -119,7 +145,17 @@ export const updateProduitEcommerce = [
     .isString()
     .trim()
     .notEmpty()
-    .withMessage("Le slug du produit est obligatoire"),
+    .withMessage("Le slug du produit est obligatoire")
+    .matches(REGEX_SLUG)
+    .withMessage(MESSAGE_FORMAT_SLUG)
+    .isLength({ max: 200 })
+    .withMessage("Le slug ne peut pas dépasser 200 caractères"),
+  body("intitule_publication")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: 150 })
+    .withMessage("L'intitulé de publication ne peut pas dépasser 150 caractères"),
   body("statut_publication")
     .optional()
     .isIn(STATUTS_PUBLICATION)
@@ -153,6 +189,7 @@ export const updateProduitEcommerce = [
       qte_dispo,
       poids_grammes,
       slug_prd,
+      intitule_publication,
       statut_publication,
       est_mis_en_avant,
       famille_id,
@@ -187,10 +224,10 @@ export const updateProduitEcommerce = [
         if (slug_prd === null) {
           dataToUpdate.slug_prd = null;
         } else {
-          const slugNormalise = genererSlug(slug_prd);
+          const slugSaisi = slug_prd.trim();
           const conflit = await prisma.produit.findFirst({
             where: {
-              slug_prd: slugNormalise,
+              slug_prd: slugSaisi,
               id_prd: { not: idProduit },
             },
           });
@@ -199,8 +236,11 @@ export const updateProduitEcommerce = [
               .status(409)
               .json({ message: "Ce slug est déjà utilisé par un produit." });
           }
-          dataToUpdate.slug_prd = slugNormalise;
+          dataToUpdate.slug_prd = slugSaisi;
         }
+      }
+      if (intitule_publication !== undefined) {
+        dataToUpdate.intitule_publication = intitule_publication || null;
       }
       if (statut_publication !== undefined) {
         dataToUpdate.statut_publication = statut_publication;
@@ -228,6 +268,22 @@ export const updateProduitEcommerce = [
           .json({ message: "Aucune donnée à mettre à jour fournie." });
       }
 
+      if (
+        statut_publication === "PUBLIE" &&
+        produit.statut_publication !== "PUBLIE"
+      ) {
+        const produitFutur = { ...produit, ...dataToUpdate };
+        const manquants = await verifierPublication(produitFutur);
+        if (manquants.length > 0) {
+          return res.status(400).json({
+            message:
+              "Publication impossible. Il manque : " +
+              manquants.join(", ") +
+              ".",
+          });
+        }
+      }
+
       const produitModifie = await prisma.produit.update({
         where: { id_prd: idProduit },
         data: dataToUpdate,
@@ -235,6 +291,11 @@ export const updateProduitEcommerce = [
 
       res.status(200).json(produitModifie);
     } catch (error) {
+      if (error.code === "P2002") {
+        return res
+          .status(409)
+          .json({ message: "Ce slug est déjà utilisé par un produit." });
+      }
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -247,18 +308,6 @@ export const updatePrixProduit = [
     .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Le prix de vente doit être un nombre positif ou nul"),
-  body("prix_promo")
-    .optional({ nullable: true })
-    .isFloat({ min: 0 })
-    .withMessage("Le prix promo doit être un nombre positif ou nul"),
-  body("debut_promo")
-    .optional({ nullable: true })
-    .isISO8601()
-    .withMessage("La date de début de promo doit être une date valide"),
-  body("fin_promo")
-    .optional({ nullable: true })
-    .isISO8601()
-    .withMessage("La date de fin de promo doit être une date valide"),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -271,7 +320,7 @@ export const updatePrixProduit = [
       return res.status(400).json({ message: "Identifiant invalide." });
     }
 
-    const { prix_vente, prix_promo, debut_promo, fin_promo } = req.body;
+    const { prix_vente } = req.body;
 
     try {
       const produit = await prisma.produit.findUnique({
@@ -279,23 +328,6 @@ export const updatePrixProduit = [
       });
       if (!produit) {
         return res.status(404).json({ message: "Produit introuvable." });
-      }
-
-      const debutEffectif =
-        debut_promo !== undefined
-          ? debut_promo
-          : produit.debut_promo;
-      const finEffective =
-        fin_promo !== undefined ? fin_promo : produit.fin_promo;
-      if (
-        debutEffectif &&
-        finEffective &&
-        new Date(finEffective) < new Date(debutEffectif)
-      ) {
-        return res.status(400).json({
-          message:
-            "La date de fin de promo doit être après la date de début.",
-        });
       }
 
       const produitModifie = await prisma.$transaction(async (tx) => {
@@ -309,18 +341,6 @@ export const updatePrixProduit = [
         if (prix_vente !== undefined) {
           dataToUpdate.prix_vente =
             prix_vente === null ? null : parseFloat(prix_vente);
-        }
-        if (prix_promo !== undefined) {
-          dataToUpdate.prix_promo =
-            prix_promo === null ? null : parseFloat(prix_promo);
-        }
-        if (debut_promo !== undefined) {
-          dataToUpdate.debut_promo =
-            debut_promo === null ? null : new Date(debut_promo);
-        }
-        if (fin_promo !== undefined) {
-          dataToUpdate.fin_promo =
-            fin_promo === null ? null : new Date(fin_promo);
         }
 
         if (Object.keys(dataToUpdate).length === 0) {
@@ -407,6 +427,15 @@ export const addImageProduit = [
         return res.status(404).json({ message: "Produit introuvable." });
       }
 
+      const nbImagesExistantes = await prisma.image_produit.count({
+        where: { prd_id: idProduit },
+      });
+      if (nbImagesExistantes >= NB_IMAGES_MAX) {
+        return res.status(400).json({
+          message: `Nombre maximum d'images atteint (${NB_IMAGES_MAX} par produit).`,
+        });
+      }
+
       const nouvelleImage = await prisma.$transaction(async (tx) => {
         const nbImages = await tx.image_produit.count({
           where: { prd_id: idProduit },
@@ -444,18 +473,6 @@ export const addImageProduit = [
   },
 ];
 
-const TYPES_IMAGE_ACCEPTES = ["image/jpeg", "image/png", "image/webp"];
-const TAILLE_MAX_IMAGE = 5 * 1024 * 1024;
-
-const televersementImage = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: TAILLE_MAX_IMAGE },
-  fileFilter: (req, fichier, cb) => {
-    if (TYPES_IMAGE_ACCEPTES.includes(fichier.mimetype)) cb(null, true);
-    else cb(new Error("TYPE_IMAGE_NON_SUPPORTE"));
-  },
-});
-
 export const uploadImageProduit = async (req, res) => {
   const idProduit = parseInt(req.params.id, 10);
   if (isNaN(idProduit)) {
@@ -475,6 +492,15 @@ export const uploadImageProduit = async (req, res) => {
   });
   if (!produit) {
     return res.status(404).json({ message: "Produit introuvable." });
+  }
+
+  const nbImagesAvant = await prisma.image_produit.count({
+    where: { prd_id: idProduit },
+  });
+  if (nbImagesAvant >= NB_IMAGES_MAX) {
+    return res.status(400).json({
+      message: `Nombre maximum d'images atteint (${NB_IMAGES_MAX} par produit).`,
+    });
   }
 
   televersementImage.single("image")(req, res, async (erreur) => {
@@ -500,10 +526,15 @@ export const uploadImageProduit = async (req, res) => {
     const ordreImage = req.body.ordre_image
       ? parseInt(req.body.ordre_image, 10)
       : 0;
+    const nomImage = req.body.nom_image
+      ? genererSlug(String(req.body.nom_image))
+      : null;
 
     let resultat;
     try {
-      resultat = await uploadImageBuffer(req.file.buffer);
+      resultat = await uploadImageBuffer(req.file.buffer, {
+        publicId: nomImage ? `${nomImage}-${Date.now()}` : undefined,
+      });
     } catch (erreur) {
       return res.status(500).json({
         message: `Échec de l'envoi vers Cloudinary : ${erreur.message}`,
@@ -627,6 +658,129 @@ export const setImagePrincipale = async (req, res) => {
     });
 
     res.status(200).json(imagePrincipale);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+export const ordreImagesProduit = [
+  body("ordre")
+    .isArray({ min: 1 })
+    .withMessage("Le nouvel ordre doit être une liste d'images"),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const idProduit = parseInt(req.params.id, 10);
+    if (isNaN(idProduit)) {
+      return res.status(400).json({ message: "Identifiant invalide." });
+    }
+
+    const { ordre } = req.body;
+
+    try {
+      const ids = ordre.map((o) => parseInt(o.id_img, 10));
+      if (ids.some((id) => isNaN(id))) {
+        return res.status(400).json({ message: "Identifiant d'image invalide." });
+      }
+      if (new Set(ids).size !== ids.length) {
+        return res.status(400).json({
+          message: "Chaque image ne peut apparaître qu'une fois dans l'ordre.",
+        });
+      }
+      const imagesProduit = await prisma.image_produit.findMany({
+        where: { prd_id: idProduit },
+        select: { id_img: true },
+      });
+      const idsExistants = imagesProduit.map((img) => img.id_img);
+      const listeComplete =
+        idsExistants.length === ids.length &&
+        ids.every((id) => idsExistants.includes(id));
+      if (!listeComplete) {
+        return res.status(400).json({
+          message:
+            "L'ordre envoyé doit contenir exactement toutes les images du produit.",
+        });
+      }
+
+      await prisma.$transaction(
+        ids.map((id_img, position) =>
+          prisma.image_produit.update({
+            where: { id_img },
+            data: { ordre_image: position },
+          }),
+        ),
+      );
+
+      res.status(200).json({ message: "Ordre des images mis à jour." });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: { code: error.code, message: error.message } });
+    }
+  },
+];
+
+export const rotationImageProduit = async (req, res) => {
+  const idProduit = parseInt(req.params.id, 10);
+  const idImage = parseInt(req.params.idImage, 10);
+  if (isNaN(idProduit) || isNaN(idImage)) {
+    return res.status(400).json({ message: "Identifiant invalide." });
+  }
+
+  if (!isCloudinaryConfigured) {
+    return res.status(503).json({
+      message:
+        "Cloudinary n'est pas configuré. Ajoutez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET dans le fichier .env du backend.",
+    });
+  }
+
+  try {
+    const image = await prisma.image_produit.findFirst({
+      where: { id_img: idImage, prd_id: idProduit },
+    });
+    if (!image) {
+      return res.status(404).json({ message: "Image introuvable." });
+    }
+    if (!image.public_id) {
+      return res.status(400).json({
+        message:
+          "Cette image n'a pas de fichier Cloudinary associé et ne peut pas être pivotée.",
+      });
+    }
+
+    const reponse = await fetch(image.url_image);
+    if (!reponse.ok) {
+      return res.status(500).json({
+        message: `Téléchargement de l'image impossible (statut ${reponse.status}).`,
+      });
+    }
+    const tampon = Buffer.from(await reponse.arrayBuffer());
+    const resultat = await uploadImageBuffer(tampon, {
+      publicId: `rotation-${Date.now()}`,
+      transformation: [{ angle: 90 }],
+    });
+
+    const imagePivotee = await prisma.image_produit.update({
+      where: { id_img: idImage },
+      data: {
+        url_image: resultat.eager?.[0]?.secure_url || resultat.secure_url,
+        public_id: resultat.public_id,
+      },
+    });
+
+    try {
+      await deleteCloudinaryImage(image.public_id);
+    } catch (e) {
+      // L'ancien fichier reste sur Cloudinary si sa suppression échoue.
+    }
+
+    res.status(200).json(imagePivotee);
   } catch (error) {
     res
       .status(500)

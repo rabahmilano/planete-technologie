@@ -1,25 +1,26 @@
 import prisma from "../config/dbConfig.js";
 import { body, validationResult } from "express-validator";
-import { getMaxValue, genererSlug } from "../config/utils.js";
+import { getMaxValue } from "../config/utils.js";
+import {
+  isCloudinaryConfigured,
+  uploadImageBuffer,
+  CLOUDINARY_DOSSIER_FAMILLES,
+} from "../config/cloudinary.js";
+import { televersementImage } from "../config/multerImage.js";
 
-const genererSlugFamilleUnique = async (nomFamille, idFamilleExclu = null) => {
-  const base = genererSlug(nomFamille);
-  let slug = base;
-  let suffixe = 2;
+const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-  while (true) {
-    const existant = await prisma.famille_produit.findUnique({
-      where: { slug_famille: slug },
-    });
-    if (
-      !existant ||
-      (idFamilleExclu !== null && existant.id_famille === idFamilleExclu)
-    ) {
-      return slug;
-    }
-    slug = `${base}-${suffixe}`;
-    suffixe += 1;
-  }
+const MESSAGE_FORMAT_SLUG =
+  "Le slug doit être en minuscules, sans accents ni espaces : lettres a-z, chiffres 0-9 et tirets uniquement (ex. : reseau-cle-wifi).";
+
+const slugDisponible = async (slug, idFamilleExclu = null) => {
+  const existant = await prisma.famille_produit.findUnique({
+    where: { slug_famille: slug },
+  });
+  return (
+    !existant ||
+    (idFamilleExclu !== null && existant.id_famille === idFamilleExclu)
+  );
 };
 
 const verifierCycleHierarchie = async (idFamille, idParentPropose) => {
@@ -41,16 +42,30 @@ export const addFamille = [
     .isString()
     .trim()
     .notEmpty()
-    .withMessage("Le nom de la famille est obligatoire"),
+    .withMessage("Le nom de la famille est obligatoire")
+    .isLength({ max: 100 })
+    .withMessage("Le nom de la famille ne peut pas dépasser 100 caractères"),
+  body("slug_famille")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Le slug est obligatoire")
+    .matches(REGEX_SLUG)
+    .withMessage(MESSAGE_FORMAT_SLUG)
+    .isLength({ max: 100 })
+    .withMessage("Le slug ne peut pas dépasser 100 caractères"),
   body("famille_parente_id")
     .optional({ nullable: true })
     .isInt()
     .withMessage("La famille parente doit être un identifiant valide"),
   body("image_famille")
-    .optional()
+    .optional({ nullable: true })
     .isString()
     .trim()
-    .withMessage("L'image de la famille doit être une URL valide"),
+    .isURL({ protocols: ["http", "https"], require_protocol: true })
+    .withMessage("L'image de la famille doit être une URL valide")
+    .isLength({ max: 500 })
+    .withMessage("L'URL de l'image ne peut pas dépasser 500 caractères"),
   body("ordre_famille")
     .optional()
     .isInt({ min: 0 })
@@ -62,10 +77,21 @@ export const addFamille = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { nom_famille, famille_parente_id, image_famille, ordre_famille } =
-      req.body;
+    const {
+      nom_famille,
+      slug_famille,
+      famille_parente_id,
+      image_famille,
+      ordre_famille,
+    } = req.body;
 
     try {
+      if (!(await slugDisponible(slug_famille.trim()))) {
+        return res.status(409).json({
+          message: "Ce slug est déjà utilisé par une autre famille.",
+        });
+      }
+
       let parentId = null;
       if (famille_parente_id !== undefined && famille_parente_id !== null) {
         parentId = parseInt(famille_parente_id, 10);
@@ -79,14 +105,13 @@ export const addFamille = [
         }
       }
 
-      const slug_famille = await genererSlugFamilleUnique(nom_famille);
       const id_famille = await getMaxValue("famille_produit", "id_famille", null);
 
       const nouvelleFamille = await prisma.famille_produit.create({
         data: {
           id_famille,
           nom_famille: nom_famille.trim(),
-          slug_famille,
+          slug_famille: slug_famille.trim(),
           image_famille: image_famille || null,
           ordre_famille:
             ordre_famille !== undefined ? parseInt(ordre_famille, 10) : 0,
@@ -96,6 +121,11 @@ export const addFamille = [
 
       res.status(201).json(nouvelleFamille);
     } catch (error) {
+      if (error.code === "P2002") {
+        return res
+          .status(409)
+          .json({ message: "Ce slug est déjà utilisé par une autre famille." });
+      }
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -181,7 +211,19 @@ export const updateFamille = [
     .isString()
     .trim()
     .notEmpty()
-    .withMessage("Le nom de la famille est obligatoire"),
+    .withMessage("Le nom de la famille est obligatoire")
+    .isLength({ max: 100 })
+    .withMessage("Le nom de la famille ne peut pas dépasser 100 caractères"),
+  body("slug_famille")
+    .optional()
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Le slug ne peut pas être vide")
+    .matches(REGEX_SLUG)
+    .withMessage(MESSAGE_FORMAT_SLUG)
+    .isLength({ max: 100 })
+    .withMessage("Le slug ne peut pas dépasser 100 caractères"),
   body("famille_parente_id")
     .optional({ nullable: true })
     .isInt()
@@ -190,7 +232,10 @@ export const updateFamille = [
     .optional({ nullable: true })
     .isString()
     .trim()
-    .withMessage("L'image de la famille doit être une URL valide"),
+    .isURL({ protocols: ["http", "https"], require_protocol: true })
+    .withMessage("L'image de la famille doit être une URL valide")
+    .isLength({ max: 500 })
+    .withMessage("L'URL de l'image ne peut pas dépasser 500 caractères"),
   body("ordre_famille")
     .optional()
     .isInt({ min: 0 })
@@ -207,8 +252,13 @@ export const updateFamille = [
       return res.status(400).json({ message: "Identifiant invalide." });
     }
 
-    const { nom_famille, famille_parente_id, image_famille, ordre_famille } =
-      req.body;
+    const {
+      nom_famille,
+      slug_famille,
+      famille_parente_id,
+      image_famille,
+      ordre_famille,
+    } = req.body;
 
     try {
       const famille = await prisma.famille_produit.findUnique({
@@ -221,10 +271,14 @@ export const updateFamille = [
       const dataToUpdate = {};
       if (nom_famille !== undefined) {
         dataToUpdate.nom_famille = nom_famille.trim();
-        dataToUpdate.slug_famille = await genererSlugFamilleUnique(
-          nom_famille,
-          idFamille,
-        );
+      }
+      if (slug_famille !== undefined) {
+        if (!(await slugDisponible(slug_famille.trim(), idFamille))) {
+          return res.status(409).json({
+            message: "Ce slug est déjà utilisé par une autre famille.",
+          });
+        }
+        dataToUpdate.slug_famille = slug_famille.trim();
       }
       if (image_famille !== undefined) {
         dataToUpdate.image_famille = image_famille || null;
@@ -277,6 +331,11 @@ export const updateFamille = [
 
       res.status(200).json(familleModifiee);
     } catch (error) {
+      if (error.code === "P2002") {
+        return res
+          .status(409)
+          .json({ message: "Ce slug est déjà utilisé par une autre famille." });
+      }
       res
         .status(500)
         .json({ error: { code: error.code, message: error.message } });
@@ -326,4 +385,47 @@ export const deleteFamille = async (req, res) => {
       .status(500)
       .json({ error: { code: error.code, message: error.message } });
   }
+};
+
+export const uploadImageFamille = (req, res) => {
+  if (!isCloudinaryConfigured) {
+    return res.status(503).json({
+      message:
+        "Cloudinary n'est pas configuré. Ajoutez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET dans le fichier .env du backend.",
+    });
+  }
+
+  televersementImage.single("image")(req, res, async (erreur) => {
+    if (erreur) {
+      if (erreur.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({ message: "L'image dépasse 5 Mo." });
+      }
+      if (erreur.message === "TYPE_IMAGE_NON_SUPPORTE") {
+        return res.status(400).json({
+          message: "Format accepté : JPEG, PNG ou WebP.",
+        });
+      }
+      return res.status(400).json({ message: erreur.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Aucun fichier reçu (champ « image »).",
+      });
+    }
+
+    try {
+      const resultat = await uploadImageBuffer(req.file.buffer, {
+        dossier: CLOUDINARY_DOSSIER_FAMILLES,
+      });
+      res.status(201).json({
+        url_image: resultat.secure_url,
+        public_id: resultat.public_id,
+      });
+    } catch (err) {
+      res.status(500).json({
+        message: `Échec de l'envoi vers Cloudinary : ${err.message}`,
+      });
+    }
+  });
 };

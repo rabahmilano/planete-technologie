@@ -17,14 +17,18 @@ if (isCloudinaryConfigured) {
 }
 
 export const CLOUDINARY_DOSSIER_PRODUITS = "planete-tech/produits";
+export const CLOUDINARY_DOSSIER_FAMILLES = "planete-tech/familles";
 
 export const uploadImageBuffer = (
   buffer,
-  { dossier = CLOUDINARY_DOSSIER_PRODUITS } = {},
+  { dossier = CLOUDINARY_DOSSIER_PRODUITS, publicId, transformation } = {},
 ) =>
   new Promise((resolve, reject) => {
+    const options = { folder: dossier, resource_type: "image" };
+    if (publicId) options.public_id = publicId;
+    if (transformation) options.transformation = transformation;
     const flux = cloudinary.uploader.upload_stream(
-      { folder: dossier, resource_type: "image" },
+      options,
       (erreur, resultat) => {
         if (erreur) reject(erreur);
         else resolve(resultat);

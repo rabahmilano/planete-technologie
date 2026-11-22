@@ -4,8 +4,10 @@ export const getMaxValue = async (
   modelName,
   columnName,
   condition,
-  defaultValue = 1
+  defaultValue = 1,
+  client = null
 ) => {
+  const db = client ?? prisma;
   const options = {
     _max: {
       [columnName]: true,
@@ -15,7 +17,7 @@ export const getMaxValue = async (
     options.where = condition;
   }
 
-  const result = await prisma[modelName].aggregate(options);
+  const result = await db[modelName].aggregate(options);
   return result._max[columnName] !== null
     ? result._max[columnName] + 1
     : defaultValue;
@@ -45,19 +47,18 @@ export const genererSlug = (texte) => {
   return base || "sans-nom";
 };
 
-export const getPrixEffectifProduit = (produit, paliers, quantite) => {
-  const maintenant = new Date();
+export const getPrixEffectifProduit = (produit, paliers, quantite, promoGagnante) => {
   let prix = null;
 
-  if (
-    produit.prix_promo !== null &&
-    produit.prix_promo !== undefined &&
-    produit.debut_promo &&
-    produit.fin_promo &&
-    new Date(produit.debut_promo) <= maintenant &&
-    maintenant <= new Date(produit.fin_promo)
-  ) {
-    prix = parseFloat(produit.prix_promo);
+  const promo =
+    promoGagnante &&
+    produit.prix_vente !== null &&
+    produit.prix_vente !== undefined
+      ? promoGagnante
+      : null;
+
+  if (promo) {
+    prix = promo.prix;
   } else if (
     produit.prix_vente !== null &&
     produit.prix_vente !== undefined

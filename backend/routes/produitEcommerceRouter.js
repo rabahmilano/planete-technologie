@@ -7,6 +7,8 @@ import {
   uploadImageProduit,
   deleteImageProduit,
   setImagePrincipale,
+  ordreImagesProduit,
+  rotationImageProduit,
   addPalier,
   updatePalier,
   deletePalier,
@@ -23,8 +25,10 @@ router.get("/:id/historique-prix", getHistoriquePrixProduit);
 
 router.post("/:id/images", addImageProduit);
 router.post("/:id/images/upload", uploadImageProduit);
+router.patch("/:id/images/ordre", ordreImagesProduit);
 router.delete("/:id/images/:idImage", deleteImageProduit);
 router.patch("/:id/images/:idImage/principale", setImagePrincipale);
+router.patch("/:id/images/:idImage/rotation", rotationImageProduit);
 
 router.post("/:id/paliers", addPalier);
 router.patch("/:id/paliers/:idPalier", updatePalier);

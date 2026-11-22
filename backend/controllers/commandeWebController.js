@@ -1,4 +1,8 @@
 import prisma from "../config/dbConfig.js";
+import {
+  chargerContextePromotions,
+  promoGagnante as calculerPromoGagnante,
+} from "../config/promotions.js";
 import { body, validationResult } from "express-validator";
 import {
   getMaxValue,
@@ -149,6 +153,7 @@ export const creerCommandeWebInterne = async (tx, donnees) => {
 
   const lignesValorisees = [];
   let montantProduits = 0;
+  const contextePromotions = await chargerContextePromotions();
 
   for (const ligne of lignes) {
     const prdId = parseInt(ligne.prd_id, 10);
@@ -171,10 +176,12 @@ export const creerCommandeWebInterne = async (tx, donnees) => {
       throw new Error(`STOCK_INSUFFISANT:${prdId}`);
     }
 
+    const gagnante = calculerPromoGagnante(produit, contextePromotions);
     const prixUnitaire = getPrixEffectifProduit(
       produit,
       produit.paliers,
       quantite,
+      gagnante,
     );
     if (prixUnitaire === null) {
       throw new Error(`PRIX_MANQUANT:${prdId}`);

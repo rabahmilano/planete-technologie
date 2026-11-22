@@ -70,13 +70,36 @@ export const FamilleProvider = ({ children }) => {
     }
   }
 
+  const televerserImageFamille = async fichier => {
+    try {
+      const donnees = new FormData()
+      donnees.append('image', fichier)
+      const { data } = await axios.post(
+        `${process.env.NEXT_PUBLIC_BASE_URL}familles/image/upload`,
+        donnees
+      )
+      return data
+    } catch (error) {
+      toast.error(messageErreur(error))
+      return null
+    }
+  }
+
   useEffect(() => {
     fetchFamilles()
   }, [fetchFamilles])
 
   return (
     <FamilleContext.Provider
-      value={{ familles, loading, fetchFamilles, ajouterFamille, modifierFamille, supprimerFamille }}
+      value={{
+        familles,
+        loading,
+        fetchFamilles,
+        ajouterFamille,
+        modifierFamille,
+        supprimerFamille,
+        televerserImageFamille
+      }}
     >
       {children}
     </FamilleContext.Provider>

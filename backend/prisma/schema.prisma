@@ -65,17 +65,15 @@ model colis_voyage {
 }
 
 model produit {
-  id_prd             Int      @id
-  designation_prd    String   @db.VarChar(150)
-  qte_dispo          Int      @default(0)
+  id_prd                Int      @id
+  designation_prd       String   @db.VarChar(150)
+  intitule_publication  String?  @db.VarChar(150)
+  qte_dispo             Int      @default(0)
   qte_reservee       Int      @default(0)
   slug_prd           String?  @unique @db.VarChar(200)
   description        String?  @db.Text
   description_ar     String?  @db.Text
   prix_vente         Decimal? @db.Decimal(10, 2)
-  prix_promo         Decimal? @db.Decimal(10, 2)
-  debut_promo        DateTime?
-  fin_promo          DateTime?
   poids_grammes      Int?     @default(500)
   statut_publication String   @default("BROUILLON")
   est_mis_en_avant   Boolean  @default(false)
@@ -89,9 +87,47 @@ model produit {
   paliers                 palier_prix[]
   historiques_prix_vente  historique_prix_vente[]
   lignes_web              ligne_commande_web[]
+  promotions              promotion_produit[]
 
   @@index([statut_publication])
   @@index([famille_id])
+}
+
+model promotion {
+  id_promotion     Int      @id
+  type_reduction   String   @db.VarChar(20)
+  valeur_reduction Decimal  @db.Decimal(10, 2)
+  date_debut       DateTime
+  date_fin         DateTime
+  perimetre        String   @db.VarChar(20)
+  est_active       Boolean  @default(true)
+
+  familles promotion_famille[]
+  produits promotion_produit[]
+
+  @@index([est_active, date_debut, date_fin])
+}
+
+model promotion_famille {
+  id_liaison   Int @id
+  promotion_id Int
+  famille_id   Int
+
+  promotion promotion       @relation(fields: [promotion_id], references: [id_promotion])
+  famille   famille_produit @relation(fields: [famille_id], references: [id_famille])
+
+  @@index([famille_id])
+}
+
+model promotion_produit {
+  id_liaison Int @id
+  promotion_id Int
+  produit_id  Int
+
+  promotion promotion @relation(fields: [promotion_id], references: [id_promotion])
+  produit   produit   @relation(fields: [produit_id], references: [id_prd])
+
+  @@index([produit_id])
 }
 
 model commande {
@@ -384,6 +420,7 @@ model famille_produit {
   famille_parente famille_produit?  @relation("HierarchieFamille", fields: [famille_parente_id], references: [id_famille])
   sous_familles     famille_produit[] @relation("HierarchieFamille")
   produits          produit[]
+  promotions        promotion_famille[]
 }
 
 model image_produit {

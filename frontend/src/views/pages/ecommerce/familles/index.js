@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Box,
   Button,
@@ -27,6 +27,10 @@ import {
 import Icon from 'src/@core/components/icon'
 import { useFamille } from 'src/context/FamilleContext'
 
+const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const MESSAGE_FORMAT_SLUG =
+  'Format invalide : minuscules a-z, chiffres 0-9 et tirets uniquement, sans accents ni espaces (ex. : reseau-cle-wifi)'
+
 const flatten = (familles, niveau = 0, lignes = []) => {
   familles.forEach(famille => {
     lignes.push({ ...famille, niveau })
@@ -38,18 +42,50 @@ const flatten = (familles, niveau = 0, lignes = []) => {
 }
 
 const FamillesView = () => {
-  const { familles, loading, ajouterFamille, modifierFamille, supprimerFamille } = useFamille()
+  const { familles, loading, ajouterFamille, modifierFamille, supprimerFamille, televerserImageFamille } = useFamille()
   const [dialogOuvert, setDialogOuvert] = useState(false)
   const [familleEnCours, setFamilleEnCours] = useState(null)
   const [aSupprimer, setASupprimer] = useState(null)
-  const [formulaire, setFormulaire] = useState({ nom_famille: '', famille_parente_id: '', image_famille: '', ordre_famille: 0 })
+  const [formulaire, setFormulaire] = useState({
+    nom_famille: '',
+    slug_famille: '',
+    famille_parente_id: '',
+    image_famille: '',
+    ordre_famille: 0
+  })
+  const [erreurSlug, setErreurSlug] = useState('')
+  const [televersementEnCours, setTeleversementEnCours] = useState(false)
+  const [enregistrementEnCours, setEnregistrementEnCours] = useState(false)
+  const refFichierImage = useRef(null)
 
   const lignes = flatten(familles)
-  const racines = familles.map(f => ({ id_famille: f.id_famille, nom_famille: f.nom_famille }))
+  const racines = familles.map(f => ({ id_famille: f.id_famille, nom_famille: f.nom_famille, slug_famille: f.slug_famille }))
+  const ordreMax = lignes.reduce((max, l) => Math.max(max, l.ordre_famille || 0), 0)
+  const parentChoisi = racines.find(r => r.id_famille === parseInt(formulaire.famille_parente_id, 10))
+  const slugModifie = Boolean(familleEnCours) && formulaire.slug_famille.trim() !== familleEnCours?.slug_famille
+  const texteAideSlug = erreurSlug
+    ? erreurSlug
+    : [
+        parentChoisi
+          ? `Convention sous-famille : ${parentChoisi.slug_famille}-<slug> (ex. : ${parentChoisi.slug_famille}-cle-wifi)`
+          : 'Minuscules a-z, chiffres 0-9 et tirets uniquement',
+        slugModifie
+          ? "Attention : le slug sert d'identifiant côté boutique, le modifier peut casser les noms traduits de cette famille."
+          : ''
+      ]
+        .filter(Boolean)
+        .join(' — ')
 
   const ouvrirCreation = (parentId = '') => {
     setFamilleEnCours(null)
-    setFormulaire({ nom_famille: '', famille_parente_id: parentId, image_famille: '', ordre_famille: 0 })
+    setFormulaire({
+      nom_famille: '',
+      slug_famille: '',
+      famille_parente_id: parentId,
+      image_famille: '',
+      ordre_famille: ordreMax + 1
+    })
+    setErreurSlug('')
     setDialogOuvert(true)
   }
 
@@ -57,16 +93,43 @@ const FamillesView = () => {
     setFamilleEnCours(famille)
     setFormulaire({
       nom_famille: famille.nom_famille,
+      slug_famille: famille.slug_famille,
       famille_parente_id: famille.famille_parente_id ?? '',
       image_famille: famille.image_famille || '',
       ordre_famille: famille.ordre_famille ?? 0
     })
+    setErreurSlug('')
     setDialogOuvert(true)
   }
 
+  const changerSlug = valeur => {
+    setFormulaire({ ...formulaire, slug_famille: valeur })
+    if (erreurSlug) setErreurSlug('')
+  }
+
+  const choisirFichierImage = async event => {
+    const fichier = event.target.files?.[0]
+    event.target.value = ''
+    if (!fichier) return
+    setTeleversementEnCours(true)
+    const resultat = await televerserImageFamille(fichier)
+    setTeleversementEnCours(false)
+    if (resultat?.url_image) {
+      setFormulaire(precedent => ({ ...precedent, image_famille: resultat.url_image }))
+    }
+  }
+
   const soumettre = async () => {
+    if (enregistrementEnCours) return
+    const slugSaisi = formulaire.slug_famille.trim()
+    if (!REGEX_SLUG.test(slugSaisi)) {
+      setErreurSlug(MESSAGE_FORMAT_SLUG)
+      return
+    }
+    setEnregistrementEnCours(true)
     const donnees = {
       nom_famille: formulaire.nom_famille.trim(),
+      slug_famille: slugSaisi,
       famille_parente_id: formulaire.famille_parente_id === '' ? null : parseInt(formulaire.famille_parente_id, 10),
       image_famille: formulaire.image_famille.trim() || null,
       ordre_famille: parseInt(formulaire.ordre_famille, 10) || 0
@@ -74,6 +137,7 @@ const FamillesView = () => {
     const ok = familleEnCours
       ? await modifierFamille(familleEnCours.id_famille, donnees)
       : await ajouterFamille(donnees)
+    setEnregistrementEnCours(false)
     if (ok) setDialogOuvert(false)
   }
 
@@ -100,6 +164,7 @@ const FamillesView = () => {
             <Table sx={{ minWidth: 650 }}>
               <TableHead>
                 <TableRow sx={{ backgroundColor: '#0d1b2a' }}>
+                  <TableCell sx={{ color: 'white' }}>Image</TableCell>
                   <TableCell sx={{ color: 'white' }}>Famille</TableCell>
                   <TableCell sx={{ color: 'white' }}>Slug</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Ordre</TableCell>
@@ -110,13 +175,37 @@ const FamillesView = () => {
               <TableBody>
                 {lignes.length === 0 && !loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} align='center'>
+                    <TableCell colSpan={6} align='center'>
                       <Typography sx={{ p: 4 }}>Aucune famille. Créez la première famille.</Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
                   lignes.map(famille => (
                     <TableRow key={famille.id_famille}>
+                      <TableCell>
+                        {famille.image_famille ? (
+                          <Box
+                            component='img'
+                            src={famille.image_famille}
+                            alt={famille.nom_famille}
+                            sx={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 1 }}
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              width: 48,
+                              height: 48,
+                              borderRadius: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: 'action.hover'
+                            }}
+                          >
+                            <Icon icon='tabler:photo-off' fontSize='1.2rem' />
+                          </Box>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', pl: famille.niveau * 4 }}>
                           {famille.niveau > 0 && <Icon icon='tabler:corner-down-right' fontSize='1.1rem' />}
@@ -135,14 +224,25 @@ const FamillesView = () => {
                         <IconButton
                           size='small'
                           title='Ajouter une sous-famille'
+                          aria-label={`Ajouter une sous-famille à ${famille.nom_famille}`}
                           onClick={() => ouvrirCreation(famille.id_famille)}
                         >
                           <Icon icon='tabler:git-branch-plus' />
                         </IconButton>
-                        <IconButton size='small' title='Modifier' onClick={() => ouvrirModification(famille)}>
+                        <IconButton
+                          size='small'
+                          title='Modifier'
+                          aria-label={`Modifier ${famille.nom_famille}`}
+                          onClick={() => ouvrirModification(famille)}
+                        >
                           <Icon icon='tabler:pencil' />
                         </IconButton>
-                        <IconButton size='small' title='Supprimer' onClick={() => setASupprimer(famille)}>
+                        <IconButton
+                          size='small'
+                          title='Supprimer'
+                          aria-label={`Supprimer ${famille.nom_famille}`}
+                          onClick={() => setASupprimer(famille)}
+                        >
                           <Icon icon='tabler:trash' />
                         </IconButton>
                       </TableCell>
@@ -163,8 +263,21 @@ const FamillesView = () => {
               <TextField
                 fullWidth
                 label='Nom de la famille'
+                autoComplete='off'
                 value={formulaire.nom_famille}
                 onChange={e => setFormulaire({ ...formulaire, nom_famille: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                required
+                label='Slug'
+                autoComplete='off'
+                value={formulaire.slug_famille}
+                error={Boolean(erreurSlug)}
+                helperText={texteAideSlug}
+                onChange={e => changerSlug(e.target.value)}
               />
             </Grid>
             <Grid item xs={12}>
@@ -172,6 +285,7 @@ const FamillesView = () => {
                 <InputLabel>Famille parente</InputLabel>
                 <Select
                   label='Famille parente'
+                  autoComplete='off'
                   value={formulaire.famille_parente_id}
                   onChange={e => setFormulaire({ ...formulaire, famille_parente_id: e.target.value })}
                 >
@@ -187,18 +301,46 @@ const FamillesView = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="URL de l'image"
-                value={formulaire.image_famille}
-                onChange={e => setFormulaire({ ...formulaire, image_famille: e.target.value })}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {formulaire.image_famille && (
+                  <Box
+                    component='img'
+                    src={formulaire.image_famille}
+                    alt='Image de la famille'
+                    sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1 }}
+                  />
+                )}
+                <input
+                  ref={refFichierImage}
+                  type='file'
+                  accept='image/jpeg,image/png,image/webp'
+                  hidden
+                  onChange={choisirFichierImage}
+                />
+                <Button
+                  variant='outlined'
+                  startIcon={<Icon icon='tabler:upload' />}
+                  onClick={() => refFichierImage.current?.click()}
+                  disabled={televersementEnCours}
+                >
+                  {televersementEnCours ? 'Téléversement…' : formulaire.image_famille ? 'Remplacer' : 'Téléverser une image'}
+                </Button>
+                {formulaire.image_famille && (
+                  <Button
+                    color='error'
+                    onClick={() => setFormulaire({ ...formulaire, image_famille: '' })}
+                  >
+                    Retirer
+                  </Button>
+                )}
+              </Box>
             </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Ordre d'affichage"
                 type='number'
+                autoComplete='off'
                 value={formulaire.ordre_famille}
                 onChange={e => setFormulaire({ ...formulaire, ordre_famille: e.target.value })}
               />
@@ -207,7 +349,16 @@ const FamillesView = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOuvert(false)}>Annuler</Button>
-          <Button variant='contained' onClick={soumettre} disabled={!formulaire.nom_famille.trim()}>
+          <Button
+            variant='contained'
+            onClick={soumettre}
+            disabled={
+              !formulaire.nom_famille.trim() ||
+              !formulaire.slug_famille.trim() ||
+              televersementEnCours ||
+              enregistrementEnCours
+            }
+          >
             Enregistrer
           </Button>
         </DialogActions>

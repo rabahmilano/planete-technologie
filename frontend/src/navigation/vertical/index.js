@@ -60,19 +60,9 @@ const navigation = () => {
       subject: 'all',
       children: [
         {
-          title: 'Familles',
-          path: '/ecommerce/familles',
-          icon: 'tabler:category'
-        },
-        {
           title: 'Produits e-commerce',
           path: '/ecommerce/produits',
           icon: 'tabler:tag'
-        },
-        {
-          title: 'Codes promo',
-          path: '/ecommerce/codes-promo',
-          icon: 'tabler:discount-2'
         },
         {
           title: 'Commandes web',
@@ -80,9 +70,24 @@ const navigation = () => {
           icon: 'tabler:shopping-bag'
         },
         {
+          title: 'Codes promo',
+          path: '/ecommerce/codes-promo',
+          icon: 'tabler:discount-2'
+        },
+        {
+          title: 'Promotions',
+          path: '/ecommerce/promotions',
+          icon: 'tabler:percentage'
+        },
+        {
           title: 'Tarifs livraison',
           path: '/ecommerce/tarifs-livraison',
           icon: 'tabler:truck-delivery'
+        },
+        {
+          title: 'Familles',
+          path: '/ecommerce/familles',
+          icon: 'tabler:category'
         }
       ]
     },

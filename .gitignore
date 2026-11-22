@@ -1,2 +1,5 @@
 ptech.txt
 backend/public/images/
+.env.backup
+.claude/
+.zcode/

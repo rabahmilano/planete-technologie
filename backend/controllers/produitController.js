@@ -1,4 +1,5 @@
 import prisma from "../config/dbConfig.js";
+import { Prisma } from "@prisma/client";
 import { body, validationResult } from "express-validator";
 import dayjs from "dayjs";
 import "dayjs/locale/fr.js";
@@ -924,18 +925,24 @@ export const getProduitsForTable = async (req, res) => {
     search = "",
     sortBy = "designation_prd",
     sortOrder = "asc",
+    vue,
   } = req.query;
   const pageNum = parseInt(page, 10);
   const limitNum = parseInt(limit, 10);
   const offset = (pageNum - 1) * limitNum;
   const searchPattern = `%${search}%`;
+  const triBrouillonEnStock =
+    vue === "ecommerce"
+      ? Prisma.sql`CASE WHEN p.qte_dispo > 0 AND p.statut_publication = 'BROUILLON' THEN 0 ELSE 1 END ASC,`
+      : Prisma.sql``;
 
   try {
     const produits = await prisma.$queryRaw`
-      SELECT 
-        p.id_prd, 
-        p.designation_prd, 
-        p.qte_dispo
+      SELECT
+        p.id_prd,
+        p.designation_prd,
+        p.qte_dispo,
+        p.statut_publication
       FROM produit AS p
       LEFT JOIN (
         SELECT prd_id, SUM(qte_achat) as total_qte_achetee
@@ -945,6 +952,7 @@ export const getProduitsForTable = async (req, res) => {
       WHERE p.designation_prd LIKE ${searchPattern}
       ORDER BY
         CASE WHEN p.qte_dispo > 0 THEN 0 ELSE 1 END ASC,
+        ${triBrouillonEnStock}
         CASE WHEN p.qte_dispo > 0 THEN p.designation_prd ELSE NULL END ASC,
         CASE WHEN p.qte_dispo = 0 THEN c_sum.total_qte_achetee ELSE NULL END DESC,
         p.designation_prd ASC

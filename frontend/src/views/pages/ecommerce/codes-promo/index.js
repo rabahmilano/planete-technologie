@@ -9,12 +9,14 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
   Select,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -180,6 +182,7 @@ const CodesPromoView = () => {
                   <TableCell sx={{ color: 'white' }}>Réduction</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Minimum</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Utilisation</TableCell>
+                  <TableCell sx={{ color: 'white' }} align='center'>Commandes web</TableCell>
                   <TableCell sx={{ color: 'white' }}>Expiration</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Statut</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell>
@@ -188,7 +191,7 @@ const CodesPromoView = () => {
               <TableBody>
                 {codes.length === 0 && !loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} align='center'>
+                    <TableCell colSpan={8} align='center'>
                       <Typography sx={{ p: 4 }}>Aucun code promo.</Typography>
                     </TableCell>
                   </TableRow>
@@ -205,6 +208,7 @@ const CodesPromoView = () => {
                       <TableCell align='center'>
                         {code.utilisation_actuelle} / {code.utilisation_max}
                       </TableCell>
+                      <TableCell align='center'>{code._count?.commandes ?? 0}</TableCell>
                       <TableCell>{formaterDate(code.date_expiration)}</TableCell>
                       <TableCell align='center'>
                         {!code.est_actif_promo ? (
@@ -218,13 +222,28 @@ const CodesPromoView = () => {
                         )}
                       </TableCell>
                       <TableCell align='center'>
-                        <IconButton size='small' title='Activer / désactiver' onClick={() => basculerActif(code)}>
+                        <IconButton
+                          size='small'
+                          title='Activer / désactiver'
+                          aria-label={`${code.est_actif_promo ? 'Désactiver' : 'Activer'} le code ${code.code}`}
+                          onClick={() => basculerActif(code)}
+                        >
                           <Icon icon={code.est_actif_promo ? 'tabler:toggle-right' : 'tabler:toggle-left'} />
                         </IconButton>
-                        <IconButton size='small' title='Modifier' onClick={() => ouvrirModification(code)}>
+                        <IconButton
+                          size='small'
+                          title='Modifier'
+                          aria-label={`Modifier le code ${code.code}`}
+                          onClick={() => ouvrirModification(code)}
+                        >
                           <Icon icon='tabler:pencil' />
                         </IconButton>
-                        <IconButton size='small' title='Supprimer' onClick={() => setASupprimer(code)}>
+                        <IconButton
+                          size='small'
+                          title='Supprimer'
+                          aria-label={`Supprimer le code ${code.code}`}
+                          onClick={() => setASupprimer(code)}
+                        >
                           <Icon icon='tabler:trash' />
                         </IconButton>
                       </TableCell>
@@ -245,6 +264,8 @@ const CodesPromoView = () => {
               <TextField
                 fullWidth
                 label='Code'
+                autoComplete='off'
+                helperText='Lettres et chiffres — enregistré en majuscules'
                 value={formulaire.code}
                 onChange={e => setFormulaire({ ...formulaire, code: e.target.value })}
               />
@@ -254,11 +275,12 @@ const CodesPromoView = () => {
                 <InputLabel>Type de réduction</InputLabel>
                 <Select
                   label='Type de réduction'
+                  autoComplete='off'
                   value={formulaire.type_reduction}
                   onChange={e => setFormulaire({ ...formulaire, type_reduction: e.target.value })}
                 >
                   <MenuItem value='POURCENTAGE'>Pourcentage (%)</MenuItem>
-                  <MenuItem value='MONTANT'>Montant fixe (DZD)</MenuItem>
+                  <MenuItem value='MONTANT_FIXE'>Montant fixe (DZD)</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -267,6 +289,7 @@ const CodesPromoView = () => {
                 fullWidth
                 label={formulaire.type_reduction === 'POURCENTAGE' ? 'Valeur (%)' : 'Valeur (DZD)'}
                 type='number'
+                autoComplete='off'
                 value={formulaire.valeur_reduction}
                 onChange={e => setFormulaire({ ...formulaire, valeur_reduction: e.target.value })}
               />
@@ -277,6 +300,7 @@ const CodesPromoView = () => {
                 label="Date d'expiration"
                 type='date'
                 InputLabelProps={{ shrink: true }}
+                autoComplete='off'
                 value={formulaire.date_expiration}
                 onChange={e => setFormulaire({ ...formulaire, date_expiration: e.target.value })}
               />
@@ -286,6 +310,7 @@ const CodesPromoView = () => {
                 fullWidth
                 label='Utilisation maximum'
                 type='number'
+                autoComplete='off'
                 value={formulaire.utilisation_max}
                 onChange={e => setFormulaire({ ...formulaire, utilisation_max: e.target.value })}
               />
@@ -295,22 +320,21 @@ const CodesPromoView = () => {
                 fullWidth
                 label='Montant minimum (DZD, optionnel)'
                 type='number'
+                autoComplete='off'
                 value={formulaire.montant_min_promo}
                 onChange={e => setFormulaire({ ...formulaire, montant_min_promo: e.target.value })}
               />
             </Grid>
             <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>État</InputLabel>
-                <Select
-                  label='État'
-                  value={formulaire.est_actif_promo}
-                  onChange={e => setFormulaire({ ...formulaire, est_actif_promo: e.target.value })}
-                >
-                  <MenuItem value={true}>Actif</MenuItem>
-                  <MenuItem value={false}>Désactivé</MenuItem>
-                </Select>
-              </FormControl>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={Boolean(formulaire.est_actif_promo)}
+                    onChange={e => setFormulaire({ ...formulaire, est_actif_promo: e.target.checked })}
+                  />
+                }
+                label='Code actif'
+              />
             </Grid>
           </Grid>
         </DialogContent>

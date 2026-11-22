@@ -6,6 +6,10 @@ import {
   verifierCodePromoValide,
   calculerReductionPromo,
 } from "../config/utils.js";
+import {
+  chargerContextePromotions,
+  promoGagnante,
+} from "../config/promotions.js";
 import { WILAYAS, nomWilaya } from "../config/wilayas.js";
 import {
   estConfigure as yalidineConfigure,
@@ -20,19 +24,16 @@ const TYPES_LIVRAISON = ["DOMICILE", "BUREAU"];
 const TELEPHONE_DZ = /^0(5|6|7)[0-9]{8}$/;
 const TRIS = ["pertinence", "prix_asc", "prix_desc", "nouveautes"];
 
-const promoActive = (produit) => {
-  const maintenant = new Date();
-  return (
-    produit.prix_promo !== null &&
-    produit.prix_promo !== undefined &&
-    produit.debut_promo &&
-    produit.fin_promo &&
-    new Date(produit.debut_promo) <= maintenant &&
-    maintenant <= new Date(produit.fin_promo)
-  );
-};
+// Fabrique : la fenêtre de validité est évaluée à chaque requête, pas au
+// démarrage du serveur, pour refléter les promotions créées ou expirées
+// pendant l'uptime.
+const fenetrePromotionActive = () => ({
+  est_active: true,
+  date_debut: { lte: new Date() },
+  date_fin: { gte: new Date() },
+});
 
-const formaterProduitPublic = (produit) => {
+const formaterProduitBoutique = (produit, contextePromotions) => {
   const imagesTriees = [...(produit.images || [])].sort(
     (a, b) =>
       (b.est_principale ? 1 : 0) - (a.est_principale ? 1 : 0) ||
@@ -40,20 +41,21 @@ const formaterProduitPublic = (produit) => {
       a.id_img - b.id_img,
   );
   const principale = imagesTriees[0] || null;
-  const enPromo = promoActive(produit);
+  const gagnante = promoGagnante(produit, contextePromotions);
+  const enPromo = gagnante !== null;
   return {
     slug: produit.slug_prd,
     designation: produit.designation_prd,
+    intitule_publication: produit.intitule_publication || null,
     description: produit.description,
     description_ar: produit.description_ar,
-    prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1),
+    prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1, gagnante),
     prix_vente:
       produit.prix_vente === null ? null : parseFloat(produit.prix_vente),
     prix_barre: enPromo ? parseFloat(produit.prix_vente) : null,
-    prix_promo:
-      produit.prix_promo === null ? null : parseFloat(produit.prix_promo),
-    debut_promo: produit.debut_promo,
-    fin_promo: produit.fin_promo,
+    prix_promo: enPromo ? gagnante.prix : null,
+    debut_promo: enPromo ? gagnante.promotion.date_debut : null,
+    fin_promo: enPromo ? gagnante.promotion.date_fin : null,
     promo_active: enPromo,
     image_principale: principale ? principale.url_image : null,
     images: imagesTriees.map((image) => ({
@@ -77,7 +79,7 @@ const formaterProduitPublic = (produit) => {
   };
 };
 
-const inclureProduitPublic = {
+const inclureProduitBoutique = {
   famille: {
     select: { id_famille: true, nom_famille: true, slug_famille: true },
   },
@@ -124,7 +126,7 @@ const calculerFraisLivraison = async ({
   return { prix: 0, source: "indisponible" };
 };
 
-export const getProduitsPublics = async (req, res) => {
+export const getProduitsBoutique = async (req, res) => {
   const {
     recherche = "",
     famille,
@@ -176,10 +178,35 @@ export const getProduitsPublics = async (req, res) => {
     };
   }
   if (promo === "true") {
-    const maintenant = new Date();
-    whereClause.prix_promo = { not: null };
-    whereClause.debut_promo = { lte: maintenant };
-    whereClause.fin_promo = { gte: maintenant };
+    // Périmètre TOUS : une seule promotion active met tout le catalogue en
+    // promo — pas besoin de filtrer par produit.
+    const promoTous = await prisma.promotion.findFirst({
+      where: { ...fenetrePromotionActive(), perimetre: "TOUS" },
+      select: { id_promotion: true },
+    });
+    if (!promoTous) {
+      whereClause.AND = [
+        {
+          OR: [
+            {
+              promotions: { some: { promotion: fenetrePromotionActive() } },
+            },
+            {
+              famille: {
+                promotions: { some: { promotion: fenetrePromotionActive() } },
+              },
+            },
+            {
+              famille: {
+                famille_parente: {
+                  promotions: { some: { promotion: fenetrePromotionActive() } },
+                },
+              },
+            },
+          ],
+        },
+      ];
+    }
   }
   if (en_stock === "true") {
     const enStock = await prisma.$queryRaw`
@@ -200,10 +227,11 @@ export const getProduitsPublics = async (req, res) => {
           : [{ est_mis_en_avant: "desc" }, { id_prd: "desc" }];
 
   try {
+    const contextePromotions = await chargerContextePromotions();
     const [produits, total] = await prisma.$transaction([
       prisma.produit.findMany({
         where: whereClause,
-        include: inclureProduitPublic,
+        include: inclureProduitBoutique,
         orderBy,
         skip,
         take: limitNum,
@@ -212,7 +240,9 @@ export const getProduitsPublics = async (req, res) => {
     ]);
 
     res.status(200).json({
-      produits: produits.map(formaterProduitPublic),
+      produits: produits.map((produit) =>
+        formaterProduitBoutique(produit, contextePromotions),
+      ),
       total,
       page: pageNum,
       limit: limitNum,
@@ -225,16 +255,17 @@ export const getProduitsPublics = async (req, res) => {
   }
 };
 
-export const getProduitPublicParSlug = async (req, res) => {
+export const getProduitBoutiqueParSlug = async (req, res) => {
   const { slug } = req.params;
   if (!slug) {
     return res.status(400).json({ message: "Slug invalide." });
   }
 
   try {
+    const contextePromotions = await chargerContextePromotions();
     const produit = await prisma.produit.findFirst({
       where: { slug_prd: slug, statut_publication: "PUBLIE" },
-      include: inclureProduitPublic,
+      include: inclureProduitBoutique,
     });
     if (!produit) {
       return res.status(404).json({ message: "Produit introuvable." });
@@ -247,14 +278,16 @@ export const getProduitPublicParSlug = async (req, res) => {
         famille_id: produit.famille_id,
         slug_prd: { not: slug },
       },
-      include: inclureProduitPublic,
+      include: inclureProduitBoutique,
       orderBy: [{ est_mis_en_avant: "desc" }, { id_prd: "desc" }],
       take: 8,
     });
 
     res.status(200).json({
-      ...formaterProduitPublic(produit),
-      produits_lies: lies.map(formaterProduitPublic),
+      ...formaterProduitBoutique(produit, contextePromotions),
+      produits_lies: lies.map((produit) =>
+        formaterProduitBoutique(produit, contextePromotions),
+      ),
     });
   } catch (error) {
     res
@@ -263,7 +296,7 @@ export const getProduitPublicParSlug = async (req, res) => {
   }
 };
 
-export const getFamillesPubliques = async (req, res) => {
+export const getFamillesBoutique = async (req, res) => {
   try {
     const [racines, comptes] = await Promise.all([
       prisma.famille_produit.findMany({
@@ -317,7 +350,7 @@ export const getWilayas = async (req, res) => {
   res.status(200).json(WILAYAS.filter((wilaya) => !wilaya.a_venir));
 };
 
-export const getCommunesPubliques = async (req, res) => {
+export const getCommunesBoutique = async (req, res) => {
   const codeWilaya = parseInt(req.query.wilaya, 10);
   if (isNaN(codeWilaya) || codeWilaya < 1 || codeWilaya > 58) {
     return res
@@ -351,7 +384,7 @@ export const getCommunesPubliques = async (req, res) => {
   }
 };
 
-export const getBureauxPublics = async (req, res) => {
+export const getBureauxBoutique = async (req, res) => {
   const codeWilaya = parseInt(req.query.wilaya, 10);
   if (isNaN(codeWilaya) || codeWilaya < 1 || codeWilaya > 58) {
     return res
@@ -388,7 +421,7 @@ export const getBureauxPublics = async (req, res) => {
   }
 };
 
-export const getTarifPublic = async (req, res) => {
+export const getTarifBoutique = async (req, res) => {
   const codeWilaya = parseInt(req.query.wilaya, 10);
   const typeLivraison = String(req.query.type || "")
     .trim()
@@ -423,7 +456,7 @@ export const getTarifPublic = async (req, res) => {
   }
 };
 
-export const verifierCodePromoPublic = [
+export const verifierCodePromoBoutique = [
   body("code")
     .isString()
     .trim()
@@ -466,7 +499,7 @@ export const verifierCodePromoPublic = [
   },
 ];
 
-export const createCommandePublique = [
+export const createCommandeBoutique = [
   body("nom_client")
     .isString()
     .trim()
@@ -657,7 +690,7 @@ export const createCommandePublique = [
   },
 ];
 
-export const getSuiviCommandePublique = async (req, res) => {
+export const getSuiviCommandeBoutique = async (req, res) => {
   const idCommande = parseInt(req.params.id, 10);
   const telephone = String(req.query.telephone || "").trim();
   if (isNaN(idCommande) || !TELEPHONE_DZ.test(telephone)) {
@@ -682,6 +715,7 @@ export const getSuiviCommandePublique = async (req, res) => {
     if (!commande || commande.telephone !== telephone) {
       return res.status(404).json({ message: "Commande introuvable." });
     }
+
     res.status(200).json(commande);
   } catch (error) {
     res

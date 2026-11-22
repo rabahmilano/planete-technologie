@@ -1,17 +1,17 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import {
-  getProduitsPublics,
-  getProduitPublicParSlug,
-  getFamillesPubliques,
+  getProduitsBoutique,
+  getProduitBoutiqueParSlug,
+  getFamillesBoutique,
   getWilayas,
-  getCommunesPubliques,
-  getBureauxPublics,
-  getTarifPublic,
-  verifierCodePromoPublic,
-  createCommandePublique,
-  getSuiviCommandePublique,
-} from "../controllers/publicController.js";
+  getCommunesBoutique,
+  getBureauxBoutique,
+  getTarifBoutique,
+  verifierCodePromoBoutique,
+  createCommandeBoutique,
+  getSuiviCommandeBoutique,
+} from "../controllers/boutiqueController.js";
 
 const router = express.Router();
 
@@ -23,15 +23,15 @@ const limiteCommandes = rateLimit({
   legacyHeaders: false,
 });
 
-router.get("/produits", getProduitsPublics);
-router.get("/produits/:slug", getProduitPublicParSlug);
-router.get("/familles", getFamillesPubliques);
+router.get("/produits", getProduitsBoutique);
+router.get("/produits/:slug", getProduitBoutiqueParSlug);
+router.get("/familles", getFamillesBoutique);
 router.get("/livraison/wilayas", getWilayas);
-router.get("/livraison/communes", getCommunesPubliques);
-router.get("/livraison/bureaux", getBureauxPublics);
-router.get("/livraison/tarif", getTarifPublic);
-router.post("/codes-promo/verifier", verifierCodePromoPublic);
-router.post("/commandes", limiteCommandes, createCommandePublique);
-router.get("/commandes/:id", getSuiviCommandePublique);
+router.get("/livraison/communes", getCommunesBoutique);
+router.get("/livraison/bureaux", getBureauxBoutique);
+router.get("/livraison/tarif", getTarifBoutique);
+router.post("/codes-promo/verifier", verifierCodePromoBoutique);
+router.post("/commandes", limiteCommandes, createCommandeBoutique);
+router.get("/commandes/:id", getSuiviCommandeBoutique);
 
 export default router;

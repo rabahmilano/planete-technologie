@@ -78,16 +78,39 @@ export const ProduitEcommerceProvider = ({ children }) => {
     }
   }
 
-  const uploaderImage = async (id, fichier, ordre_image = 0) => {
+  const uploaderImage = async (id, fichier, ordre_image = 0, nom_image = '') => {
     try {
       const donnees = new FormData()
       donnees.append('image', fichier)
       donnees.append('ordre_image', String(ordre_image))
+      if (nom_image.trim()) donnees.append('nom_image', nom_image.trim())
       await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/upload`, donnees)
       toast.success('Image téléversée')
       return true
     } catch (error) {
       erreurValidation(error)
+      return false
+    }
+  }
+
+  const reordonnerImages = async (id, ordre) => {
+    try {
+      await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/ordre`, { ordre })
+      toast.success('Ordre des images mis à jour')
+      return true
+    } catch (error) {
+      erreurValidation(error)
+      return false
+    }
+  }
+
+  const pivoterImage = async (id, idImage) => {
+    try {
+      await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/${idImage}/rotation`)
+      toast.success('Image pivotée')
+      return true
+    } catch (error) {
+      toast.error(messageErreur(error))
       return false
     }
   }
@@ -158,6 +181,8 @@ export const ProduitEcommerceProvider = ({ children }) => {
         uploaderImage,
         supprimerImage,
         definirImagePrincipale,
+        reordonnerImages,
+        pivoterImage,
         ajouterPalier,
         modifierPalier,
         supprimerPalier

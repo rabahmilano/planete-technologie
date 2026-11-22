@@ -6,7 +6,7 @@ import {
   calculerReductionPromo,
 } from "../config/utils.js";
 
-const TYPES_REDUCTION = ["POURCENTAGE", "MONTANT"];
+const TYPES_REDUCTION = ["POURCENTAGE", "MONTANT_FIXE"];
 
 const normaliserCode = (code) => code.trim().toUpperCase();
 
@@ -34,7 +34,7 @@ export const addCodePromo = [
     .isInt({ min: 1 })
     .withMessage("L'utilisation maximum doit être un entier supérieur à 0"),
   body("montant_min_promo")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Le montant minimum doit être un nombre positif ou nul"),
   body("est_actif_promo")
@@ -88,9 +88,11 @@ export const addCodePromo = [
           valeur_reduction: parseFloat(valeur_reduction),
           date_expiration: new Date(date_expiration),
           montant_min_promo:
-            montant_min_promo !== undefined
-              ? parseFloat(montant_min_promo)
-              : 0,
+            montant_min_promo === null ||
+            montant_min_promo === undefined ||
+            montant_min_promo === ""
+              ? 0
+              : parseFloat(montant_min_promo),
           est_actif_promo:
             est_actif_promo !== undefined ? est_actif_promo : true,
           utilisation_max: parseInt(utilisation_max, 10),
@@ -186,7 +188,7 @@ export const updateCodePromo = [
     .isInt({ min: 1 })
     .withMessage("L'utilisation maximum doit être un entier supérieur à 0"),
   body("montant_min_promo")
-    .optional()
+    .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("Le montant minimum doit être un nombre positif ou nul"),
   body("est_actif_promo")
@@ -263,7 +265,10 @@ export const updateCodePromo = [
         dataToUpdate.utilisation_max = parseInt(utilisation_max, 10);
       }
       if (montant_min_promo !== undefined) {
-        dataToUpdate.montant_min_promo = parseFloat(montant_min_promo);
+        dataToUpdate.montant_min_promo =
+          montant_min_promo === null || montant_min_promo === ""
+            ? 0
+            : parseFloat(montant_min_promo);
       }
       if (est_actif_promo !== undefined) {
         dataToUpdate.est_actif_promo = est_actif_promo;
