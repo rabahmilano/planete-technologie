@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import {
   Alert,
-  Avatar,
+  AppBar,
   Box,
   Button,
   Card,
@@ -29,6 +29,7 @@ import {
   TableRow,
   Tabs,
   TextField,
+  Toolbar,
   Tooltip,
   Typography,
   FormControl,
@@ -118,6 +119,7 @@ const ProduitsEcommerceView = () => {
     reordonnerImages,
     pivoterImage,
     ajouterPalier,
+    modifierPalier,
     supprimerPalier
   } = useProduitEcommerce()
   const { familles } = useFamille()
@@ -151,6 +153,8 @@ const ProduitsEcommerceView = () => {
   const refFichierImage = useRef(null)
   const [publicationEnAttente, setPublicationEnAttente] = useState(null)
   const [alerteDepublication, setAlerteDepublication] = useState(null)
+  const [palierEnEdition, setPalierEnEdition] = useState(null)
+  const [formPalier, setFormPalier] = useState({ quantite_min: '', prix_unitaire: '' })
 
   const chargerListe = async () => {
     setChargement(true)
@@ -194,6 +198,7 @@ const ProduitsEcommerceView = () => {
     setFormPrix({ prix_vente: detail.prix_vente ?? '' })
     setErreurSlug('')
     setAlerteDepublication(null)
+    setPalierEnEdition(null)
     setHistorique(detail.historiques_prix_vente || [])
     setNouveauPalier({ quantite_min: '', prix_unitaire: '' })
     setFichierImage(null)
@@ -494,55 +499,39 @@ const ProduitsEcommerceView = () => {
         TransitionComponent={Transition}
         sx={{ '& .MuiDialog-paper': { backgroundColor: '#f8f9fa' } }}
       >
-        <DialogTitle sx={{ px: 6, pt: 4, pb: 0, backgroundColor: 'background.paper' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-              <Avatar
-                variant='rounded'
-                sx={{ width: 48, height: 48, backgroundColor: 'rgba(0,0,0,0.04)', color: 'text.primary' }}
-              >
-                <Icon icon='tabler:edit' fontSize='1.5rem' />
-              </Avatar>
+        <AppBar sx={{ position: 'relative', backgroundColor: '#0d1b2a', boxShadow: 3, flexShrink: 0 }}>
+          <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Icon icon='tabler:edit' color='white' />
               <Box>
-                <Typography variant='h5' sx={{ fontWeight: 700, letterSpacing: '-0.5px' }}>
+                <Typography variant='h6' color='white' sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   {produitSelectionne?.designation_prd}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
-                  {produitSelectionne?.prix_effectif != null && (
-                    <Typography variant='body2' sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                      Prix effectif : {Number(produitSelectionne.prix_effectif).toLocaleString('fr-FR')} DZD
-                      {produitSelectionne.promo_active ? ' (promo active)' : ''}
-                    </Typography>
-                  )}
                   <Chip
                     label={libelleStatut(produitSelectionne?.statut_publication)}
                     color={couleurStatut(produitSelectionne?.statut_publication)}
                     size='small'
                   />
-                </Box>
+                </Typography>
+                {produitSelectionne?.prix_effectif != null && (
+                  <Typography variant='body2' sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                    Prix effectif : {Number(produitSelectionne.prix_effectif).toLocaleString('fr-FR')} DZD
+                    {produitSelectionne.promo_active ? ' (promo active)' : ''}
+                  </Typography>
+                )}
               </Box>
             </Box>
-            <IconButton
-              onClick={() => setProduitSelectionne(null)}
-              aria-label='Fermer'
-              sx={{
-                backgroundColor: 'rgba(0,0,0,0.04)',
-                '&:hover': { backgroundColor: 'error.light', color: 'error.main' }
-              }}
-            >
-              <Icon icon='tabler:x' />
+            <IconButton edge='end' color='inherit' onClick={() => setProduitSelectionne(null)} aria-label='Fermer'>
+              <Icon icon='tabler:x' color='white' />
             </IconButton>
-          </Box>
-          <Tabs
-            value={onglet}
-            onChange={(event, valeur) => setOnglet(valeur)}
-            sx={{ borderBottom: 1, borderColor: 'divider' }}
-          >
+          </Toolbar>
+        </AppBar>
+        <Box sx={{ px: 6, backgroundColor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={onglet} onChange={(event, valeur) => setOnglet(valeur)}>
             <Tab value='1' label='Info' icon={<Icon icon='tabler:info-circle' />} iconPosition='start' />
             <Tab value='2' label='Prix' icon={<Icon icon='tabler:currency-dollar' />} iconPosition='start' />
             <Tab value='3' label='Images' icon={<Icon icon='tabler:photo' />} iconPosition='start' />
           </Tabs>
-        </DialogTitle>
+        </Box>
         <DialogContent sx={{ p: { xs: 4, md: 8 }, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
           {alerteDepublication && (
             <Alert severity='warning' sx={{ mb: 6 }} onClose={() => setAlerteDepublication(null)}>
@@ -558,6 +547,17 @@ const ProduitsEcommerceView = () => {
                     <CardHeader
                       title='Produit'
                       subheader="L'intitulé s'affiche dans la boutique (vide : la désignation interne). Le poids est utilisé par Yalidine (défaut 500 g si vide)."
+                      action={
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={Boolean(formInfos.est_mis_en_avant)}
+                              onChange={e => setFormInfos({ ...formInfos, est_mis_en_avant: e.target.checked })}
+                            />
+                          }
+                          label='Mettre en avant'
+                        />
+                      }
                     />
                     <CardContent>
                       <Grid container spacing={6}>
@@ -601,7 +601,7 @@ const ProduitsEcommerceView = () => {
                             </Select>
                           </FormControl>
                         </Grid>
-                        <Grid item xs={12} md={3}>
+                        <Grid item xs={12} md={6}>
                           <TextField
                             fullWidth
                             label='Poids (grammes)'
@@ -609,18 +609,6 @@ const ProduitsEcommerceView = () => {
                             autoComplete='off'
                             value={formInfos.poids_grammes ?? ''}
                             onChange={e => setFormInfos({ ...formInfos, poids_grammes: e.target.value })}
-                          />
-                        </Grid>
-                        <Grid item xs={12} md={3}>
-                          <FormControlLabel
-                            sx={{ mt: 2 }}
-                            control={
-                              <Switch
-                                checked={Boolean(formInfos.est_mis_en_avant)}
-                                onChange={e => setFormInfos({ ...formInfos, est_mis_en_avant: e.target.checked })}
-                              />
-                            }
-                            label='Mettre en avant'
                           />
                         </Grid>
                       </Grid>
@@ -635,22 +623,22 @@ const ProduitsEcommerceView = () => {
                     />
                     <CardContent>
                       <Grid container spacing={6}>
-                        <Grid item xs={12} md={7}>
+                        <Grid item xs={12} md={6}>
                           <TextField
                             fullWidth
                             multiline
-                            rows={8}
+                            rows={12}
                             label='Description'
                             autoComplete='off'
                             value={formInfos.description || ''}
                             onChange={e => setFormInfos({ ...formInfos, description: e.target.value })}
                           />
                         </Grid>
-                        <Grid item xs={12} md={5}>
+                        <Grid item xs={12} md={6}>
                           <TextField
                             fullWidth
                             multiline
-                            rows={8}
+                            rows={12}
                             label='Description (arabe, optionnel)'
                             autoComplete='off'
                             value={formInfos.description_ar || ''}
@@ -705,8 +693,8 @@ const ProduitsEcommerceView = () => {
                     </CardContent>
                   </Card>
                 </Grid>
-                <Grid item xs={12}>
-                  <Card sx={sxCarteSection}>
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ ...sxCarteSection, height: '100%' }}>
                     <CardHeader
                       title='Paliers de prix par quantité'
                       subheader="Chaque palier fixe le prix UNITAIRE appliqué à partir d'une quantité (prix dégressifs). Le palier avec la plus grande quantité atteinte s'applique."
@@ -724,28 +712,109 @@ const ProduitsEcommerceView = () => {
                           <TableBody>
                             {(produitSelectionne?.paliers || []).map(palier => (
                               <TableRow key={palier.id_palier}>
-                                <TableCell align='center'>dès {palier.quantite_min} pièces</TableCell>
-                                <TableCell align='right'>
-                                  {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
-                                </TableCell>
-                                <TableCell align='center'>
-                                  <Tooltip title='Supprimer le palier'>
-                                    <IconButton
-                                      size='small'
-                                      color='error'
-                                      aria-label={`Supprimer le palier dès ${palier.quantite_min} pièces`}
-                                      onClick={async () => {
-                                        if (
-                                          await supprimerPalier(produitSelectionne.id_prd, palier.id_palier)
-                                        ) {
-                                          await rafraichirDetail(produitSelectionne.id_prd)
+                                {palierEnEdition === palier.id_palier ? (
+                                  <>
+                                    <TableCell align='center'>
+                                      <TextField
+                                        size='small'
+                                        type='number'
+                                        value={formPalier.quantite_min}
+                                        onChange={e =>
+                                          setFormPalier({ ...formPalier, quantite_min: e.target.value })
                                         }
-                                      }}
-                                    >
-                                      <Icon icon='tabler:trash' />
-                                    </IconButton>
-                                  </Tooltip>
-                                </TableCell>
+                                        inputProps={{ min: 1, 'aria-label': 'Quantité minimum du palier' }}
+                                        sx={{ width: 90 }}
+                                      />
+                                    </TableCell>
+                                    <TableCell align='right'>
+                                      <TextField
+                                        size='small'
+                                        type='number'
+                                        value={formPalier.prix_unitaire}
+                                        onChange={e =>
+                                          setFormPalier({ ...formPalier, prix_unitaire: e.target.value })
+                                        }
+                                        inputProps={{ min: 0, step: 'any', 'aria-label': 'Prix unitaire du palier' }}
+                                        sx={{ width: 110 }}
+                                      />
+                                    </TableCell>
+                                    <TableCell align='center'>
+                                      <Tooltip title='Enregistrer'>
+                                        <IconButton
+                                          size='small'
+                                          color='success'
+                                          aria-label='Enregistrer le palier'
+                                          disabled={!formPalier.quantite_min || !formPalier.prix_unitaire}
+                                          onClick={async () => {
+                                            const ok = await modifierPalier(
+                                              produitSelectionne.id_prd,
+                                              palier.id_palier,
+                                              {
+                                                quantite_min: parseInt(formPalier.quantite_min, 10),
+                                                prix_unitaire: parseFloat(formPalier.prix_unitaire)
+                                              }
+                                            )
+                                            if (ok) {
+                                              setPalierEnEdition(null)
+                                              await rafraichirDetail(produitSelectionne.id_prd)
+                                            }
+                                          }}
+                                        >
+                                          <Icon icon='tabler:check' />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title='Annuler'>
+                                        <IconButton
+                                          size='small'
+                                          aria-label='Annuler la modification du palier'
+                                          onClick={() => setPalierEnEdition(null)}
+                                        >
+                                          <Icon icon='tabler:x' />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </TableCell>
+                                  </>
+                                ) : (
+                                  <>
+                                    <TableCell align='center'>dès {palier.quantite_min} pièces</TableCell>
+                                    <TableCell align='right'>
+                                      {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
+                                    </TableCell>
+                                    <TableCell align='center'>
+                                      <Tooltip title='Modifier le palier'>
+                                        <IconButton
+                                          size='small'
+                                          aria-label={`Modifier le palier dès ${palier.quantite_min} pièces`}
+                                          onClick={() => {
+                                            setPalierEnEdition(palier.id_palier)
+                                            setFormPalier({
+                                              quantite_min: String(palier.quantite_min),
+                                              prix_unitaire: String(palier.prix_unitaire)
+                                            })
+                                          }}
+                                        >
+                                          <Icon icon='tabler:edit' />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title='Supprimer le palier'>
+                                        <IconButton
+                                          size='small'
+                                          color='error'
+                                          aria-label={`Supprimer le palier dès ${palier.quantite_min} pièces`}
+                                          onClick={async () => {
+                                            if (
+                                              await supprimerPalier(produitSelectionne.id_prd, palier.id_palier)
+                                            ) {
+                                              await rafraichirDetail(produitSelectionne.id_prd)
+                                            }
+                                          }}
+                                        >
+                                          <Icon icon='tabler:trash' />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </TableCell>
+                                  </>
+                                )}
                               </TableRow>
                             ))}
                             {(produitSelectionne?.paliers || []).length === 0 && (
@@ -758,8 +827,8 @@ const ProduitsEcommerceView = () => {
                           </TableBody>
                         </Table>
                       </TableContainer>
-                      <Grid container spacing={6} sx={{ mt: 2 }}>
-                        <Grid item xs={12} md={4}>
+                      <Grid container spacing={4} sx={{ mt: 2 }}>
+                        <Grid item xs={12} md={6}>
                           <TextField
                             fullWidth
                             label='Quantité minimum (pièces)'
@@ -769,7 +838,7 @@ const ProduitsEcommerceView = () => {
                             onChange={e => setNouveauPalier({ ...nouveauPalier, quantite_min: e.target.value })}
                           />
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={6}>
                           <TextField
                             fullWidth
                             label='Prix unitaire appliqué (DZD)'
@@ -779,11 +848,10 @@ const ProduitsEcommerceView = () => {
                             onChange={e => setNouveauPalier({ ...nouveauPalier, prix_unitaire: e.target.value })}
                           />
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12}>
                           <Button
                             variant='outlined'
                             fullWidth
-                            sx={{ mt: 1 }}
                             disabled={!nouveauPalier.quantite_min || !nouveauPalier.prix_unitaire}
                             onClick={async () => {
                               if (
@@ -804,8 +872,8 @@ const ProduitsEcommerceView = () => {
                     </CardContent>
                   </Card>
                 </Grid>
-                <Grid item xs={12}>
-                  <Card sx={sxCarteSection}>
+                <Grid item xs={12} md={6}>
+                  <Card sx={{ ...sxCarteSection, height: '100%' }}>
                     <CardHeader title='Historique des prix' />
                     <CardContent>
                       <TableContainer>
@@ -892,7 +960,7 @@ const ProduitsEcommerceView = () => {
                                 component='img'
                                 src={image.url_image}
                                 alt={`Image ${index + 1} de ${produitSelectionne?.designation_prd}`}
-                                sx={{ width: '100%', height: 150, objectFit: 'cover', display: 'block' }}
+                                sx={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
                               />
                               {image.est_principale && (
                                 <Chip
