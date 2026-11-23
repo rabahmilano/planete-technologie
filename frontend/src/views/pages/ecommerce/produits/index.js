@@ -15,6 +15,7 @@ import {
   LinearProgress,
   MenuItem,
   Select,
+  Tab,
   Table,
   TableBody,
   TableCell,
@@ -22,7 +23,9 @@ import {
   TableHead,
   TablePagination,
   TableRow,
+  Tabs,
   TextField,
+  Tooltip,
   Typography,
   FormControl,
   InputLabel,
@@ -49,6 +52,18 @@ const couleurStatut = statut => {
     case 'BROUILLON':
     default:
       return 'warning'
+  }
+}
+
+const libelleStatut = statut => {
+  switch (statut) {
+    case 'PUBLIE':
+      return 'PUBLIÉ'
+    case 'ARCHIVE':
+      return 'ARCHIVÉ'
+    case 'BROUILLON':
+    default:
+      return 'BROUILLON'
   }
 }
 
@@ -314,9 +329,11 @@ const ProduitsEcommerceView = () => {
             ),
             endAdornment: recherche ? (
               <InputAdornment position='end'>
-                <IconButton size='small' onClick={() => setRecherche('')} edge='end' aria-label='Effacer la recherche'>
-                  <Icon icon='tabler:x' fontSize='1.25rem' />
-                </IconButton>
+                <Tooltip title='Effacer la recherche'>
+                  <IconButton size='small' onClick={() => setRecherche('')} edge='end' aria-label='Effacer la recherche'>
+                    <Icon icon='tabler:x' fontSize='1.25rem' />
+                  </IconButton>
+                </Tooltip>
               </InputAdornment>
             ) : null
           }}
@@ -334,7 +351,7 @@ const ProduitsEcommerceView = () => {
                   <TableCell sx={{ color: 'white' }}>Famille</TableCell>
                   <TableCell sx={{ color: 'white' }} align='right'>Prix effectif</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Publication</TableCell>
-                  <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell>
+                  <TableCell sx={{ color: 'white' }} align='right'>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -352,12 +369,26 @@ const ProduitsEcommerceView = () => {
                       <TableRow key={produit.id_prd} hover>
                         <TableCell>
                           <Typography sx={{ fontWeight: 600 }}>{produit.designation_prd}</Typography>
-                          {detail?.promo_active && <Chip label='Promo' color='error' size='small' sx={{ ml: 2 }} />}
-                          {detail?.est_mis_en_avant && (
-                            <Chip label='Mis en avant' color='primary' size='small' sx={{ ml: 1 }} />
+                          {(detail?.promo_active || detail?.est_mis_en_avant) && (
+                            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                              {detail?.promo_active && (
+                                <Chip label='Promo' color='warning' variant='outlined' size='small' />
+                              )}
+                              {detail?.est_mis_en_avant && (
+                                <Chip label='Mis en avant' color='primary' variant='outlined' size='small' />
+                              )}
+                            </Box>
                           )}
                         </TableCell>
-                        <TableCell align='center'>{produit.qte_dispo}</TableCell>
+                        <TableCell align='center'>
+                          {produit.qte_dispo == null ? (
+                            '—'
+                          ) : produit.qte_dispo > 0 ? (
+                            produit.qte_dispo
+                          ) : (
+                            <Chip label='Rupture' color='error' size='small' />
+                          )}
+                        </TableCell>
                         <TableCell>{detail?.famille?.nom_famille || '—'}</TableCell>
                         <TableCell align='right'>
                           {detail?.prix_effectif != null
@@ -366,15 +397,13 @@ const ProduitsEcommerceView = () => {
                         </TableCell>
                         <TableCell align='center'>
                           <Chip
-                            label={statutAffiche(produit)}
+                            label={libelleStatut(statutAffiche(produit))}
                             color={couleurStatut(statutAffiche(produit))}
                             size='small'
                           />
                         </TableCell>
-                        <TableCell align='center'>
-                          <IconButton
-                            size='small'
-                            disabled={manquants.length > 0}
+                        <TableCell align='right' sx={{ whiteSpace: 'nowrap' }}>
+                          <Tooltip
                             title={
                               manquants.length > 0
                                 ? `Publication impossible, il manque : ${manquants.join(', ')}`
@@ -382,23 +411,35 @@ const ProduitsEcommerceView = () => {
                                   ? 'Dépublier'
                                   : 'Publier'
                             }
-                            aria-label={
-                              statutAffiche(produit) === 'PUBLIE'
-                                ? `Dépublier ${produit.designation_prd}`
-                                : `Publier ${produit.designation_prd}`
-                            }
-                            onClick={() => setPublicationEnAttente(produit)}
                           >
-                            <Icon icon={statutAffiche(produit) === 'PUBLIE' ? 'tabler:eye-off' : 'tabler:eye'} />
-                          </IconButton>
-                          <IconButton
-                            size='small'
-                            title='Gérer'
-                            aria-label={`Gérer ${produit.designation_prd}`}
-                            onClick={() => ouvrirDetail(produit)}
-                          >
-                            <Icon icon='tabler:settings' />
-                          </IconButton>
+                            <span>
+                              <IconButton
+                                size='small'
+                                color={statutAffiche(produit) === 'PUBLIE' ? 'warning' : 'success'}
+                                disabled={manquants.length > 0}
+                                aria-label={
+                                  statutAffiche(produit) === 'PUBLIE'
+                                    ? `Dépublier ${produit.designation_prd}`
+                                    : `Publier ${produit.designation_prd}`
+                                }
+                                onClick={() => setPublicationEnAttente(produit)}
+                              >
+                                <Icon
+                                  icon={statutAffiche(produit) === 'PUBLIE' ? 'tabler:eye-off' : 'tabler:eye'}
+                                />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title={`Gérer ${produit.designation_prd}`}>
+                            <IconButton
+                              size='small'
+                              sx={{ ml: 1 }}
+                              aria-label={`Gérer ${produit.designation_prd}`}
+                              onClick={() => ouvrirDetail(produit)}
+                            >
+                              <Icon icon='tabler:edit' />
+                            </IconButton>
+                          </Tooltip>
                         </TableCell>
                       </TableRow>
                     )
@@ -441,53 +482,43 @@ const ProduitsEcommerceView = () => {
               </Typography>
             )}
           </Box>
-          <IconButton edge='end' aria-label='Fermer' onClick={() => setProduitSelectionne(null)}>
-            <Icon icon='tabler:x' />
-          </IconButton>
+          <Tooltip title='Fermer'>
+            <IconButton edge='end' aria-label='Fermer' onClick={() => setProduitSelectionne(null)}>
+              <Icon icon='tabler:x' />
+            </IconButton>
+          </Tooltip>
         </DialogTitle>
         <DialogContent dividers sx={{ px: { xs: 3, md: 8 }, py: 4 }}>
           <Grid container spacing={4} sx={{ maxWidth: 1100, mx: 'auto' }}>
             <Grid item xs={12}>
-              <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                <Box sx={{ display: 'flex', gap: 4 }}>
-                  {[
-                    { valeur: '1', label: 'Info', icone: 'tabler:info-circle' },
-                    { valeur: '2', label: 'Prix', icone: 'tabler:currency-dollar' },
-                    { valeur: '3', label: 'Images', icone: 'tabler:photo' }
-                  ].map(item => (
-                    <Button
-                      key={item.valeur}
-                      startIcon={<Icon icon={item.icone} />}
-                      onClick={() => setOnglet(item.valeur)}
-                      sx={{
-                        borderRadius: 0,
-                        borderBottom: 2,
-                        borderColor: onglet === item.valeur ? 'primary.main' : 'transparent',
-                        color: onglet === item.valeur ? 'primary.main' : 'text.secondary'
-                      }}
-                    >
-                      {item.label}
-                    </Button>
-                  ))}
-                </Box>
-              </Box>
+              <Tabs
+                value={onglet}
+                onChange={(event, valeur) => setOnglet(valeur)}
+                sx={{ borderBottom: 1, borderColor: 'divider' }}
+              >
+                <Tab value='1' label='Info' icon={<Icon icon='tabler:info-circle' />} iconPosition='start' />
+                <Tab value='2' label='Prix' icon={<Icon icon='tabler:currency-dollar' />} iconPosition='start' />
+                <Tab value='3' label='Images' icon={<Icon icon='tabler:photo' />} iconPosition='start' />
+              </Tabs>
             </Grid>
 
             {onglet === '1' && (
               <>
                 <Grid item xs={12}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Chip
-                      label={produitSelectionne?.statut_publication || 'BROUILLON'}
-                      color={couleurStatut(produitSelectionne?.statut_publication)}
-                      size='small'
-                    />
-                    <Typography variant='body2' color='text.secondary'>
-                      BROUILLON : jamais publié, invisible en boutique. ARCHIVÉ : retiré de la
-                      boutique, conservé pour l&apos;historique, réactivable vers BROUILLON. Le statut
-                      se change uniquement avec le bouton Publier / Dépublier de la liste.
-                    </Typography>
-                  </Box>
+                  <Chip
+                    label={libelleStatut(produitSelectionne?.statut_publication)}
+                    color={couleurStatut(produitSelectionne?.statut_publication)}
+                    size='small'
+                  />
+                  <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mt: 1 }}>
+                    BROUILLON : jamais publié, invisible en boutique. ARCHIVÉ : retiré de la
+                    boutique, conservé pour l&apos;historique, réactivable vers BROUILLON. Le statut
+                    se change uniquement avec le bouton Publier / Dépublier de la liste.
+                  </Typography>
+                  <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mt: 1 }}>
+                    Pour publier : une description, une famille, un slug, un prix de vente et au
+                    moins 2 images.
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} md={7}>
                   <TextField
@@ -496,7 +527,7 @@ const ProduitsEcommerceView = () => {
                     rows={8}
                     label='Description'
                     autoComplete='off'
-                    helperText='Obligatoire pour publier. Texte affiché sur la fiche produit de la boutique.'
+                    helperText='Texte affiché sur la fiche produit de la boutique.'
                     value={formInfos.description || ''}
                     onChange={e => setFormInfos({ ...formInfos, description: e.target.value })}
                   />
@@ -519,6 +550,7 @@ const ProduitsEcommerceView = () => {
                     fullWidth
                     label='Intitulé de publication'
                     autoComplete='off'
+                    inputProps={{ maxLength: 150 }}
                     helperText='Titre affiché dans la boutique (150 caractères max). Vide : la désignation interne est affichée.'
                     value={formInfos.intitule_publication || ''}
                     onChange={e => setFormInfos({ ...formInfos, intitule_publication: e.target.value })}
@@ -593,7 +625,6 @@ const ProduitsEcommerceView = () => {
                     label='Prix de vente (DZD)'
                     type='number'
                     autoComplete='off'
-                    helperText='Prix affiché en boutique. Obligatoire pour publier.'
                     value={formPrix.prix_vente ?? ''}
                     onChange={e => setFormPrix({ ...formPrix, prix_vente: e.target.value })}
                   />
@@ -632,18 +663,20 @@ const ProduitsEcommerceView = () => {
                               {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
                             </TableCell>
                             <TableCell align='center'>
-                              <IconButton
-                                size='small'
-                                title='Supprimer le palier'
-                                aria-label={`Supprimer le palier dès ${palier.quantite_min} pièces`}
-                                onClick={async () => {
-                                  if (await supprimerPalier(produitSelectionne.id_prd, palier.id_palier)) {
-                                    await rafraichirDetail(produitSelectionne.id_prd)
-                                  }
-                                }}
-                              >
-                                <Icon icon='tabler:trash' />
-                              </IconButton>
+                              <Tooltip title='Supprimer le palier'>
+                                <IconButton
+                                  size='small'
+                                  color='error'
+                                  aria-label={`Supprimer le palier dès ${palier.quantite_min} pièces`}
+                                  onClick={async () => {
+                                    if (await supprimerPalier(produitSelectionne.id_prd, palier.id_palier)) {
+                                      await rafraichirDetail(produitSelectionne.id_prd)
+                                    }
+                                  }}
+                                >
+                                  <Icon icon='tabler:trash' />
+                                </IconButton>
+                              </Tooltip>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -674,7 +707,6 @@ const ProduitsEcommerceView = () => {
                     label='Prix unitaire appliqué (DZD)'
                     type='number'
                     autoComplete='off'
-                    helperText='Prix par pièce à partir de cette quantité'
                     value={nouveauPalier.prix_unitaire}
                     onChange={e => setNouveauPalier({ ...nouveauPalier, prix_unitaire: e.target.value })}
                   />
@@ -812,67 +844,76 @@ const ProduitsEcommerceView = () => {
                               backgroundColor: 'rgba(0,0,0,0.45)'
                             }}
                           >
-                            <IconButton
-                              size='small'
-                              sx={{ color: 'white' }}
-                              title='Déplacer à gauche'
-                              aria-label={`Déplacer l'image ${index + 1} à gauche`}
-                              disabled={index === 0 || deplacementEnCours}
-                              onClick={() => deplacerImage(produitSelectionne, index, -1)}
-                            >
-                              <Icon icon='tabler:arrow-left' />
-                            </IconButton>
+                            <Tooltip title='Déplacer à gauche'>
+                              <span>
+                                <IconButton
+                                  size='small'
+                                  sx={{ color: 'white' }}
+                                  aria-label={`Déplacer l'image ${index + 1} à gauche`}
+                                  disabled={index === 0 || deplacementEnCours}
+                                  onClick={() => deplacerImage(produitSelectionne, index, -1)}
+                                >
+                                  <Icon icon='tabler:arrow-left' />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
                             {!image.est_principale && (
+                              <Tooltip title='Définir comme principale'>
+                                <IconButton
+                                  size='small'
+                                  sx={{ color: 'white' }}
+                                  aria-label={`Définir l'image ${index + 1} comme principale`}
+                                  onClick={async () => {
+                                    if (await definirImagePrincipale(produitSelectionne.id_prd, image.id_img)) {
+                                      await rafraichirDetail(produitSelectionne.id_prd)
+                                    }
+                                  }}
+                                >
+                                  <Icon icon='tabler:star' />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                            <Tooltip title='Pivoter 90° à droite'>
                               <IconButton
                                 size='small'
                                 sx={{ color: 'white' }}
-                                title='Définir comme principale'
-                                aria-label={`Définir l'image ${index + 1} comme principale`}
+                                aria-label={`Pivoter l'image ${index + 1} de 90 degrés`}
                                 onClick={async () => {
-                                  if (await definirImagePrincipale(produitSelectionne.id_prd, image.id_img)) {
+                                  if (await pivoterImage(produitSelectionne.id_prd, image.id_img)) {
                                     await rafraichirDetail(produitSelectionne.id_prd)
                                   }
                                 }}
                               >
-                                <Icon icon='tabler:star' />
+                                <Icon icon='tabler:rotate-clockwise' />
                               </IconButton>
-                            )}
-                            <IconButton
-                              size='small'
-                              sx={{ color: 'white' }}
-                              title='Pivoter 90° à droite'
-                              aria-label={`Pivoter l'image ${index + 1} de 90 degrés`}
-                              onClick={async () => {
-                                if (await pivoterImage(produitSelectionne.id_prd, image.id_img)) {
-                                  await rafraichirDetail(produitSelectionne.id_prd)
-                                }
-                              }}
-                            >
-                              <Icon icon='tabler:rotate-clockwise' />
-                            </IconButton>
-                            <IconButton
-                              size='small'
-                              sx={{ color: 'white' }}
-                              title='Supprimer'
-                              aria-label={`Supprimer l'image ${index + 1}`}
-                              onClick={async () => {
-                                if (await supprimerImage(produitSelectionne.id_prd, image.id_img)) {
-                                  await rafraichirDetail(produitSelectionne.id_prd)
-                                }
-                              }}
-                            >
-                              <Icon icon='tabler:trash' />
-                            </IconButton>
-                            <IconButton
-                              size='small'
-                              sx={{ color: 'white' }}
-                              title='Déplacer à droite'
-                              aria-label={`Déplacer l'image ${index + 1} à droite`}
-                              disabled={index === imagesTriees.length - 1 || deplacementEnCours}
-                              onClick={() => deplacerImage(produitSelectionne, index, 1)}
-                            >
-                              <Icon icon='tabler:arrow-right' />
-                            </IconButton>
+                            </Tooltip>
+                            <Tooltip title='Supprimer'>
+                              <IconButton
+                                size='small'
+                                sx={{ color: 'error.main' }}
+                                aria-label={`Supprimer l'image ${index + 1}`}
+                                onClick={async () => {
+                                  if (await supprimerImage(produitSelectionne.id_prd, image.id_img)) {
+                                    await rafraichirDetail(produitSelectionne.id_prd)
+                                  }
+                                }}
+                              >
+                                <Icon icon='tabler:trash' />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title='Déplacer à droite'>
+                              <span>
+                                <IconButton
+                                  size='small'
+                                  sx={{ color: 'white' }}
+                                  aria-label={`Déplacer l'image ${index + 1} à droite`}
+                                  disabled={index === imagesTriees.length - 1 || deplacementEnCours}
+                                  onClick={() => deplacerImage(produitSelectionne, index, 1)}
+                                >
+                                  <Icon icon='tabler:arrow-right' />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
                           </Box>
                         </Box>
                       </Grid>
