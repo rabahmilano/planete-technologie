@@ -18,6 +18,8 @@ import {
 import {
   creerColisDepuisCommande,
   estConfigure as yalidineConfigure,
+  suivreColis,
+  getHistorique,
 } from "../config/yalidine.js";
 
 const STATUTS_COMMANDE = [
@@ -480,7 +482,43 @@ export const getCommandeWebById = async (req, res) => {
       return res.status(404).json({ message: "Commande introuvable." });
     }
 
-    res.status(200).json(commande);
+    // Colis Yalidine : statut courant, lien bordereau et timeline. Lecture
+    // seule — les réponses GET masquent les données personnelles (nom,
+    // téléphone, adresse) : aucune valeur renvoyée ici n'est réécrite en
+    // base. Une indisponibilité de l'API ne bloque pas la vue détaillée.
+    let colisYalidine = null;
+    if (commande.code_tracking && yalidineConfigure()) {
+      // Suivi et historique sont indépendants : un échec ne vide pas l'autre.
+      const [resultatSuivi, resultatHistorique] = await Promise.allSettled([
+        suivreColis(commande.code_tracking),
+        getHistorique(commande.code_tracking),
+      ]);
+      if (
+        resultatSuivi.status === "rejected" &&
+        resultatHistorique.status === "rejected"
+      ) {
+        console.error(
+          `Suivi Yalidine indisponible pour ${commande.code_tracking} :`,
+          resultatSuivi.reason?.message,
+        );
+      } else {
+        colisYalidine = {
+          tracking: commande.code_tracking,
+          ...(resultatSuivi.status === "fulfilled"
+            ? {
+                statut_actuel: resultatSuivi.value.statut,
+                label: resultatSuivi.value.label,
+                paiement: resultatSuivi.value.paiement,
+              }
+            : {}),
+          ...(resultatHistorique.status === "fulfilled"
+            ? { historique: resultatHistorique.value }
+            : {}),
+        };
+      }
+    }
+
+    res.status(200).json({ ...commande, colis_yalidine: colisYalidine });
   } catch (error) {
     res
       .status(500)

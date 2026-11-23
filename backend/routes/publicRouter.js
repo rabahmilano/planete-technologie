@@ -32,6 +32,8 @@ router.get("/livraison/bureaux", getBureauxBoutique);
 router.get("/livraison/tarif", getTarifBoutique);
 router.post("/codes-promo/verifier", verifierCodePromoBoutique);
 router.post("/commandes", limiteCommandes, createCommandeBoutique);
-router.get("/commandes/:id", getSuiviCommandeBoutique);
+// Le suivi interroge l'API Yalidine en amont : même limitation que la
+// création pour ne pas brûler le quota journalier de l'API.
+router.get("/commandes/:id", limiteCommandes, getSuiviCommandeBoutique);
 
 export default router;

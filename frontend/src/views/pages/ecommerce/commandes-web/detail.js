@@ -54,6 +54,10 @@ const formaterDate = valeur => {
 
 const formaterMontant = valeur => `${Number(valeur || 0).toLocaleString('fr-FR')} DZD`
 
+// Horodatages Yalidine au format 'YYYY-MM-DD HH:MM:SS' (heure Yalidine) :
+// affichés tels quels, sans re-traitement de fuseau horaire.
+const formaterDateYalidine = valeur => (valeur ? String(valeur) : '—')
+
 const CommandeWebDetailView = () => {
   const router = useRouter()
   const { id } = router.query
@@ -258,6 +262,73 @@ const CommandeWebDetailView = () => {
                 ? `#${commande.commande_interne.id_cde} — ${formaterDate(commande.commande_interne.date_cde)} — ${formaterMontant(commande.commande_interne.mnt_cde)}`
                 : 'Aucune (créée automatiquement à la livraison)'}
             </Typography>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      <Grid item xs={12}>
+        <Card sx={{ boxShadow: 3 }}>
+          <CardContent>
+            <Typography variant='h6' sx={{ mb: 4 }}>
+              Suivi Yalidine
+            </Typography>
+            {!commande.code_tracking ? (
+              <Typography>
+                Aucun colis Yalidine — il est créé automatiquement quand la commande passe à CONFIRMEE.
+              </Typography>
+            ) : !commande.colis_yalidine ? (
+              <Typography>
+                Suivi Yalidine indisponible pour le moment (API injoignable ou colis supprimé).
+              </Typography>
+            ) : (
+              <>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Chip
+                    label={`Statut colis : ${commande.colis_yalidine.statut_actuel || 'inconnu'}`}
+                    color='primary'
+                  />
+                  {commande.colis_yalidine.paiement && (
+                    <Chip
+                      label={`Paiement Yalidine : ${commande.colis_yalidine.paiement}`}
+                      variant='outlined'
+                    />
+                  )}
+                  {commande.colis_yalidine.label &&
+                    /^https:\/\//.test(commande.colis_yalidine.label) && (
+                      <Button
+                        variant='outlined'
+                        startIcon={<Icon icon='tabler:printer' />}
+                        href={commande.colis_yalidine.label}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                      >
+                        Imprimer le bordereau
+                      </Button>
+                    )}
+                </Box>
+                <Divider sx={{ my: 3 }} />
+                {(commande.colis_yalidine.historique || []).length === 0 ? (
+                  <Typography>Aucun événement de suivi pour le moment.</Typography>
+                ) : (
+                  commande.colis_yalidine.historique.map((evenement, index) => (
+                    <Box
+                      key={`${evenement.date_status}-${index}`}
+                      sx={{ display: 'flex', gap: 2, mb: 1.5, flexWrap: 'wrap' }}
+                    >
+                      <Typography sx={{ minWidth: 160 }}>
+                        {formaterDateYalidine(evenement.date_status)}
+                      </Typography>
+                      <Typography sx={{ fontWeight: 700 }}>{evenement.status}</Typography>
+                      <Typography sx={{ flex: 1 }}>
+                        {[evenement.reason, evenement.center_name, evenement.commune_name || evenement.wilaya_name]
+                          .filter(Boolean)
+                          .join(' — ')}
+                      </Typography>
+                    </Box>
+                  ))
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       </Grid>

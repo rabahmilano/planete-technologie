@@ -1,0 +1,2 @@
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+mysqldump: Couldn't find table: "C:/Users/HP/AppData/Local/Temp/ptech-pack/dump_err.log"

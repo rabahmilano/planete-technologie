@@ -16,6 +16,7 @@ import {
   getCommunes,
   getCentres,
   getFrais,
+  getHistorique,
 } from "../config/yalidine.js";
 import { envoyerNotificationCommande } from "../config/whatsapp.js";
 import { creerCommandeWebInterne } from "./commandeWebController.js";
@@ -698,9 +699,20 @@ export const getSuiviCommandeBoutique = async (req, res) => {
   }
 
   try {
+    // Endpoint public : liste blanche explicite — jamais le nom du client,
+    // l'adresse exacte ni d'autres champs internes.
     const commande = await prisma.commande_web.findUnique({
       where: { id_cmd_web: idCommande },
-      include: {
+      select: {
+        id_cmd_web: true,
+        statut_commande: true,
+        code_tracking: true,
+        wilaya: true,
+        telephone: true,
+        frais_livraison: true,
+        montant_produits: true,
+        montant_reduction: true,
+        montant_total_final: true,
         lignes: {
           select: {
             quantite: true,
@@ -716,7 +728,30 @@ export const getSuiviCommandeBoutique = async (req, res) => {
       return res.status(404).json({ message: "Commande introuvable." });
     }
 
-    res.status(200).json(commande);
+    // Timeline Yalidine : statuts / motifs / lieux uniquement (aucune donnée
+    // personnelle — l'API masque noms, téléphones et adresses en lecture).
+    // L'historique n'est jamais écrit en base ici. Si l'API est indisponible,
+    // la commande est renvoyée sans timeline plutôt qu'en erreur.
+    let colisYalidine = null;
+    if (commande.code_tracking && yalidineConfigure()) {
+      try {
+        const historique = await getHistorique(commande.code_tracking);
+        colisYalidine = {
+          tracking: commande.code_tracking,
+          statut_actuel: historique.length
+            ? historique[historique.length - 1].status
+            : null,
+          historique,
+        };
+      } catch (erreur) {
+        console.error(
+          `Historique Yalidine indisponible pour ${commande.code_tracking} :`,
+          erreur.message,
+        );
+      }
+    }
+
+    res.status(200).json({ ...commande, colis_yalidine: colisYalidine });
   } catch (error) {
     res
       .status(500)
