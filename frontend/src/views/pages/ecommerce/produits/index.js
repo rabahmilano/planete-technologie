@@ -365,6 +365,9 @@ const ProduitsEcommerceView = () => {
                   produits.map(produit => {
                     const detail = details[produit.id_prd]
                     const manquants = manquantsPourPublication(detail)
+                    const estPublie = statutAffiche(produit) === 'PUBLIE'
+                    // Dépublier est toujours autorisé : seul Publier exige les 5 conditions.
+                    const publicationBloquee = !estPublie && manquants.length > 0
                     return (
                       <TableRow key={produit.id_prd} hover>
                         <TableCell>
@@ -405,9 +408,9 @@ const ProduitsEcommerceView = () => {
                         <TableCell align='right' sx={{ whiteSpace: 'nowrap' }}>
                           <Tooltip
                             title={
-                              manquants.length > 0
+                              publicationBloquee
                                 ? `Publication impossible, il manque : ${manquants.join(', ')}`
-                                : statutAffiche(produit) === 'PUBLIE'
+                                : estPublie
                                   ? 'Dépublier'
                                   : 'Publier'
                             }
@@ -415,18 +418,16 @@ const ProduitsEcommerceView = () => {
                             <span>
                               <IconButton
                                 size='small'
-                                color={statutAffiche(produit) === 'PUBLIE' ? 'warning' : 'success'}
-                                disabled={manquants.length > 0}
+                                color={estPublie ? 'warning' : 'success'}
+                                disabled={publicationBloquee}
                                 aria-label={
-                                  statutAffiche(produit) === 'PUBLIE'
+                                  estPublie
                                     ? `Dépublier ${produit.designation_prd}`
                                     : `Publier ${produit.designation_prd}`
                                 }
                                 onClick={() => setPublicationEnAttente(produit)}
                               >
-                                <Icon
-                                  icon={statutAffiche(produit) === 'PUBLIE' ? 'tabler:eye-off' : 'tabler:eye'}
-                                />
+                                <Icon icon={estPublie ? 'tabler:eye-off' : 'tabler:eye'} />
                               </IconButton>
                             </span>
                           </Tooltip>
