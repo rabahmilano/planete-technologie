@@ -117,9 +117,9 @@ export const ProduitEcommerceProvider = ({ children }) => {
 
   const supprimerImage = async (id, idImage) => {
     try {
-      await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/${idImage}`)
+      const { data } = await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/${idImage}`)
       toast.success('Image supprimée')
-      return true
+      return data
     } catch (error) {
       toast.error(messageErreur(error))
       return false

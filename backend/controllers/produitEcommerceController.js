@@ -38,6 +38,22 @@ const verifierPublication = async (produit) => {
   return manquants;
 };
 
+// Un produit PUBLIE doit toujours remplir les conditions de publication.
+// Après toute modification (champ, prix ou image), on revérifie : s'il
+// manque quelque chose, le produit repasse BROUILLON et la raison est
+// renvoyée pour informer l'admin. Rien ne change pour un produit déjà
+// BROUILLON ou ARCHIVE.
+const depublierSiIncomplet = async (produit) => {
+  if (produit.statut_publication !== "PUBLIE") return null;
+  const manquants = await verifierPublication(produit);
+  if (manquants.length === 0) return null;
+  await prisma.produit.update({
+    where: { id_prd: produit.id_prd },
+    data: { statut_publication: "BROUILLON" },
+  });
+  return manquants;
+};
+
 const appliquerNouveauPrixVente = async (tx, produit, nouveauPrixVente) => {
   const ancienPrix =
     produit.prix_vente === null || produit.prix_vente === undefined
@@ -289,6 +305,15 @@ export const updateProduitEcommerce = [
         data: dataToUpdate,
       });
 
+      const manquants = await depublierSiIncomplet(produitModifie);
+      if (manquants) {
+        return res.status(200).json({
+          ...produitModifie,
+          statut_publication: "BROUILLON",
+          depublication_auto: { manquants },
+        });
+      }
+
       res.status(200).json(produitModifie);
     } catch (error) {
       if (error.code === "P2002") {
@@ -352,6 +377,18 @@ export const updatePrixProduit = [
           data: dataToUpdate,
         });
       });
+
+      let manquants = null;
+      if (prix_vente !== undefined) {
+        manquants = await depublierSiIncomplet(produitModifie);
+      }
+      if (manquants) {
+        return res.status(200).json({
+          ...produitModifie,
+          statut_publication: "BROUILLON",
+          depublication_auto: { manquants },
+        });
+      }
 
       res.status(200).json(produitModifie);
     } catch (error) {
@@ -623,7 +660,15 @@ export const deleteImageProduit = async (req, res) => {
       }
     }
 
-    res.status(200).json({ message: "Image supprimée avec succès." });
+    const produit = await prisma.produit.findUnique({
+      where: { id_prd: idProduit },
+    });
+    const manquants = produit ? await depublierSiIncomplet(produit) : null;
+
+    res.status(200).json({
+      message: "Image supprimée avec succès.",
+      ...(manquants ? { depublication_auto: { manquants } } : {}),
+    });
   } catch (error) {
     res
       .status(500)

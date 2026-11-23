@@ -1,20 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
 import {
+  Alert,
+  Avatar,
   Box,
   Button,
   Card,
+  CardContent,
+  CardHeader,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Grid,
   IconButton,
   InputAdornment,
   LinearProgress,
   MenuItem,
   Select,
+  Slide,
   Tab,
   Table,
   TableBody,
@@ -42,6 +46,14 @@ const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MESSAGE_FORMAT_SLUG =
   'Format invalide : minuscules a-z, chiffres 0-9 et tirets uniquement, sans accents ni espaces (ex. : chargeur-ugreen-30w)'
 const NB_IMAGES_MAX = 7
+
+const Transition = forwardRef(function Transition(props, ref) {
+  return <Slide direction='up' ref={ref} {...props} />
+})
+
+// Style des cartes de section : celui des modaux plein écran du projet
+// (HistoriqueCrediterDialog, ProductDetailModal) — ombre douce, pas de bordure.
+const sxCarteSection = { border: 'none', boxShadow: '0 4px 24px 0 rgba(0,0,0,0.05)', borderRadius: 3 }
 
 const couleurStatut = statut => {
   switch (statut) {
@@ -138,6 +150,7 @@ const ProduitsEcommerceView = () => {
   const [deplacementEnCours, setDeplacementEnCours] = useState(false)
   const refFichierImage = useRef(null)
   const [publicationEnAttente, setPublicationEnAttente] = useState(null)
+  const [alerteDepublication, setAlerteDepublication] = useState(null)
 
   const chargerListe = async () => {
     setChargement(true)
@@ -180,6 +193,7 @@ const ProduitsEcommerceView = () => {
     })
     setFormPrix({ prix_vente: detail.prix_vente ?? '' })
     setErreurSlug('')
+    setAlerteDepublication(null)
     setHistorique(detail.historiques_prix_vente || [])
     setNouveauPalier({ quantite_min: '', prix_unitaire: '' })
     setFichierImage(null)
@@ -244,6 +258,14 @@ const ProduitsEcommerceView = () => {
     setEnregistrementEnCours(false)
     if (prixAJour) {
       await rafraichirDetail(produitSelectionne.id_prd)
+      await chargerListe()
+      const depublication = infosAJour.depublication_auto || prixAJour.depublication_auto
+      if (depublication) {
+        // Le produit vient d'être dépublié automatiquement : on garde le
+        // modal ouvert pour que l'admin voie la raison et puisse corriger.
+        setAlerteDepublication(depublication.manquants)
+        return
+      }
       setProduitSelectionne(null)
     }
   }
@@ -469,146 +491,192 @@ const ProduitsEcommerceView = () => {
         open={Boolean(produitSelectionne)}
         onClose={() => setProduitSelectionne(null)}
         fullScreen
-        sx={{ '& .MuiDialog-paper': { backgroundColor: 'background.paper' } }}
+        TransitionComponent={Transition}
+        sx={{ '& .MuiDialog-paper': { backgroundColor: '#f8f9fa' } }}
       >
-        <DialogTitle
-          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 3 }}
-        >
-          <Box>
-            <Typography variant='h6'>{produitSelectionne?.designation_prd}</Typography>
-            {produitSelectionne?.prix_effectif != null && (
-              <Typography variant='body2' color='text.secondary'>
-                Prix effectif : {Number(produitSelectionne.prix_effectif).toLocaleString('fr-FR')} DZD
-                {produitSelectionne.promo_active ? ' (promo active)' : ''}
-              </Typography>
-            )}
-          </Box>
-          <Tooltip title='Fermer'>
-            <IconButton edge='end' aria-label='Fermer' onClick={() => setProduitSelectionne(null)}>
-              <Icon icon='tabler:x' />
-            </IconButton>
-          </Tooltip>
-        </DialogTitle>
-        <DialogContent dividers sx={{ px: { xs: 3, md: 8 }, py: 4 }}>
-          <Grid container spacing={4} sx={{ maxWidth: 1100, mx: 'auto' }}>
-            <Grid item xs={12}>
-              <Tabs
-                value={onglet}
-                onChange={(event, valeur) => setOnglet(valeur)}
-                sx={{ borderBottom: 1, borderColor: 'divider' }}
+        <DialogTitle sx={{ px: 6, pt: 4, pb: 0, backgroundColor: 'background.paper' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Avatar
+                variant='rounded'
+                sx={{ width: 48, height: 48, backgroundColor: 'rgba(0,0,0,0.04)', color: 'text.primary' }}
               >
-                <Tab value='1' label='Info' icon={<Icon icon='tabler:info-circle' />} iconPosition='start' />
-                <Tab value='2' label='Prix' icon={<Icon icon='tabler:currency-dollar' />} iconPosition='start' />
-                <Tab value='3' label='Images' icon={<Icon icon='tabler:photo' />} iconPosition='start' />
-              </Tabs>
-            </Grid>
-
-            {onglet === '1' && (
-              <>
-                <Grid item xs={12}>
+                <Icon icon='tabler:edit' fontSize='1.5rem' />
+              </Avatar>
+              <Box>
+                <Typography variant='h5' sx={{ fontWeight: 700, letterSpacing: '-0.5px' }}>
+                  {produitSelectionne?.designation_prd}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
+                  {produitSelectionne?.prix_effectif != null && (
+                    <Typography variant='body2' sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                      Prix effectif : {Number(produitSelectionne.prix_effectif).toLocaleString('fr-FR')} DZD
+                      {produitSelectionne.promo_active ? ' (promo active)' : ''}
+                    </Typography>
+                  )}
                   <Chip
                     label={libelleStatut(produitSelectionne?.statut_publication)}
                     color={couleurStatut(produitSelectionne?.statut_publication)}
                     size='small'
                   />
-                  <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mt: 1 }}>
-                    BROUILLON : jamais publié, invisible en boutique. ARCHIVÉ : retiré de la
-                    boutique, conservé pour l&apos;historique, réactivable vers BROUILLON. Le statut
-                    se change uniquement avec le bouton Publier / Dépublier de la liste.
-                  </Typography>
-                  <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mt: 1 }}>
-                    Pour publier : une description, une famille, un slug, un prix de vente et au
-                    moins 2 images.
-                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+            <IconButton
+              onClick={() => setProduitSelectionne(null)}
+              aria-label='Fermer'
+              sx={{
+                backgroundColor: 'rgba(0,0,0,0.04)',
+                '&:hover': { backgroundColor: 'error.light', color: 'error.main' }
+              }}
+            >
+              <Icon icon='tabler:x' />
+            </IconButton>
+          </Box>
+          <Tabs
+            value={onglet}
+            onChange={(event, valeur) => setOnglet(valeur)}
+            sx={{ borderBottom: 1, borderColor: 'divider' }}
+          >
+            <Tab value='1' label='Info' icon={<Icon icon='tabler:info-circle' />} iconPosition='start' />
+            <Tab value='2' label='Prix' icon={<Icon icon='tabler:currency-dollar' />} iconPosition='start' />
+            <Tab value='3' label='Images' icon={<Icon icon='tabler:photo' />} iconPosition='start' />
+          </Tabs>
+        </DialogTitle>
+        <DialogContent sx={{ p: { xs: 4, md: 8 }, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+          {alerteDepublication && (
+            <Alert severity='warning' sx={{ mb: 6 }} onClose={() => setAlerteDepublication(null)}>
+              Produit dépublié automatiquement : il manque {alerteDepublication.join(', ')}.
+            </Alert>
+          )}
+          <Grid container spacing={6}>
+
+            {onglet === '1' && (
+              <>
+                <Grid item xs={12}>
+                  <Card sx={sxCarteSection}>
+                    <CardHeader
+                      title='Produit'
+                      subheader="L'intitulé s'affiche dans la boutique (vide : la désignation interne). Le poids est utilisé par Yalidine (défaut 500 g si vide)."
+                    />
+                    <CardContent>
+                      <Grid container spacing={6}>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            fullWidth
+                            label='Intitulé de publication'
+                            autoComplete='off'
+                            inputProps={{ maxLength: 150 }}
+                            value={formInfos.intitule_publication || ''}
+                            onChange={e => setFormInfos({ ...formInfos, intitule_publication: e.target.value })}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField
+                            fullWidth
+                            label='Slug (URL boutique)'
+                            autoComplete='off'
+                            required
+                            error={Boolean(erreurSlug)}
+                            helperText={erreurSlug || 'Minuscules a-z, chiffres 0-9 et tirets uniquement'}
+                            value={formInfos.slug_prd || ''}
+                            onChange={e => changerSlugProduit(e.target.value)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth>
+                            <InputLabel>Famille</InputLabel>
+                            <Select
+                              label='Famille'
+                              autoComplete='off'
+                              value={formInfos.famille_id ?? ''}
+                              onChange={e => setFormInfos({ ...formInfos, famille_id: e.target.value })}
+                            >
+                              <MenuItem value=''>Aucune</MenuItem>
+                              {optionsFamilles.map(f => (
+                                <MenuItem key={f.id_famille} value={f.id_famille}>
+                                  {f.nom}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            fullWidth
+                            label='Poids (grammes)'
+                            type='number'
+                            autoComplete='off'
+                            value={formInfos.poids_grammes ?? ''}
+                            onChange={e => setFormInfos({ ...formInfos, poids_grammes: e.target.value })}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <FormControlLabel
+                            sx={{ mt: 2 }}
+                            control={
+                              <Switch
+                                checked={Boolean(formInfos.est_mis_en_avant)}
+                                onChange={e => setFormInfos({ ...formInfos, est_mis_en_avant: e.target.checked })}
+                              />
+                            }
+                            label='Mettre en avant'
+                          />
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
                 </Grid>
-                <Grid item xs={12} md={7}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={8}
-                    label='Description'
-                    autoComplete='off'
-                    helperText='Texte affiché sur la fiche produit de la boutique.'
-                    value={formInfos.description || ''}
-                    onChange={e => setFormInfos({ ...formInfos, description: e.target.value })}
-                  />
+                <Grid item xs={12}>
+                  <Card sx={sxCarteSection}>
+                    <CardHeader
+                      title='Descriptions'
+                      subheader="La description s'affiche sur la fiche produit. La version arabe s'affiche quand le client choisit l'arabe, sinon la française."
+                    />
+                    <CardContent>
+                      <Grid container spacing={6}>
+                        <Grid item xs={12} md={7}>
+                          <TextField
+                            fullWidth
+                            multiline
+                            rows={8}
+                            label='Description'
+                            autoComplete='off'
+                            value={formInfos.description || ''}
+                            onChange={e => setFormInfos({ ...formInfos, description: e.target.value })}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={5}>
+                          <TextField
+                            fullWidth
+                            multiline
+                            rows={8}
+                            label='Description (arabe, optionnel)'
+                            autoComplete='off'
+                            value={formInfos.description_ar || ''}
+                            onChange={e => setFormInfos({ ...formInfos, description_ar: e.target.value })}
+                            inputProps={{ dir: 'rtl', lang: 'ar' }}
+                          />
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
                 </Grid>
-                <Grid item xs={12} md={5}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={8}
-                    label='Description (arabe, optionnel)'
-                    autoComplete='off'
-                    helperText='Affichée quand le client choisit l’arabe. Vide : la description française est affichée.'
-                    value={formInfos.description_ar || ''}
-                    onChange={e => setFormInfos({ ...formInfos, description_ar: e.target.value })}
-                    inputProps={{ dir: 'rtl', lang: 'ar' }}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label='Intitulé de publication'
-                    autoComplete='off'
-                    inputProps={{ maxLength: 150 }}
-                    helperText='Titre affiché dans la boutique (150 caractères max). Vide : la désignation interne est affichée.'
-                    value={formInfos.intitule_publication || ''}
-                    onChange={e => setFormInfos({ ...formInfos, intitule_publication: e.target.value })}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label='Slug (URL boutique)'
-                    autoComplete='off'
-                    required
-                    error={Boolean(erreurSlug)}
-                    helperText={erreurSlug || 'Minuscules a-z, chiffres 0-9 et tirets uniquement'}
-                    value={formInfos.slug_prd || ''}
-                    onChange={e => changerSlugProduit(e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Famille</InputLabel>
-                    <Select
-                      label='Famille'
-                      autoComplete='off'
-                      value={formInfos.famille_id ?? ''}
-                      onChange={e => setFormInfos({ ...formInfos, famille_id: e.target.value })}
-                    >
-                      <MenuItem value=''>Aucune</MenuItem>
-                      {optionsFamilles.map(f => (
-                        <MenuItem key={f.id_famille} value={f.id_famille}>
-                          {f.nom}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <TextField
-                    fullWidth
-                    label='Poids (grammes)'
-                    type='number'
-                    autoComplete='off'
-                    helperText='Valeur utilisée par Yalidine (défaut 500 g si vide)'
-                    value={formInfos.poids_grammes ?? ''}
-                    onChange={e => setFormInfos({ ...formInfos, poids_grammes: e.target.value })}
-                  />
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <FormControlLabel
-                    sx={{ mt: 2 }}
-                    control={
-                      <Switch
-                        checked={Boolean(formInfos.est_mis_en_avant)}
-                        onChange={e => setFormInfos({ ...formInfos, est_mis_en_avant: e.target.checked })}
-                      />
-                    }
-                    label='Mettre en avant'
-                  />
+                <Grid item xs={12}>
+                  <Card sx={sxCarteSection}>
+                    <CardHeader
+                      title='Publication'
+                      subheader="BROUILLON : jamais publié, invisible en boutique. ARCHIVÉ : retiré de la boutique, conservé pour l'historique."
+                    />
+                    <CardContent>
+                      <Alert severity='info'>
+                        Pour publier : une description, une famille, un slug, un prix de vente et au
+                        moins 2 images. Le statut se change avec le bouton Publier / Dépublier de
+                        la liste. Un produit publié qui ne remplit plus les conditions est
+                        dépublié automatiquement.
+                      </Alert>
+                    </CardContent>
+                  </Card>
                 </Grid>
               </>
             )}
@@ -616,168 +684,170 @@ const ProduitsEcommerceView = () => {
             {onglet === '2' && (
               <>
                 <Grid item xs={12}>
-                  <Typography variant='subtitle1' sx={{ fontWeight: 600 }}>
-                    Prix de vente
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    label='Prix de vente (DZD)'
-                    type='number'
-                    autoComplete='off'
-                    value={formPrix.prix_vente ?? ''}
-                    onChange={e => setFormPrix({ ...formPrix, prix_vente: e.target.value })}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant='body2' color='text.secondary'>
-                    Chaque changement de prix de vente est enregistré automatiquement dans
-                    l&apos;historique ci-dessous.
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 2 }} />
-                  <Typography variant='subtitle1' sx={{ fontWeight: 600 }}>
-                    Paliers de prix par quantité
-                  </Typography>
-                  <Typography variant='body2' color='text.secondary' sx={{ mt: 1 }}>
-                    Chaque palier fixe le prix UNITAIRE appliqué à partir d&apos;une quantité
-                    (prix dégressifs). Le palier avec la plus grande quantité atteinte s&apos;applique.
-                  </Typography>
+                  <Card sx={sxCarteSection}>
+                    <CardHeader
+                      title='Prix de vente'
+                      subheader="Chaque changement est enregistré automatiquement dans l'historique ci-dessous."
+                    />
+                    <CardContent>
+                      <Grid container spacing={6}>
+                        <Grid item xs={12} md={4}>
+                          <TextField
+                            fullWidth
+                            label='Prix de vente (DZD)'
+                            type='number'
+                            autoComplete='off'
+                            value={formPrix.prix_vente ?? ''}
+                            onChange={e => setFormPrix({ ...formPrix, prix_vente: e.target.value })}
+                          />
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
                 </Grid>
                 <Grid item xs={12}>
-                  <TableContainer>
-                    <Table size='small'>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell align='center'>Quantité minimum</TableCell>
-                          <TableCell align='right'>Prix unitaire appliqué</TableCell>
-                          <TableCell align='center'>Actions</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {(produitSelectionne?.paliers || []).map(palier => (
-                          <TableRow key={palier.id_palier}>
-                            <TableCell align='center'>dès {palier.quantite_min} pièces</TableCell>
-                            <TableCell align='right'>
-                              {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
-                            </TableCell>
-                            <TableCell align='center'>
-                              <Tooltip title='Supprimer le palier'>
-                                <IconButton
-                                  size='small'
-                                  color='error'
-                                  aria-label={`Supprimer le palier dès ${palier.quantite_min} pièces`}
-                                  onClick={async () => {
-                                    if (await supprimerPalier(produitSelectionne.id_prd, palier.id_palier)) {
-                                      await rafraichirDetail(produitSelectionne.id_prd)
-                                    }
-                                  }}
-                                >
-                                  <Icon icon='tabler:trash' />
-                                </IconButton>
-                              </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {(produitSelectionne?.paliers || []).length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={3} align='center'>
-                              Aucun palier : le prix de vente s&apos;applique à toutes les quantités.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    label='Quantité minimum (pièces)'
-                    type='number'
-                    autoComplete='off'
-                    value={nouveauPalier.quantite_min}
-                    onChange={e => setNouveauPalier({ ...nouveauPalier, quantite_min: e.target.value })}
-                  />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    label='Prix unitaire appliqué (DZD)'
-                    type='number'
-                    autoComplete='off'
-                    value={nouveauPalier.prix_unitaire}
-                    onChange={e => setNouveauPalier({ ...nouveauPalier, prix_unitaire: e.target.value })}
-                  />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Button
-                    variant='outlined'
-                    fullWidth
-                    sx={{ mt: 1 }}
-                    disabled={!nouveauPalier.quantite_min || !nouveauPalier.prix_unitaire}
-                    onClick={async () => {
-                      if (
-                        await ajouterPalier(produitSelectionne.id_prd, {
-                          quantite_min: parseInt(nouveauPalier.quantite_min, 10),
-                          prix_unitaire: parseFloat(nouveauPalier.prix_unitaire)
-                        })
-                      ) {
-                        setNouveauPalier({ quantite_min: '', prix_unitaire: '' })
-                        await rafraichirDetail(produitSelectionne.id_prd)
-                      }
-                    }}
-                  >
-                    Ajouter le palier
-                  </Button>
-                </Grid>
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 2 }} />
-                  <Typography variant='subtitle1' sx={{ fontWeight: 600 }}>
-                    Historique des prix
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <TableContainer>
-                    <Table size='small'>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Ancien prix</TableCell>
-                          <TableCell>Nouveau prix</TableCell>
-                          <TableCell>Début</TableCell>
-                          <TableCell>Fin</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {historique.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4} align='center'>
-                              Aucun historique de prix.
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          historique.map(ligne => (
-                            <TableRow key={ligne.id_historique}>
-                              <TableCell>
-                                {ligne.ancien_prix != null
-                                  ? `${Number(ligne.ancien_prix).toLocaleString('fr-FR')} DZD`
-                                  : '—'}
-                              </TableCell>
-                              <TableCell>
-                                {ligne.nouveau_prix != null
-                                  ? `${Number(ligne.nouveau_prix).toLocaleString('fr-FR')} DZD`
-                                  : '—'}
-                              </TableCell>
-                              <TableCell>{formaterDate(ligne.date_debut)}</TableCell>
-                              <TableCell>{formaterDate(ligne.date_fin)}</TableCell>
+                  <Card sx={sxCarteSection}>
+                    <CardHeader
+                      title='Paliers de prix par quantité'
+                      subheader="Chaque palier fixe le prix UNITAIRE appliqué à partir d'une quantité (prix dégressifs). Le palier avec la plus grande quantité atteinte s'applique."
+                    />
+                    <CardContent>
+                      <TableContainer>
+                        <Table size='small'>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell align='center'>Quantité minimum</TableCell>
+                              <TableCell align='right'>Prix unitaire appliqué</TableCell>
+                              <TableCell align='center'>Actions</TableCell>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
+                          </TableHead>
+                          <TableBody>
+                            {(produitSelectionne?.paliers || []).map(palier => (
+                              <TableRow key={palier.id_palier}>
+                                <TableCell align='center'>dès {palier.quantite_min} pièces</TableCell>
+                                <TableCell align='right'>
+                                  {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
+                                </TableCell>
+                                <TableCell align='center'>
+                                  <Tooltip title='Supprimer le palier'>
+                                    <IconButton
+                                      size='small'
+                                      color='error'
+                                      aria-label={`Supprimer le palier dès ${palier.quantite_min} pièces`}
+                                      onClick={async () => {
+                                        if (
+                                          await supprimerPalier(produitSelectionne.id_prd, palier.id_palier)
+                                        ) {
+                                          await rafraichirDetail(produitSelectionne.id_prd)
+                                        }
+                                      }}
+                                    >
+                                      <Icon icon='tabler:trash' />
+                                    </IconButton>
+                                  </Tooltip>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {(produitSelectionne?.paliers || []).length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={3} align='center'>
+                                  Aucun palier : le prix de vente s&apos;applique à toutes les quantités.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                      <Grid container spacing={6} sx={{ mt: 2 }}>
+                        <Grid item xs={12} md={4}>
+                          <TextField
+                            fullWidth
+                            label='Quantité minimum (pièces)'
+                            type='number'
+                            autoComplete='off'
+                            value={nouveauPalier.quantite_min}
+                            onChange={e => setNouveauPalier({ ...nouveauPalier, quantite_min: e.target.value })}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                          <TextField
+                            fullWidth
+                            label='Prix unitaire appliqué (DZD)'
+                            type='number'
+                            autoComplete='off'
+                            value={nouveauPalier.prix_unitaire}
+                            onChange={e => setNouveauPalier({ ...nouveauPalier, prix_unitaire: e.target.value })}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                          <Button
+                            variant='outlined'
+                            fullWidth
+                            sx={{ mt: 1 }}
+                            disabled={!nouveauPalier.quantite_min || !nouveauPalier.prix_unitaire}
+                            onClick={async () => {
+                              if (
+                                await ajouterPalier(produitSelectionne.id_prd, {
+                                  quantite_min: parseInt(nouveauPalier.quantite_min, 10),
+                                  prix_unitaire: parseFloat(nouveauPalier.prix_unitaire)
+                                })
+                              ) {
+                                setNouveauPalier({ quantite_min: '', prix_unitaire: '' })
+                                await rafraichirDetail(produitSelectionne.id_prd)
+                              }
+                            }}
+                          >
+                            Ajouter le palier
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12}>
+                  <Card sx={sxCarteSection}>
+                    <CardHeader title='Historique des prix' />
+                    <CardContent>
+                      <TableContainer>
+                        <Table size='small'>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Ancien prix</TableCell>
+                              <TableCell>Nouveau prix</TableCell>
+                              <TableCell>Début</TableCell>
+                              <TableCell>Fin</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {historique.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={4} align='center'>
+                                  Aucun historique de prix.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              historique.map(ligne => (
+                                <TableRow key={ligne.id_historique}>
+                                  <TableCell>
+                                    {ligne.ancien_prix != null
+                                      ? `${Number(ligne.ancien_prix).toLocaleString('fr-FR')} DZD`
+                                      : '—'}
+                                  </TableCell>
+                                  <TableCell>
+                                    {ligne.nouveau_prix != null
+                                      ? `${Number(ligne.nouveau_prix).toLocaleString('fr-FR')} DZD`
+                                      : '—'}
+                                  </TableCell>
+                                  <TableCell>{formaterDate(ligne.date_debut)}</TableCell>
+                                  <TableCell>{formaterDate(ligne.date_fin)}</TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </CardContent>
+                  </Card>
                 </Grid>
               </>
             )}
@@ -785,215 +855,235 @@ const ProduitsEcommerceView = () => {
             {onglet === '3' && (
               <>
                 <Grid item xs={12}>
-                  <Typography variant='body2' color='text.secondary'>
-                    {imagesTriees.length}/{NB_IMAGES_MAX} images — l&apos;image marquée
-                    « Principale » sert de vignette en boutique. Glissez-déposez pour réordonner,
-                    ou utilisez les flèches.
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Grid container spacing={3}>
-                    {imagesTriees.map((image, index) => (
-                      <Grid
-                        item
-                        key={image.id_img}
-                        xs={6}
-                        sm={4}
-                        md={3}
-                        draggable
-                        onDragStart={event => event.dataTransfer.setData('text/plain', String(index))}
+                  <Card sx={sxCarteSection}>
+                    <CardHeader
+                      title='Images'
+                      subheader="L'image « Principale » sert de vignette en boutique. Glissez-déposez pour réordonner, ou utilisez les flèches. Nom de fichier vide : généré automatiquement."
+                      action={<Chip label={`${imagesTriees.length}/${NB_IMAGES_MAX}`} size='small' />}
+                    />
+                    <CardContent>
+                      <Grid container spacing={3}>
+                        {imagesTriees.map((image, index) => (
+                          <Grid
+                            item
+                            key={image.id_img}
+                            xs={6}
+                            sm={4}
+                            md={3}
+                            draggable
+                            onDragStart={event => event.dataTransfer.setData('text/plain', String(index))}
+                            onDragOver={event => event.preventDefault()}
+                            onDrop={event => {
+                              event.preventDefault()
+                              const source = parseInt(event.dataTransfer.getData('text/plain'), 10)
+                              if (!isNaN(source)) replacerImageParGlisser(produitSelectionne, source, index)
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                position: 'relative',
+                                borderRadius: 3,
+                                overflow: 'hidden',
+                                border: image.est_principale ? '2px solid' : '1px solid',
+                                borderColor: image.est_principale ? 'primary.main' : 'divider'
+                              }}
+                            >
+                              <Box
+                                component='img'
+                                src={image.url_image}
+                                alt={`Image ${index + 1} de ${produitSelectionne?.designation_prd}`}
+                                sx={{ width: '100%', height: 150, objectFit: 'cover', display: 'block' }}
+                              />
+                              {image.est_principale && (
+                                <Chip
+                                  label='Principale'
+                                  color='primary'
+                                  size='small'
+                                  sx={{ position: 'absolute', top: 8, left: 8 }}
+                                />
+                              )}
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  display: 'flex',
+                                  justifyContent: 'center',
+                                  gap: 1,
+                                  py: 1,
+                                  backgroundColor: 'rgba(0,0,0,0.45)'
+                                }}
+                              >
+                                <Tooltip title='Déplacer à gauche'>
+                                  <span>
+                                    <IconButton
+                                      size='small'
+                                      sx={{ color: 'white' }}
+                                      aria-label={`Déplacer l'image ${index + 1} à gauche`}
+                                      disabled={index === 0 || deplacementEnCours}
+                                      onClick={() => deplacerImage(produitSelectionne, index, -1)}
+                                    >
+                                      <Icon icon='tabler:arrow-left' />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                                {!image.est_principale && (
+                                  <Tooltip title='Définir comme principale'>
+                                    <IconButton
+                                      size='small'
+                                      sx={{ color: 'white' }}
+                                      aria-label={`Définir l'image ${index + 1} comme principale`}
+                                      onClick={async () => {
+                                        if (
+                                          await definirImagePrincipale(produitSelectionne.id_prd, image.id_img)
+                                        ) {
+                                          await rafraichirDetail(produitSelectionne.id_prd)
+                                        }
+                                      }}
+                                    >
+                                      <Icon icon='tabler:star' />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                                <Tooltip title='Pivoter 90° à droite'>
+                                  <IconButton
+                                    size='small'
+                                    sx={{ color: 'white' }}
+                                    aria-label={`Pivoter l'image ${index + 1} de 90 degrés`}
+                                    onClick={async () => {
+                                      if (await pivoterImage(produitSelectionne.id_prd, image.id_img)) {
+                                        await rafraichirDetail(produitSelectionne.id_prd)
+                                      }
+                                    }}
+                                  >
+                                    <Icon icon='tabler:rotate-clockwise' />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title='Supprimer'>
+                                  <IconButton
+                                    size='small'
+                                    sx={{ color: 'error.main' }}
+                                    aria-label={`Supprimer l'image ${index + 1}`}
+                                    onClick={async () => {
+                                      const resultat = await supprimerImage(
+                                        produitSelectionne.id_prd,
+                                        image.id_img
+                                      )
+                                      if (resultat) {
+                                        await rafraichirDetail(produitSelectionne.id_prd)
+                                        if (resultat.depublication_auto) {
+                                          setAlerteDepublication(resultat.depublication_auto.manquants)
+                                          await chargerListe()
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <Icon icon='tabler:trash' />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title='Déplacer à droite'>
+                                  <span>
+                                    <IconButton
+                                      size='small'
+                                      sx={{ color: 'white' }}
+                                      aria-label={`Déplacer l'image ${index + 1} à droite`}
+                                      disabled={index === imagesTriees.length - 1 || deplacementEnCours}
+                                      onClick={() => deplacerImage(produitSelectionne, index, 1)}
+                                    >
+                                      <Icon icon='tabler:arrow-right' />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </Box>
+                            </Box>
+                          </Grid>
+                        ))}
+                        {imagesTriees.length === 0 && (
+                          <Grid item xs={12}>
+                            <Typography color='text.secondary'>
+                              Aucune image. La publication exige au moins 2 images.
+                            </Typography>
+                          </Grid>
+                        )}
+                      </Grid>
+                      <Box
+                        sx={{
+                          border: '2px dashed',
+                          borderColor: fichierImage ? 'primary.main' : 'divider',
+                          borderRadius: 3,
+                          p: 4,
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          mt: 6
+                        }}
+                        onClick={() => refFichierImage.current?.click()}
                         onDragOver={event => event.preventDefault()}
                         onDrop={event => {
                           event.preventDefault()
-                          const source = parseInt(event.dataTransfer.getData('text/plain'), 10)
-                          if (!isNaN(source)) replacerImageParGlisser(produitSelectionne, source, index)
+                          const fichier = event.dataTransfer.files?.[0]
+                          if (fichier) setFichierImage(fichier)
                         }}
                       >
-                        <Box
-                          sx={{
-                            position: 'relative',
-                            borderRadius: 1,
-                            overflow: 'hidden',
-                            border: image.est_principale ? '2px solid' : '1px solid',
-                            borderColor: image.est_principale ? 'primary.main' : 'divider'
-                          }}
-                        >
-                          <Box
-                            component='img'
-                            src={image.url_image}
-                            alt={`Image ${index + 1} de ${produitSelectionne?.designation_prd}`}
-                            sx={{ width: '100%', height: 150, objectFit: 'cover', display: 'block' }}
-                          />
-                          {image.est_principale && (
-                            <Chip
-                              label='Principale'
-                              color='primary'
-                              size='small'
-                              sx={{ position: 'absolute', top: 8, left: 8 }}
-                            />
-                          )}
-                          <Box
-                            sx={{
-                              position: 'absolute',
-                              bottom: 0,
-                              left: 0,
-                              right: 0,
-                              display: 'flex',
-                              justifyContent: 'center',
-                              gap: 1,
-                              py: 1,
-                              backgroundColor: 'rgba(0,0,0,0.45)'
-                            }}
-                          >
-                            <Tooltip title='Déplacer à gauche'>
-                              <span>
-                                <IconButton
-                                  size='small'
-                                  sx={{ color: 'white' }}
-                                  aria-label={`Déplacer l'image ${index + 1} à gauche`}
-                                  disabled={index === 0 || deplacementEnCours}
-                                  onClick={() => deplacerImage(produitSelectionne, index, -1)}
-                                >
-                                  <Icon icon='tabler:arrow-left' />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
-                            {!image.est_principale && (
-                              <Tooltip title='Définir comme principale'>
-                                <IconButton
-                                  size='small'
-                                  sx={{ color: 'white' }}
-                                  aria-label={`Définir l'image ${index + 1} comme principale`}
-                                  onClick={async () => {
-                                    if (await definirImagePrincipale(produitSelectionne.id_prd, image.id_img)) {
-                                      await rafraichirDetail(produitSelectionne.id_prd)
-                                    }
-                                  }}
-                                >
-                                  <Icon icon='tabler:star' />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-                            <Tooltip title='Pivoter 90° à droite'>
-                              <IconButton
-                                size='small'
-                                sx={{ color: 'white' }}
-                                aria-label={`Pivoter l'image ${index + 1} de 90 degrés`}
-                                onClick={async () => {
-                                  if (await pivoterImage(produitSelectionne.id_prd, image.id_img)) {
-                                    await rafraichirDetail(produitSelectionne.id_prd)
-                                  }
-                                }}
-                              >
-                                <Icon icon='tabler:rotate-clockwise' />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title='Supprimer'>
-                              <IconButton
-                                size='small'
-                                sx={{ color: 'error.main' }}
-                                aria-label={`Supprimer l'image ${index + 1}`}
-                                onClick={async () => {
-                                  if (await supprimerImage(produitSelectionne.id_prd, image.id_img)) {
-                                    await rafraichirDetail(produitSelectionne.id_prd)
-                                  }
-                                }}
-                              >
-                                <Icon icon='tabler:trash' />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title='Déplacer à droite'>
-                              <span>
-                                <IconButton
-                                  size='small'
-                                  sx={{ color: 'white' }}
-                                  aria-label={`Déplacer l'image ${index + 1} à droite`}
-                                  disabled={index === imagesTriees.length - 1 || deplacementEnCours}
-                                  onClick={() => deplacerImage(produitSelectionne, index, 1)}
-                                >
-                                  <Icon icon='tabler:arrow-right' />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
-                          </Box>
-                        </Box>
-                      </Grid>
-                    ))}
-                    {imagesTriees.length === 0 && (
-                      <Grid item xs={12}>
-                        <Typography color='text.secondary'>
-                          Aucune image. La publication exige au moins 2 images.
+                        <input
+                          ref={refFichierImage}
+                          type='file'
+                          accept='image/jpeg,image/png,image/webp'
+                          hidden
+                          onChange={e => setFichierImage(e.target.files?.[0] || null)}
+                        />
+                        <Icon icon='tabler:cloud-upload' fontSize='2rem' />
+                        <Typography variant='body2' sx={{ mt: 1 }}>
+                          Glissez un fichier ici ou cliquez pour parcourir (JPEG, PNG, WebP — max 5 Mo)
                         </Typography>
+                        {fichierImage && (
+                          <Typography variant='body2' sx={{ mt: 2, fontWeight: 600 }}>
+                            {fichierImage.name} — {(fichierImage.size / 1024).toFixed(0)} Ko
+                          </Typography>
+                        )}
+                      </Box>
+                      <Grid container spacing={6} sx={{ mt: 2 }}>
+                        <Grid item xs={12} md={8}>
+                          <TextField
+                            fullWidth
+                            label='Nom du fichier (optionnel, format SEO)'
+                            autoComplete='off'
+                            value={nomImageSeo}
+                            onChange={e => setNomImageSeo(e.target.value)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                          <Button
+                            variant='contained'
+                            fullWidth
+                            sx={{ mt: 1 }}
+                            disabled={!fichierImage || televersementEnCours || imagesTriees.length >= NB_IMAGES_MAX}
+                            onClick={televerserFichierImage}
+                          >
+                            {televersementEnCours
+                              ? 'Téléversement…'
+                              : imagesTriees.length >= NB_IMAGES_MAX
+                                ? 'Maximum atteint'
+                                : 'Téléverser'}
+                          </Button>
+                        </Grid>
                       </Grid>
-                    )}
-                  </Grid>
-                </Grid>
-                <Grid item xs={12}>
-                  <Box
-                    sx={{
-                      border: '2px dashed',
-                      borderColor: fichierImage ? 'primary.main' : 'divider',
-                      borderRadius: 1,
-                      p: 4,
-                      textAlign: 'center',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => refFichierImage.current?.click()}
-                    onDragOver={event => event.preventDefault()}
-                    onDrop={event => {
-                      event.preventDefault()
-                      const fichier = event.dataTransfer.files?.[0]
-                      if (fichier) setFichierImage(fichier)
-                    }}
-                  >
-                    <input
-                      ref={refFichierImage}
-                      type='file'
-                      accept='image/jpeg,image/png,image/webp'
-                      hidden
-                      onChange={e => setFichierImage(e.target.files?.[0] || null)}
-                    />
-                    <Icon icon='tabler:cloud-upload' fontSize='2rem' />
-                    <Typography variant='body2' sx={{ mt: 1 }}>
-                      Glissez un fichier ici ou cliquez pour parcourir (JPEG, PNG, WebP — max 5 Mo)
-                    </Typography>
-                    {fichierImage && (
-                      <Typography variant='body2' sx={{ mt: 2, fontWeight: 600 }}>
-                        {fichierImage.name} — {(fichierImage.size / 1024).toFixed(0)} Ko
-                      </Typography>
-                    )}
-                  </Box>
-                </Grid>
-                <Grid item xs={12} md={8}>
-                  <TextField
-                    fullWidth
-                    label='Nom du fichier (optionnel, format SEO)'
-                    autoComplete='off'
-                    helperText='Vide : nom généré automatiquement. Sinon : minuscules et tirets appliqués automatiquement (ex. : chargeur-ugreen-30w)'
-                    value={nomImageSeo}
-                    onChange={e => setNomImageSeo(e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Button
-                    variant='contained'
-                    fullWidth
-                    sx={{ mt: 1 }}
-                    disabled={!fichierImage || televersementEnCours || imagesTriees.length >= NB_IMAGES_MAX}
-                    onClick={televerserFichierImage}
-                  >
-                    {televersementEnCours
-                      ? 'Téléversement…'
-                      : imagesTriees.length >= NB_IMAGES_MAX
-                        ? 'Maximum atteint'
-                        : 'Téléverser'}
-                  </Button>
+                    </CardContent>
+                  </Card>
                 </Grid>
               </>
             )}
           </Grid>
         </DialogContent>
-        <DialogActions sx={{ px: { xs: 3, md: 8 }, py: 3 }}>
+        <DialogActions
+          sx={{
+            px: { xs: 3, md: 8 },
+            py: 3,
+            backgroundColor: 'background.paper',
+            borderTop: 1,
+            borderColor: 'divider'
+          }}
+        >
           <Button onClick={() => setProduitSelectionne(null)}>Annuler</Button>
           <Button
             variant='contained'
