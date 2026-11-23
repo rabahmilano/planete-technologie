@@ -7,6 +7,7 @@ import "dayjs/locale/fr.js";
 dayjs.locale("fr");
 
 import { getMaxValue, arrondir } from "../config/utils.js";
+import { calculerAideDecisionProduit } from "../config/aideDecision.js";
 
 export const addCatProduit = [
   body("desCat")
@@ -1110,72 +1111,23 @@ export const getProduitDetails = async (req, res) => {
   }
 
   try {
-    const [produit, colisAchats, lignesDeCommande, colisVendus] =
-      await Promise.all([
-        prisma.produit.findUnique({ where: { id_prd: idProduit } }),
-        prisma.colis.findMany({
-          where: { prd_id: idProduit },
-          select: {
-            qte_achat: true,
-            pu_dev: true,
-            pu_dzd_ttc: true,
-          },
-        }),
-        prisma.ligne_commande.findMany({ where: { prd_id: idProduit } }),
-        prisma.ligne_commande_colis.findMany({
-          where: { prd_id: idProduit },
-          include: { colis: true },
-        }),
-      ]);
+    const [produit, kpis, colisVendus] = await Promise.all([
+      prisma.produit.findUnique({ where: { id_prd: idProduit } }),
+      calculerAideDecisionProduit(idProduit),
+      prisma.ligne_commande_colis.findMany({
+        where: { prd_id: idProduit },
+        include: { colis: true },
+      }),
+    ]);
 
     if (!produit)
       return res.status(404).json({ message: "Produit non trouvé." });
 
-    // --- CALCUL DES KPIS D'ACHAT (Moyenne Pondérée) ---
-    const totalQteAchetee = colisAchats.reduce(
-      (sum, c) => sum + c.qte_achat,
-      0,
-    );
+    // KPI achat / vente : calcul partagé (config/aideDecision.js) — mêmes
+    // moyennes pondérées que l'historique des prix, réponse inchangée.
+    const { kpisAchat, kpisVente, totalQteAchetee, totalVenteDZD } = kpis;
 
-    const totalCoutAchatDZD = colisAchats.reduce(
-      (sum, c) => sum + parseFloat(c.pu_dzd_ttc) * c.qte_achat,
-      0,
-    );
-
-    const totalCoutAchatDev = colisAchats.reduce(
-      (sum, c) => sum + parseFloat(c.pu_dev) * c.qte_achat,
-      0,
-    );
-
-    const kpisAchat =
-      colisAchats.length > 0
-        ? {
-            minDev: Math.min(...colisAchats.map((c) => parseFloat(c.pu_dev))),
-            maxDev: Math.max(...colisAchats.map((c) => parseFloat(c.pu_dev))),
-            avgDev:
-              totalQteAchetee > 0
-                ? arrondir(totalCoutAchatDev / totalQteAchetee)
-                : 0,
-            minDzd: Math.min(
-              ...colisAchats.map((c) => parseFloat(c.pu_dzd_ttc)),
-            ),
-            maxDzd: Math.max(
-              ...colisAchats.map((c) => parseFloat(c.pu_dzd_ttc)),
-            ),
-            avgDzd:
-              totalQteAchetee > 0
-                ? arrondir(totalCoutAchatDZD / totalQteAchetee)
-                : 0,
-          }
-        : { minDev: 0, maxDev: 0, avgDev: 0, minDzd: 0, maxDzd: 0, avgDzd: 0 };
-
-    // --- CALCUL DES KPIS DE VENTE & FINANCIERS ---
-    const rawTotalVenteDZD = lignesDeCommande.reduce(
-      (sum, ligne) => sum + parseFloat(ligne.pu_vente) * ligne.qte_cde,
-      0,
-    );
-    const totalVenteDZD = arrondir(rawTotalVenteDZD);
-
+    // --- FINANCIERS (coût des ventes / bénéfice brut) ---
     const rawTotalCoutDZD = colisVendus.reduce(
       (sum, l) => sum + parseFloat(l.colis.pu_dzd_ttc) * l.qte,
       0,
@@ -1183,21 +1135,6 @@ export const getProduitDetails = async (req, res) => {
     const totalCoutDZDdesVentes = arrondir(rawTotalCoutDZD);
 
     const totalBeneficeDZD = arrondir(totalVenteDZD - totalCoutDZDdesVentes);
-
-    const totalQteCde = lignesDeCommande.reduce((sum, l) => sum + l.qte_cde, 0);
-
-    const kpisVente =
-      lignesDeCommande.length > 0
-        ? {
-            minDa: Math.min(
-              ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
-            ),
-            maxDa: Math.max(
-              ...lignesDeCommande.map((l) => parseFloat(l.pu_vente)),
-            ),
-            avgDa: totalQteCde > 0 ? arrondir(totalVenteDZD / totalQteCde) : 0,
-          }
-        : { minDa: 0, maxDa: 0, avgDa: 0 };
 
     const qteParAnneeRaw = await prisma.$queryRaw`
       SELECT YEAR(COALESCE(date_achat, date_stock, CURRENT_DATE)) as year, SUM(qte_achat) as value 

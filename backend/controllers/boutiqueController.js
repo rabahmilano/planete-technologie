@@ -5,6 +5,7 @@ import {
   getPrixEffectifProduit,
   verifierCodePromoValide,
   calculerReductionPromo,
+  calculerPoidsFactureKg,
 } from "../config/utils.js";
 import {
   chargerContextePromotions,
@@ -88,6 +89,9 @@ const inclureProduitBoutique = {
   paliers: { orderBy: { quantite_min: "asc" } },
 };
 
+// `poidsKg` = poids FACTURÉ total de la commande (max(poids réel, poids
+// volumétrique), voir calculerPoidsFactureKg) — c'est lui qui détermine le
+// supplément surpoids côté Yalidine, pas le poids réel seul.
 const calculerFraisLivraison = async ({
   codeWilaya,
   typeLivraison,
@@ -587,29 +591,49 @@ export const createCommandeBoutique = [
 
     try {
       const lignesAvecIds = [];
-      let poidsTotalGrammes = 0;
+      let poidsFactureTotalKg = 0;
       for (const ligne of lignes) {
         const produit = await prisma.produit.findFirst({
           where: { slug_prd: ligne.slug.trim() },
-          select: { id_prd: true, poids_grammes: true },
+          select: {
+            id_prd: true,
+            poids_grammes: true,
+            longueur_cm: true,
+            largeur_cm: true,
+            hauteur_cm: true,
+          },
         });
         if (!produit) {
           return res.status(404).json({
             message: `Produit introuvable : ${ligne.slug}.`,
           });
         }
+        // Poids : aucun repli en dur. Sans poids, les frais de livraison ne
+        // peuvent pas être calculés : la commande est refusée avec un
+        // message explicite (l'admin doit renseigner le poids du produit).
+        const poidsFactureKg = calculerPoidsFactureKg(
+          produit.poids_grammes,
+          produit.longueur_cm,
+          produit.largeur_cm,
+          produit.hauteur_cm,
+        );
+        if (poidsFactureKg === null) {
+          return res.status(400).json({
+            message: `Poids manquant pour le produit « ${ligne.slug.trim()} » : impossible de calculer les frais de livraison.`,
+          });
+        }
         lignesAvecIds.push({
           prd_id: produit.id_prd,
           quantite: parseInt(ligne.quantite, 10),
         });
-        poidsTotalGrammes +=
-          (produit.poids_grammes || 500) * parseInt(ligne.quantite, 10);
+        poidsFactureTotalKg +=
+          poidsFactureKg * parseInt(ligne.quantite, 10);
       }
 
       const frais = await calculerFraisLivraison({
         codeWilaya: parseInt(code_wilaya, 10),
         typeLivraison: type_livraison,
-        poidsKg: poidsTotalGrammes / 1000,
+        poidsKg: poidsFactureTotalKg,
       });
 
       const commandeCreee = await prisma.$transaction((tx) =>

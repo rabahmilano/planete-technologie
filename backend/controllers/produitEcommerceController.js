@@ -15,6 +15,10 @@ import {
   chargerContextePromotions,
   promoGagnante as calculerPromoGagnante,
 } from "../config/promotions.js";
+import {
+  calculerAideDecisionProduit,
+  formaterAideDecision,
+} from "../config/aideDecision.js";
 
 const STATUTS_PUBLICATION = ["BROUILLON", "PUBLIE", "ARCHIVE"];
 
@@ -26,11 +30,25 @@ const NB_IMAGES_MAX = 7;
 
 const verifierPublication = async (produit) => {
   const manquants = [];
+  if (!produit.intitule_publication?.trim())
+    manquants.push("un intitulé de publication");
   if (!produit.description) manquants.push("une description");
   if (!produit.famille_id) manquants.push("une famille");
   if (!produit.slug_prd) manquants.push("un slug");
   if (produit.prix_vente === null || produit.prix_vente === undefined)
     manquants.push("un prix de vente");
+  if (
+    produit.poids_grammes !== null &&
+    produit.poids_grammes !== undefined &&
+    produit.poids_grammes > 5000 &&
+    (produit.longueur_cm === null ||
+      produit.longueur_cm === undefined ||
+      produit.largeur_cm === null ||
+      produit.largeur_cm === undefined ||
+      produit.hauteur_cm === null ||
+      produit.hauteur_cm === undefined)
+  )
+    manquants.push("les dimensions du colis (poids > 5 kg)");
   const nbImages = await prisma.image_produit.count({
     where: { prd_id: produit.id_prd },
   });
@@ -113,7 +131,7 @@ export const getProduitEcommerce = async (req, res) => {
     const contextePromotions = await chargerContextePromotions();
     const gagnante = calculerPromoGagnante(produit, contextePromotions);
 
-    res.status(200).json({
+    const reponse = {
       ...produit,
       prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1, gagnante),
       promo_active: gagnante !== null,
@@ -125,7 +143,18 @@ export const getProduitEcommerce = async (req, res) => {
             date_fin: gagnante.promotion.date_fin,
           }
         : null,
-    });
+    };
+
+    // Aide à la décision (KPI achat/vente) : uniquement sur demande
+    // explicite (?aide_decision=1) — la liste des produits appelle cet
+    // endpoint pour chaque ligne et n'en a pas besoin. Cas vide : null.
+    if (req.query.aide_decision === "1") {
+      reponse.aide_decision = formaterAideDecision(
+        await calculerAideDecisionProduit(idProduit),
+      );
+    }
+
+    res.status(200).json(reponse);
   } catch (error) {
     res
       .status(500)
@@ -156,6 +185,18 @@ export const updateProduitEcommerce = [
     .optional({ nullable: true })
     .isInt({ min: 1 })
     .withMessage("Le poids doit être un entier supérieur à 0"),
+  body("longueur_cm")
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage("La longueur doit être un entier supérieur à 0"),
+  body("largeur_cm")
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage("La largeur doit être un entier supérieur à 0"),
+  body("hauteur_cm")
+    .optional({ nullable: true })
+    .isInt({ min: 1 })
+    .withMessage("La hauteur doit être un entier supérieur à 0"),
   body("slug_prd")
     .optional({ nullable: true })
     .isString()
@@ -204,6 +245,9 @@ export const updateProduitEcommerce = [
       description_ar,
       qte_dispo,
       poids_grammes,
+      longueur_cm,
+      largeur_cm,
+      hauteur_cm,
       slug_prd,
       intitule_publication,
       statut_publication,
@@ -235,6 +279,18 @@ export const updateProduitEcommerce = [
       if (poids_grammes !== undefined) {
         dataToUpdate.poids_grammes =
           poids_grammes === null ? null : parseInt(poids_grammes, 10);
+      }
+      if (longueur_cm !== undefined) {
+        dataToUpdate.longueur_cm =
+          longueur_cm === null ? null : parseInt(longueur_cm, 10);
+      }
+      if (largeur_cm !== undefined) {
+        dataToUpdate.largeur_cm =
+          largeur_cm === null ? null : parseInt(largeur_cm, 10);
+      }
+      if (hauteur_cm !== undefined) {
+        dataToUpdate.hauteur_cm =
+          hauteur_cm === null ? null : parseInt(hauteur_cm, 10);
       }
       if (slug_prd !== undefined) {
         if (slug_prd === null) {

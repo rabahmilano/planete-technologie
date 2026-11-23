@@ -303,6 +303,106 @@ describe('suivreColis', () => {
   });
 });
 
+describe('creerColisDepuisCommande — poids facturé et dimensions', () => {
+  const commande = {
+    id_cmd_web: 1,
+    nom_client: 'Jean Dupont',
+    telephone: '0550000000',
+    adresse_exacte: 'Rue test',
+    wilaya: 'Tizi Ouzou',
+    commune: 'Tizi Ouzou',
+    montant_total_final: 3000,
+    type_livraison: 'DOMICILE',
+  };
+
+  it('poids null : bloque sans appeler Yalidine, erreur explicite en français', async () => {
+    await expect(
+      yalidine.creerColisDepuisCommande(commande, [
+        { designation_facturee: 'Chargeur test', quantite: 1, poids_grammes: null },
+      ]),
+    ).rejects.toMatchObject({
+      code: 'POIDS_MANQUANT',
+      message: expect.stringContaining('Poids manquant pour le produit'),
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('poids volumétrique > poids réel : weight = volumétrique, vraies dimensions envoyées', async () => {
+    global.fetch.mockResolvedValueOnce(
+      reponseMock({ corps: { 'PT-1': { success: true, tracking: 'yal-TEST', label: null } } }),
+    );
+
+    const resultat = await yalidine.creerColisDepuisCommande(commande, [
+      {
+        designation_facturee: 'Carton test',
+        quantite: 1,
+        poids_grammes: 1000,
+        longueur_cm: 50,
+        largeur_cm: 40,
+        hauteur_cm: 30,
+      },
+    ]);
+
+    expect(resultat.tracking).toBe('yal-TEST');
+    const envoye = JSON.parse(global.fetch.mock.calls[0][1].body)[0];
+    // Volumétrique 50×40×30/5000 = 12 kg > réel 1 kg → facturé 12 kg.
+    expect(envoye.weight).toBe(12);
+    expect(envoye.length).toBe(50);
+    expect(envoye.width).toBe(40);
+    expect(envoye.height).toBe(30);
+  });
+
+  it('plusieurs lignes : poids facturés additionnés, boîte englobante envoyée', async () => {
+    global.fetch.mockResolvedValueOnce(
+      reponseMock({ corps: { 'PT-1': { success: true, tracking: 'yal-TEST', label: null } } }),
+    );
+
+    await yalidine.creerColisDepuisCommande(commande, [
+      {
+        designation_facturee: 'Petit carton',
+        quantite: 2,
+        poids_grammes: 1000,
+        longueur_cm: 10,
+        largeur_cm: 10,
+        hauteur_cm: 10,
+      },
+      { designation_facturee: 'Produit lourd', quantite: 1, poids_grammes: 2000 },
+    ]);
+
+    const envoye = JSON.parse(global.fetch.mock.calls[0][1].body)[0];
+    // Ligne 1 : max(1 kg, 0,2 kg) × 2 = 2 kg ; ligne 2 : 2 kg → total 4 kg.
+    expect(envoye.weight).toBe(4);
+    expect(envoye.length).toBe(10);
+    expect(envoye.width).toBe(10);
+    expect(envoye.height).toBe(20);
+  });
+});
+
+describe('getFrais — supplément surpoids sur le poids facturé', () => {
+  it('colis léger mais volumineux : surpoids calculé sur 12 kg facturés, pas 1 kg réel', async () => {
+    global.fetch.mockResolvedValueOnce(
+      reponseMock({
+        corps: {
+          zone: 1,
+          retour_fee: 0,
+          oversize_fee: '100.00',
+          per_commune: { '16': { express_home: 650, express_desk: 500 } },
+        },
+      }),
+    );
+
+    const devis = await yalidine.getFrais({
+      versWilayaId: 16,
+      versCommuneId: null,
+      estBureau: false,
+      poidsKg: 12,
+    });
+
+    // 650 + (12 − 5) × 100 = 1350.
+    expect(devis.prix).toBe(1350);
+  });
+});
+
 describe('limiteur client', () => {
   it('départ limité à 5 requêtes par seconde glissante', async () => {
     global.fetch.mockResolvedValue(reponseMock({ corps: { data: [], has_more: false } }));

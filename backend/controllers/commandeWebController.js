@@ -710,11 +710,19 @@ export const updateStatutCommandeWeb = [
             commandeModifiee.lignes.map(async (ligne) => {
               const produit = await prisma.produit.findUnique({
                 where: { id_prd: ligne.prd_id },
-                select: { poids_grammes: true },
+                select: {
+                  poids_grammes: true,
+                  longueur_cm: true,
+                  largeur_cm: true,
+                  hauteur_cm: true,
+                },
               });
               return {
                 ...ligne,
-                poids_grammes: produit?.poids_grammes || 500,
+                poids_grammes: produit?.poids_grammes ?? null,
+                longueur_cm: produit?.longueur_cm ?? null,
+                largeur_cm: produit?.largeur_cm ?? null,
+                hauteur_cm: produit?.hauteur_cm ?? null,
               };
             }),
           );

@@ -37,6 +37,36 @@ export const arrondir = (nombre) => {
   return Math.round((nombre + Number.EPSILON) * 10000) / 10000;
 };
 
+// Poids volumétrique Yalidine (kg) : L × l × h (cm) / 5000. null si une
+// dimension manque (poids volumétrique non calculable).
+export const calculerPoidsVolumetriqueKg = (
+  longueurCm,
+  largeurCm,
+  hauteurCm,
+) => {
+  if (!longueurCm || !largeurCm || !hauteurCm) return null;
+  return (longueurCm * largeurCm * hauteurCm) / 5000;
+};
+
+// Poids facturé Yalidine (kg) = max(poids réel, poids volumétrique).
+// Renvoie null si le poids réel est null : AUCUN repli en dur — l'appelant
+// doit bloquer avec une erreur explicite (poids manquant).
+export const calculerPoidsFactureKg = (
+  poidsGrammes,
+  longueurCm,
+  largeurCm,
+  hauteurCm,
+) => {
+  if (poidsGrammes === null || poidsGrammes === undefined) return null;
+  const volumetriqueKg = calculerPoidsVolumetriqueKg(
+    longueurCm,
+    largeurCm,
+    hauteurCm,
+  );
+  const reelKg = poidsGrammes / 1000;
+  return volumetriqueKg === null ? reelKg : Math.max(reelKg, volumetriqueKg);
+};
+
 export const genererSlug = (texte) => {
   const base = texte
     .normalize("NFD")

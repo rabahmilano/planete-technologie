@@ -1,4 +1,5 @@
 import { nomWilaya } from "./wilayas.js";
+import { calculerPoidsFactureKg } from "./utils.js";
 
 const BASE_URL = (
   process.env.YALIDINE_API_URL || "https://api.yalidine.app/v1"
@@ -298,12 +299,11 @@ export const getFrais = async ({
   if (Number.isNaN(frais)) {
     throw new ErreurYalidine("Aucun tarif Yalidine pour ce mode de livraison.");
   }
-  // Poids volumétrique = L×l×H (cm) × 0.0002 ; poids facturable =
-  // max(volumétrique, réel). Les produits n'ont pas encore de dimensions en
-  // base : length/width/height sont envoyés à 0 (colis volumétrique nul), le
-  // poids facturable est donc le poids réel. Hypothèse documentée — à revoir
-  // si les dimensions arrivent en base. Aucun supplément hors documentation
-  // n'est appliqué.
+  // `poidsKg` est le poids FACTURÉ (max(poids réel, poids volumétrique
+  // L×l×h/5000), calculé par l'appelant à partir des dimensions produit —
+  // voir calculerPoidsFactureKg dans config/utils.js et boutiqueController).
+  // Le supplément surpoids utilise donc ce poids facturé, pas le poids réel :
+  // un colis léger mais volumineux est facturé sur son volume.
   //
   // Formule COD tranchée par le test réel du 23/11/2026 (colis yal-WP21ZX,
   // 15 -> 15, price/declared_value 2373, freeshipping) : delivery_fee renvoyé
@@ -477,12 +477,44 @@ export const creerColisDepuisCommande = async (commande, lignes) => {
   if (!origine) {
     throw new ErreurYalidine("Wilaya d'origine Yalidine non configurée.");
   }
-  const poidsTotalGrammes = (lignes || []).reduce(
-    (total, ligne) => total + (ligne.poids_grammes || 500) * ligne.quantite,
+  // Poids : AUCUN repli en dur. Un produit sans poids bloque la création
+  // du colis avec une erreur explicite à l'admin (décision coordinateur
+  // 23/11/2026) — jamais de colis créé avec un poids inventé.
+  for (const ligne of lignes || []) {
+    if (ligne.poids_grammes === null || ligne.poids_grammes === undefined) {
+      throw new ErreurYalidine(
+        `Poids manquant pour le produit « ${ligne.designation_facturee || "sans désignation"} » : renseignez le poids avant de créer le colis.`,
+        "POIDS_MANQUANT",
+      );
+    }
+  }
+  // Poids facturé total (kg) = Σ max(poids réel, poids volumétrique) × quantité.
+  const poidsFactureKg = (lignes || []).reduce(
+    (total, ligne) =>
+      total +
+      calculerPoidsFactureKg(
+        ligne.poids_grammes,
+        ligne.longueur_cm,
+        ligne.largeur_cm,
+        ligne.hauteur_cm,
+      ) *
+        ligne.quantite,
     0,
   );
-  // length/width/height à 0 : pas de dimensions en base => poids volumétrique
-  // nul, le poids facturable est le poids réel (voir getFrais).
+  // Dimensions envoyées : boîte englobante — plus grande longueur / largeur,
+  // hauteurs empilées (× quantité). 0 si aucune dimension en base.
+  const longueurColis = Math.max(
+    0,
+    ...(lignes || []).map((ligne) => ligne.longueur_cm || 0),
+  );
+  const largeurColis = Math.max(
+    0,
+    ...(lignes || []).map((ligne) => ligne.largeur_cm || 0),
+  );
+  const hauteurColis = (lignes || []).reduce(
+    (total, ligne) => total + (ligne.hauteur_cm || 0) * ligne.quantite,
+    0,
+  );
   const colis = {
     order_id: `PT-${commande.id_cmd_web}`,
     firstname,
@@ -500,10 +532,10 @@ export const creerColisDepuisCommande = async (commande, lignes) => {
     do_insurance: false,
     freeshipping: true,
     has_exchange: false,
-    weight: Math.ceil(poidsTotalGrammes / 1000),
-    length: 0,
-    width: 0,
-    height: 0,
+    weight: Math.ceil(poidsFactureKg),
+    length: longueurColis,
+    width: largeurColis,
+    height: hauteurColis,
     is_stopdesk: commande.type_livraison === "BUREAU",
   };
   if (

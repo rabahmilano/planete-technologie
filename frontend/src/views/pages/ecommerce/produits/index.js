@@ -1,5 +1,8 @@
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   AppBar,
   Box,
@@ -11,13 +14,14 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
-  DialogTitle,
   Grid,
   IconButton,
   InputAdornment,
   LinearProgress,
-  MenuItem,
-  Select,
+  List,
+  ListItemButton,
+  ListItemText,
+  Popover,
   Slide,
   Tab,
   Table,
@@ -32,18 +36,19 @@ import {
   Toolbar,
   Tooltip,
   Typography,
-  FormControl,
-  InputLabel,
   FormControlLabel,
   Switch
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
+import toast from 'react-hot-toast'
+import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
 import { useDebounce } from 'src/@core/hooks/useDebounce'
 import { useProduitDashboard } from 'src/context/ProduitDashboardContext'
 import { useProduitEcommerce } from 'src/context/ProduitEcommerceContext'
 import { useFamille } from 'src/context/FamilleContext'
 
 const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 const MESSAGE_FORMAT_SLUG =
   'Format invalide : minuscules a-z, chiffres 0-9 et tirets uniquement, sans accents ni espaces (ex. : chargeur-ugreen-30w)'
 const NB_IMAGES_MAX = 7
@@ -82,32 +87,85 @@ const libelleStatut = statut => {
 
 const formaterDate = valeur => {
   if (!valeur) return '—'
-  return new Date(valeur).toLocaleDateString('fr-FR')
+  
+return new Date(valeur).toLocaleDateString('fr-FR')
 }
 
-const aplatirFamilles = (familles, prefixe = '') => {
-  const lignes = []
-  familles.forEach(f => {
-    lignes.push({ id_famille: f.id_famille, nom: prefixe + f.nom_famille })
-    if (f.sous_familles?.length) {
-      lignes.push(...aplatirFamilles(f.sous_familles, `${prefixe}${f.nom_famille} › `))
-    }
-  })
-  return lignes
+// Poids en kg, sans zéros inutiles (« 12 kg », « 12,5 kg »).
+const formaterKg = kg => {
+  if (kg == null || Number.isNaN(kg)) return '—'
+  
+return `${Number(kg.toFixed(2)).toLocaleString('fr-FR')} kg`
 }
+
+const formaterMontant = valeur => {
+  if (valeur == null) return '—'
+  
+return `${Number(valeur).toLocaleString('fr-FR')} DZD`
+}
+
+// Style d'en-tête de table du projet (tableau principal de cette page,
+// TableauHistorique.js) : fond navy, texte blanc.
+const sxEnteteTableau = { backgroundColor: '#0d1b2a' }
+const sxCelluleEnteteTableau = { color: 'white' }
+
+const TYPES_IMAGES_ACCEPTES = ['image/jpeg', 'image/png', 'image/webp']
+const TAILLE_IMAGE_MAX = 5 * 1024 * 1024
+
+// Applique la rotation au fichier AVANT envoi : l'image arrive déjà
+// pivotée sur Cloudinary (canvas → blob → File).
+const pivoterFichierLocal = (fichier, rotation) =>
+  new Promise((resolve, reject) => {
+    if (!rotation) return resolve(fichier)
+    const url = URL.createObjectURL(fichier)
+    const image = new Image()
+    image.onload = () => {
+      const echange = rotation === 90 || rotation === 270
+      const canvas = document.createElement('canvas')
+      canvas.width = echange ? image.height : image.width
+      canvas.height = echange ? image.width : image.height
+      const ctx = canvas.getContext('2d')
+      ctx.translate(canvas.width / 2, canvas.height / 2)
+      ctx.rotate((rotation * Math.PI) / 180)
+      ctx.drawImage(image, -image.width / 2, -image.height / 2)
+      URL.revokeObjectURL(url)
+      canvas.toBlob(
+        blob => {
+          if (blob) resolve(new File([blob], fichier.name, { type: fichier.type }))
+          else reject(new Error('Rotation impossible'))
+        },
+        fichier.type
+      )
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Lecture de l’image impossible'))
+    }
+    image.src = url
+  })
 
 const manquantsPourPublication = detail => {
   const manquants = []
+  if (!detail?.intitule_publication?.trim()) manquants.push('un intitulé de publication')
   if (!detail?.description) manquants.push('une description')
   if (!detail?.famille_id) manquants.push('une famille')
   if (!detail?.slug_prd) manquants.push('un slug')
   if (detail?.prix_vente == null) manquants.push('un prix de vente')
+  if (
+    detail?.poids_grammes != null &&
+    detail.poids_grammes > 5000 &&
+    (detail.longueur_cm == null || detail.largeur_cm == null || detail.hauteur_cm == null)
+  ) {
+    manquants.push('les dimensions du colis (poids > 5 kg)')
+  }
   if ((detail?.images || []).length < 2) manquants.push('au moins 2 images')
-  return manquants
+  
+return manquants
 }
 
 const ProduitsEcommerceView = () => {
   const { fetchHistoriquePrix } = useProduitDashboard()
+
   const {
     fetchProduitEcommerce,
     modifierProduitEcommerce,
@@ -146,18 +204,27 @@ const ProduitsEcommerceView = () => {
   const [enregistrementEnCours, setEnregistrementEnCours] = useState(false)
   const [historique, setHistorique] = useState([])
   const [nouveauPalier, setNouveauPalier] = useState({ quantite_min: '', prix_unitaire: '' })
-  const [fichierImage, setFichierImage] = useState(null)
-  const [nomImageSeo, setNomImageSeo] = useState('')
-  const [televersementEnCours, setTeleversementEnCours] = useState(false)
-  const [deplacementEnCours, setDeplacementEnCours] = useState(false)
+  const [imagesLocales, setImagesLocales] = useState([])
+  const [ordreTuiles, setOrdreTuiles] = useState([])
+  const [indexSurvole, setIndexSurvole] = useState(null)
+  const [messageDepot, setMessageDepot] = useState('')
   const refFichierImage = useRef(null)
   const [publicationEnAttente, setPublicationEnAttente] = useState(null)
+  const [publicationEnCours, setPublicationEnCours] = useState(false)
   const [alerteDepublication, setAlerteDepublication] = useState(null)
   const [palierEnEdition, setPalierEnEdition] = useState(null)
   const [formPalier, setFormPalier] = useState({ quantite_min: '', prix_unitaire: '' })
+  const [aideDecision, setAideDecision] = useState(null)
+  const [ancreFamille, setAncreFamille] = useState(null)
+  const [familleDepliee, setFamilleDepliee] = useState(null)
+
+  // Snapshots capturés à l'ouverture : Enregistrer n'appelle que ce qui a changé.
+  const initialFormInfos = useRef(null)
+  const initialFormPrix = useRef(null)
 
   const chargerListe = async () => {
     setChargement(true)
+
     const data = await fetchHistoriquePrix({
       page: page + 1,
       limit: lignesParPage,
@@ -181,56 +248,161 @@ const ProduitsEcommerceView = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, lignesParPage, rechercheDebouncee])
 
+  // Normalisation avant comparaison : '' et null valent pareil, les nombres
+  // sont comparés en nombres (évite les faux « changé »).
+  const normaliserInfos = infos => ({
+    description: infos.description || null,
+    description_ar: infos.description_ar || null,
+    intitule_publication: (infos.intitule_publication || '').trim() || null,
+    est_mis_en_avant: Boolean(infos.est_mis_en_avant),
+    famille_id: infos.famille_id === '' || infos.famille_id == null ? null : parseInt(infos.famille_id, 10),
+    slug_prd: (infos.slug_prd || '').trim() || null,
+    poids_grammes: infos.poids_grammes === '' || infos.poids_grammes == null ? null : parseInt(infos.poids_grammes, 10),
+    longueur_cm: infos.longueur_cm === '' || infos.longueur_cm == null ? null : parseInt(infos.longueur_cm, 10),
+    largeur_cm: infos.largeur_cm === '' || infos.largeur_cm == null ? null : parseInt(infos.largeur_cm, 10),
+    hauteur_cm: infos.hauteur_cm === '' || infos.hauteur_cm == null ? null : parseInt(infos.hauteur_cm, 10)
+  })
+
+  const normaliserPrix = prix => ({
+    prix_vente: prix.prix_vente === '' || prix.prix_vente == null ? null : parseFloat(prix.prix_vente)
+  })
+
+  const revoquerImagesLocales = liste => {
+    liste.forEach(image => URL.revokeObjectURL(image.urlApercu))
+  }
+
+  // Après un enregistrement réussi, le snapshot repart des valeurs
+  // enregistrées (sinon le 2e Enregistrer croirait que tout a changé).
+  // Les images locales téléversées disparaissent de la file ; celles en
+  // échec restent, pour pouvoir réessayer.
+  const marquerCommeEnregistre = (detailFrais, localesReussies = []) => {
+    initialFormInfos.current = normaliserInfos(formInfos)
+    initialFormPrix.current = normaliserPrix(formPrix)
+    const reussies = new Set(localesReussies)
+    revoquerImagesLocales(imagesLocales.filter(image => reussies.has(image.idLocal)))
+    const restantes = imagesLocales.filter(image => !reussies.has(image.idLocal))
+    setImagesLocales(restantes)
+
+    const ordreServeur = ((detailFrais || produitSelectionne)?.images || [])
+      .slice()
+      .sort((a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img)
+      .map(image => `srv-${image.id_img}`)
+
+    const ordreLocalesRestantes = ordreTuiles.filter(
+      cle => cle.startsWith('loc-') && restantes.some(image => `loc-${image.idLocal}` === cle)
+    )
+    setOrdreTuiles([...ordreServeur, ...ordreLocalesRestantes])
+  }
+
+  const fermerDetail = () => {
+    revoquerImagesLocales(imagesLocales)
+    setImagesLocales([])
+    setOrdreTuiles([])
+    setAideDecision(null)
+    setAncreFamille(null)
+    setProduitSelectionne(null)
+  }
+
   const ouvrirDetail = async produit => {
     const detail = details[produit.id_prd] || (await fetchProduitEcommerce(produit.id_prd))
     if (!detail) return
+    revoquerImagesLocales(imagesLocales)
+    setImagesLocales([])
     setDetails(prev => ({ ...prev, [detail.id_prd]: detail }))
     setProduitSelectionne(detail)
-    setFormInfos({
+
+    const infos = {
       description: detail.description || '',
       description_ar: detail.description_ar || '',
       intitule_publication: detail.intitule_publication || '',
       est_mis_en_avant: Boolean(detail.est_mis_en_avant),
       famille_id: detail.famille_id ?? '',
       slug_prd: detail.slug_prd || '',
-      poids_grammes: detail.poids_grammes ?? ''
-    })
-    setFormPrix({ prix_vente: detail.prix_vente ?? '' })
+      poids_grammes: detail.poids_grammes ?? '',
+      longueur_cm: detail.longueur_cm ?? '',
+      largeur_cm: detail.largeur_cm ?? '',
+      hauteur_cm: detail.hauteur_cm ?? ''
+    }
+    setFormInfos(infos)
+    initialFormInfos.current = normaliserInfos(infos)
+    const prix = { prix_vente: detail.prix_vente ?? '' }
+    setFormPrix(prix)
+    initialFormPrix.current = normaliserPrix(prix)
+    setOrdreTuiles((detail.images || []).map(image => `srv-${image.id_img}`))
     setErreurSlug('')
     setAlerteDepublication(null)
     setPalierEnEdition(null)
     setHistorique(detail.historiques_prix_vente || [])
     setNouveauPalier({ quantite_min: '', prix_unitaire: '' })
-    setFichierImage(null)
-    setNomImageSeo('')
+    setMessageDepot('')
+    setIndexSurvole(null)
     setOnglet('1')
+
+    // Aide à la décision : uniquement à l'ouverture du modal, jamais dans
+    // le chargement de la liste.
+    setAideDecision(null)
+    const detailComplet = await fetchProduitEcommerce(produit.id_prd, true)
+    if (detailComplet?.aide_decision) setAideDecision(detailComplet.aide_decision)
   }
 
   const rafraichirDetail = async id => {
     const detail = await fetchProduitEcommerce(id)
-    if (!detail) return
+    if (!detail) return null
     setDetails(prev => ({ ...prev, [detail.id_prd]: detail }))
     setProduitSelectionne(detail)
     setHistorique(detail.historiques_prix_vente || [])
+    
+return detail
   }
 
   const basculerPublication = async () => {
     const produit = publicationEnAttente
-    if (!produit) return
+    if (!produit || publicationEnCours) return
     const detail = details[produit.id_prd]
     const actuel = detail?.statut_publication || produit.statut_publication || 'BROUILLON'
     const suivant = actuel === 'PUBLIE' ? 'BROUILLON' : 'PUBLIE'
-    const misAJour = await modifierProduitEcommerce(produit.id_prd, { statut_publication: suivant })
-    if (misAJour) {
-      setDetails(prev => ({ ...prev, [produit.id_prd]: { ...prev[produit.id_prd], statut_publication: suivant } }))
-      setProduits(prev => prev.map(p => (p.id_prd === produit.id_prd ? { ...p, statut_publication: suivant } : p)))
+    setPublicationEnCours(true)
+    try {
+      const misAJour = await modifierProduitEcommerce(
+        produit.id_prd,
+        { statut_publication: suivant },
+        { silencieux: true }
+      )
+      if (misAJour) {
+        setDetails(prev => ({ ...prev, [produit.id_prd]: { ...prev[produit.id_prd], statut_publication: suivant } }))
+        setProduits(prev => prev.map(p => (p.id_prd === produit.id_prd ? { ...p, statut_publication: suivant } : p)))
+        toast.success(
+          suivant === 'PUBLIE' ? 'Produit publié — visible dans la boutique' : 'Produit retiré de la boutique'
+        )
+        setPublicationEnAttente(null)
+      }
+    } finally {
+      setPublicationEnCours(false)
     }
-    setPublicationEnAttente(null)
   }
 
   const changerSlugProduit = valeur => {
     setFormInfos({ ...formInfos, slug_prd: valeur })
     if (erreurSlug) setErreurSlug('')
+  }
+
+  // Liste fusionnée (images serveur triées + images locales), dans l'ordre
+  // choisi par l'admin. Les clés absentes (image supprimée entre-temps)
+  // sont ignorées, les nouvelles sont ajoutées à la fin.
+  const tuilesFusionnees = () => {
+    const serveurTriees = (produitSelectionne?.images || [])
+      .slice()
+      .sort((a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img)
+    const parCle = new Map()
+    serveurTriees.forEach(image => parCle.set(`srv-${image.id_img}`, { type: 'serveur', image }))
+    imagesLocales.forEach(image => parCle.set(`loc-${image.idLocal}`, { type: 'locale', image }))
+    const ordonnees = ordreTuiles.map(cle => parCle.get(cle)).filter(Boolean)
+    const dejaVues = new Set(ordonnees.map(tuile => (tuile.type === 'serveur' ? `srv-${tuile.image.id_img}` : `loc-${tuile.image.idLocal}`)))
+    parCle.forEach((tuile, cle) => {
+      if (!dejaVues.has(cle)) ordonnees.push(tuile)
+    })
+    
+return ordonnees
   }
 
   const enregistrerTout = async () => {
@@ -239,98 +411,247 @@ const ProduitsEcommerceView = () => {
     if (slugSaisi && !REGEX_SLUG.test(slugSaisi)) {
       setErreurSlug(MESSAGE_FORMAT_SLUG)
       setOnglet('1')
-      return
+      
+return
     }
+    const donneesInfos = normaliserInfos(formInfos)
+    const donneesPrix = normaliserPrix(formPrix)
+    const infosOntChange = JSON.stringify(donneesInfos) !== JSON.stringify(initialFormInfos.current)
+    const prixAChange = JSON.stringify(donneesPrix) !== JSON.stringify(initialFormPrix.current)
+    const tuiles = tuilesFusionnees()
+    const locales = tuiles.filter(tuile => tuile.type === 'locale')
+
+    const ordreServeurInitial = (produitSelectionne.images || [])
+      .slice()
+      .sort((a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img)
+      .map(image => image.id_img)
+    const ordreServeurFinal = tuiles.filter(tuile => tuile.type === 'serveur').map(tuile => tuile.image.id_img)
+
+    const ordreAChange =
+      locales.length > 0 ||
+      JSON.stringify(ordreServeurFinal) !== JSON.stringify(ordreServeurInitial)
+    if (!infosOntChange && !prixAChange && locales.length === 0 && !ordreAChange) return
     setEnregistrementEnCours(true)
-    const donneesInfos = {
-      description: formInfos.description || null,
-      description_ar: formInfos.description_ar || null,
-      intitule_publication: formInfos.intitule_publication?.trim() || null,
-      est_mis_en_avant: Boolean(formInfos.est_mis_en_avant),
-      famille_id: formInfos.famille_id === '' ? null : parseInt(formInfos.famille_id, 10),
-      slug_prd: slugSaisi || null,
-      poids_grammes: formInfos.poids_grammes === '' ? null : parseInt(formInfos.poids_grammes, 10)
-    }
-    const infosAJour = await modifierProduitEcommerce(produitSelectionne.id_prd, donneesInfos)
-    if (!infosAJour) {
-      setEnregistrementEnCours(false)
-      return
-    }
-    const donneesPrix = {
-      prix_vente: formPrix.prix_vente === '' ? null : parseFloat(formPrix.prix_vente)
-    }
-    const prixAJour = await modifierPrix(produitSelectionne.id_prd, donneesPrix)
-    setEnregistrementEnCours(false)
-    if (prixAJour) {
-      await rafraichirDetail(produitSelectionne.id_prd)
+    let depublication = null
+    let echecUpload = 0
+    try {
+      if (infosOntChange) {
+        const infosAJour = await modifierProduitEcommerce(produitSelectionne.id_prd, donneesInfos, {
+          silencieux: true
+        })
+        if (!infosAJour) return
+        depublication = infosAJour.depublication_auto || null
+      }
+      if (prixAChange) {
+        const prixAJour = await modifierPrix(produitSelectionne.id_prd, donneesPrix, { silencieux: true })
+        if (!prixAJour) return
+        depublication = depublication || prixAJour.depublication_auto || null
+      }
+
+      // Upload des images locales, image par image, dans l'ordre final
+      // fusionné (rotation appliquée au fichier avant envoi).
+      const localesReussies = []
+      if (locales.length > 0) {
+        const idsServeurAvant = new Set((produitSelectionne.images || []).map(image => image.id_img))
+        let televersees = 0
+        for (const tuile of tuiles) {
+          if (tuile.type !== 'locale') continue
+          const indexFinal = tuiles.indexOf(tuile)
+          try {
+            const fichier = await pivoterFichierLocal(tuile.image.file, tuile.image.rotation)
+
+            const ok = await uploaderImage(produitSelectionne.id_prd, fichier, indexFinal, tuile.image.nom, {
+              silencieux: true
+            })
+            if (ok) {
+              televersees += 1
+              localesReussies.push(tuile.image.idLocal)
+            } else echecUpload += 1
+          } catch (error) {
+            echecUpload += 1
+          }
+        }
+        if (televersees > 0) {
+          const detailApresUpload = await fetchProduitEcommerce(produitSelectionne.id_prd)
+          if (detailApresUpload) {
+            setDetails(prev => ({ ...prev, [detailApresUpload.id_prd]: detailApresUpload }))
+            setProduitSelectionne(detailApresUpload)
+            setHistorique(detailApresUpload.historiques_prix_vente || [])
+
+
+            // Les nouvelles images sont celles absentes avant l'upload,
+            // dans l'ordre des ordre_image envoyés (= ordre des locales).
+            const nouvelles = (detailApresUpload.images || [])
+              .filter(image => !idsServeurAvant.has(image.id_img))
+              .sort((a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img)
+            const ordreComplet = []
+            let indexNouvelle = 0
+            tuiles.forEach(tuile => {
+              if (tuile.type === 'serveur') ordreComplet.push(tuile.image.id_img)
+              else if (nouvelles[indexNouvelle]) {
+                ordreComplet.push(nouvelles[indexNouvelle].id_img)
+                indexNouvelle += 1
+              }
+            })
+
+            const ordreActuel = (detailApresUpload.images || [])
+              .slice()
+              .sort((a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img)
+              .map(image => image.id_img)
+            if (JSON.stringify(ordreComplet) !== JSON.stringify(ordreActuel)) {
+              await reordonnerImages(
+                produitSelectionne.id_prd,
+                ordreComplet.map((id_img, i) => ({ id_img, ordre_image: i })),
+                { silencieux: true }
+              )
+            }
+
+            // La 1re image de l'ordre final est une locale : elle devient
+            // l'image principale.
+            if (tuiles[0]?.type === 'locale' && nouvelles.length > 0) {
+              const ordreFinalTrie = [...ordreComplet]
+              const idPrincipale = ordreFinalTrie[0]
+              if (idPrincipale) {
+                await definirImagePrincipale(produitSelectionne.id_prd, idPrincipale, { silencieux: true })
+              }
+            }
+          }
+        }
+      } else if (ordreAChange) {
+        await reordonnerImages(
+          produitSelectionne.id_prd,
+          ordreServeurFinal.map((id_img, i) => ({ id_img, ordre_image: i })),
+          { silencieux: true }
+        )
+      }
+      const detailFrais = await rafraichirDetail(produitSelectionne.id_prd)
       await chargerListe()
-      const depublication = infosAJour.depublication_auto || prixAJour.depublication_auto
+      if (echecUpload > 0) {
+        const reussies = locales.length - echecUpload
+        toast.error(
+          `${reussies} image${reussies !== 1 ? 's' : ''} sur ${locales.length} téléversée${
+            locales.length !== 1 ? 's' : ''
+          }`
+        )
+      } else {
+        toast.success('Modifications enregistrées')
+      }
       if (depublication) {
         // Le produit vient d'être dépublié automatiquement : on garde le
         // modal ouvert pour que l'admin voie la raison et puisse corriger.
         setAlerteDepublication(depublication.manquants)
-        return
       }
-      setProduitSelectionne(null)
+      marquerCommeEnregistre(detailFrais, localesReussies)
+    } finally {
+      setEnregistrementEnCours(false)
     }
   }
 
-  const televerserFichierImage = async () => {
-    if (!fichierImage || !produitSelectionne || televersementEnCours) return
-    const ordreSuivant = (produitSelectionne.images || []).reduce((max, img) => Math.max(max, img.ordre_image), -1) + 1
-    setTeleversementEnCours(true)
-    const ok = await uploaderImage(produitSelectionne.id_prd, fichierImage, ordreSuivant, nomImageSeo)
-    setTeleversementEnCours(false)
-    if (ok) {
-      setFichierImage(null)
-      setNomImageSeo('')
-      await rafraichirDetail(produitSelectionne.id_prd)
+  const ajouterFichiersImages = fichiers => {
+    const liste = Array.from(fichiers || [])
+    if (liste.length === 0) return
+    const placesRestantes = NB_IMAGES_MAX - (produitSelectionne?.images || []).length - imagesLocales.length
+    const rejets = []
+    const acceptees = []
+    liste.forEach(fichier => {
+      if (!TYPES_IMAGES_ACCEPTES.includes(fichier.type)) {
+        rejets.push(`${fichier.name} : format non accepté`)
+      } else if (fichier.size > TAILLE_IMAGE_MAX) {
+        rejets.push(`${fichier.name} : plus de 5 Mo`)
+      } else if (acceptees.length >= placesRestantes) {
+        rejets.push(`${fichier.name} : plafond de ${NB_IMAGES_MAX} images atteint`)
+      } else {
+        acceptees.push(fichier)
+      }
+    })
+    if (acceptees.length > 0) {
+      const nouvelles = acceptees.map((fichier, index) => ({
+        idLocal: `${Date.now()}-${index}-${fichier.name}`,
+        file: fichier,
+        urlApercu: URL.createObjectURL(fichier),
+        nom: fichier.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9-_]+/g, '-').toLowerCase(),
+        rotation: 0
+      }))
+      setImagesLocales(prev => [...prev, ...nouvelles])
+      setOrdreTuiles(prev => [...prev, ...nouvelles.map(image => `loc-${image.idLocal}`)])
+      setMessageDepot('')
+    }
+    if (rejets.length > 0) {
+      setMessageDepot(rejets.join(' — '))
+      toast.error(rejets.join(' — '))
     }
   }
 
-  const deplacerImage = async (produit, indexSource, decalage) => {
-    const images = [...(produit.images || [])].sort(
-      (a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img
-    )
-    const indexCible = indexSource + decalage
-    if (indexCible < 0 || indexCible >= images.length) return
-    const copie = [...images]
-    const [deplacee] = copie.splice(indexSource, 1)
-    copie.splice(indexCible, 0, deplacee)
-    const ordre = copie.map((img, i) => ({ id_img: img.id_img, ordre_image: i }))
-    setDeplacementEnCours(true)
-    const ok = await reordonnerImages(produit.id_prd, ordre)
-    setDeplacementEnCours(false)
-    if (ok) await rafraichirDetail(produit.id_prd)
+  const retirerImageLocale = imageLocale => {
+    URL.revokeObjectURL(imageLocale.urlApercu)
+    setImagesLocales(prev => prev.filter(image => image.idLocal !== imageLocale.idLocal))
+    setOrdreTuiles(prev => prev.filter(cle => cle !== `loc-${imageLocale.idLocal}`))
   }
 
-  const replacerImageParGlisser = async (produit, indexSource, indexCible) => {
-    if (indexCible === indexSource) return
-    const images = [...(produit.images || [])].sort(
-      (a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img
+  const pivoterImageLocale = imageLocale => {
+    setImagesLocales(prev =>
+      prev.map(image =>
+        image.idLocal === imageLocale.idLocal ? { ...image, rotation: (image.rotation + 90) % 360 } : image
+      )
     )
-    const copie = [...images]
-    const [deplacee] = copie.splice(indexSource, 1)
-    copie.splice(indexCible, 0, deplacee)
-    const ordre = copie.map((img, i) => ({ id_img: img.id_img, ordre_image: i }))
-    setDeplacementEnCours(true)
-    const ok = await reordonnerImages(produit.id_prd, ordre)
-    setDeplacementEnCours(false)
-    if (ok) await rafraichirDetail(produit.id_prd)
   }
 
-  const optionsFamilles = aplatirFamilles(familles)
+  const deplacerTuileParGlisser = (indexSource, indexCible) => {
+    if (indexCible === indexSource || indexCible < 0) return
+    const tuiles = tuilesFusionnees()
+    if (indexCible >= tuiles.length) return
+    const cles = tuiles.map(tuile => (tuile.type === 'serveur' ? `srv-${tuile.image.id_img}` : `loc-${tuile.image.idLocal}`))
+    const [deplacee] = cles.splice(indexSource, 1)
+    cles.splice(indexCible, 0, deplacee)
+    setOrdreTuiles(cles)
+    setIndexSurvole(null)
+  }
 
   const statutAffiche = produit => {
     const detail = details[produit.id_prd]
-    return detail?.statut_publication || produit.statut_publication || 'BROUILLON'
+    
+return detail?.statut_publication || produit.statut_publication || 'BROUILLON'
   }
 
   const aPublier = publicationEnAttente ? statutAffiche(publicationEnAttente) !== 'PUBLIE' : false
 
-  const imagesTriees = (produitSelectionne?.images || [])
-    .slice()
-    .sort((a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img)
+  const tuiles = produitSelectionne ? tuilesFusionnees() : []
+  const nbImagesTotal = tuiles.length
+
+  // Poids volumétrique / facturé, recalculé à chaque frappe.
+  const dimensionsSaisies =
+    formInfos.longueur_cm !== '' &&
+    formInfos.longueur_cm != null &&
+    formInfos.largeur_cm !== '' &&
+    formInfos.largeur_cm != null &&
+    formInfos.hauteur_cm !== '' &&
+    formInfos.hauteur_cm != null
+
+  const poidsVolumetriqueKg = dimensionsSaisies
+    ? (parseInt(formInfos.longueur_cm, 10) * parseInt(formInfos.largeur_cm, 10) * parseInt(formInfos.hauteur_cm, 10)) /
+      5000
+    : null
+
+  const poidsFactureKg =
+    poidsVolumetriqueKg == null
+      ? null
+      : formInfos.poids_grammes === '' || formInfos.poids_grammes == null
+        ? poidsVolumetriqueKg
+        : Math.max(parseInt(formInfos.poids_grammes, 10) / 1000, poidsVolumetriqueKg)
+  const intituleVide = !(formInfos.intitule_publication || '').trim()
+
+  // Nom affiché dans le sélecteur famille (parent + sous-familles, 2 niveaux max).
+  const nomFamilleSelectionnee = () => {
+    if (formInfos.famille_id === '' || formInfos.famille_id == null) return 'Aucune'
+    const id = parseInt(formInfos.famille_id, 10)
+    for (const parent of familles) {
+      if (parent.id_famille === id) return parent.nom_famille
+      const enfant = (parent.sous_familles || []).find(f => f.id_famille === id)
+      if (enfant) return `${parent.nom_famille} › ${enfant.nom_famille}`
+    }
+    
+return 'Aucune'
+  }
 
   return (
     <Grid container spacing={6}>
@@ -393,9 +714,11 @@ const ProduitsEcommerceView = () => {
                     const detail = details[produit.id_prd]
                     const manquants = manquantsPourPublication(detail)
                     const estPublie = statutAffiche(produit) === 'PUBLIE'
-                    // Dépublier est toujours autorisé : seul Publier exige les 5 conditions.
+
+                    // Dépublier est toujours autorisé : seul Publier exige les conditions.
                     const publicationBloquee = !estPublie && manquants.length > 0
-                    return (
+                    
+return (
                       <TableRow key={produit.id_prd} hover>
                         <TableCell>
                           <Typography sx={{ fontWeight: 600 }}>{produit.designation_prd}</Typography>
@@ -494,7 +817,7 @@ const ProduitsEcommerceView = () => {
 
       <Dialog
         open={Boolean(produitSelectionne)}
-        onClose={() => setProduitSelectionne(null)}
+        onClose={fermerDetail}
         fullScreen
         TransitionComponent={Transition}
         sx={{ '& .MuiDialog-paper': { backgroundColor: '#f8f9fa' } }}
@@ -520,7 +843,7 @@ const ProduitsEcommerceView = () => {
                 )}
               </Box>
             </Box>
-            <IconButton edge='end' color='inherit' onClick={() => setProduitSelectionne(null)} aria-label='Fermer'>
+            <IconButton edge='end' color='inherit' onClick={fermerDetail} aria-label='Fermer'>
               <Icon icon='tabler:x' color='white' />
             </IconButton>
           </Toolbar>
@@ -546,7 +869,6 @@ const ProduitsEcommerceView = () => {
                   <Card sx={sxCarteSection}>
                     <CardHeader
                       title='Produit'
-                      subheader="L'intitulé s'affiche dans la boutique (vide : la désignation interne). Le poids est utilisé par Yalidine (défaut 500 g si vide)."
                       action={
                         <FormControlLabel
                           control={
@@ -566,6 +888,11 @@ const ProduitsEcommerceView = () => {
                             fullWidth
                             label='Intitulé de publication'
                             autoComplete='off'
+                            required
+                            error={intituleVide}
+                            helperText={
+                              intituleVide ? 'Intitulé requis pour publier.' : 'S’affiche dans la boutique.'
+                            }
                             inputProps={{ maxLength: 150 }}
                             value={formInfos.intitule_publication || ''}
                             onChange={e => setFormInfos({ ...formInfos, intitule_publication: e.target.value })}
@@ -584,32 +911,161 @@ const ProduitsEcommerceView = () => {
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <FormControl fullWidth>
-                            <InputLabel>Famille</InputLabel>
-                            <Select
-                              label='Famille'
-                              autoComplete='off'
-                              value={formInfos.famille_id ?? ''}
-                              onChange={e => setFormInfos({ ...formInfos, famille_id: e.target.value })}
-                            >
-                              <MenuItem value=''>Aucune</MenuItem>
-                              {optionsFamilles.map(f => (
-                                <MenuItem key={f.id_famille} value={f.id_famille}>
-                                  {f.nom}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                        <Grid item xs={12} md={6}>
                           <TextField
                             fullWidth
-                            label='Poids (grammes)'
-                            type='number'
+                            label='Famille'
                             autoComplete='off'
-                            value={formInfos.poids_grammes ?? ''}
-                            onChange={e => setFormInfos({ ...formInfos, poids_grammes: e.target.value })}
+                            value={nomFamilleSelectionnee()}
+                            InputProps={{
+                              readOnly: true,
+                              endAdornment: (
+                                <InputAdornment position='end'>
+                                  <Icon icon='tabler:chevron-down' />
+                                </InputAdornment>
+                              )
+                            }}
+                            onClick={e => setAncreFamille(e.currentTarget)}
                           />
+                          <Popover
+                            open={Boolean(ancreFamille)}
+                            anchorEl={ancreFamille}
+                            onClose={() => setAncreFamille(null)}
+                            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                            PaperProps={{ sx: { width: 360, maxHeight: 480, overflow: 'auto' } }}
+                          >
+                            <List dense>
+                              <ListItemButton
+                                selected={formInfos.famille_id === '' || formInfos.famille_id == null}
+                                onClick={() => {
+                                  setFormInfos({ ...formInfos, famille_id: '' })
+                                  setAncreFamille(null)
+                                }}
+                              >
+                                <ListItemText primary='Aucune' />
+                              </ListItemButton>
+                              {familles.map(parent => {
+                                const enfants = parent.sous_familles || []
+                                if (enfants.length === 0) {
+                                  return (
+                                    <ListItemButton
+                                      key={parent.id_famille}
+                                      selected={parseInt(formInfos.famille_id, 10) === parent.id_famille}
+                                      onClick={() => {
+                                        setFormInfos({ ...formInfos, famille_id: parent.id_famille })
+                                        setAncreFamille(null)
+                                      }}
+                                    >
+                                      <ListItemText primary={parent.nom_famille} />
+                                    </ListItemButton>
+                                  )
+                                }
+                                const deplie = familleDepliee === parent.id_famille
+                                
+return (
+                                  <Accordion
+                                    key={parent.id_famille}
+                                    expanded={deplie}
+                                    onChange={() => setFamilleDepliee(deplie ? null : parent.id_famille)}
+                                    disableGutters
+                                    elevation={0}
+                                    sx={{ '&:before': { display: 'none' } }}
+                                  >
+                                    <AccordionSummary
+                                      expandIcon={<Icon icon='tabler:chevron-down' />}
+                                      sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { my: 1 } }}
+                                    >
+                                      <Typography
+                                        component='button'
+                                        type='button'
+                                        variant='body2'
+                                        onClick={e => {
+                                          e.stopPropagation()
+                                          setFormInfos({ ...formInfos, famille_id: parent.id_famille })
+                                          setAncreFamille(null)
+                                        }}
+                                        sx={{
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          p: 0,
+                                          textAlign: 'left',
+                                          fontWeight:
+                                            parseInt(formInfos.famille_id, 10) === parent.id_famille ? 600 : 400
+                                        }}
+                                      >
+                                        {parent.nom_famille}
+                                      </Typography>
+                                    </AccordionSummary>
+                                    <AccordionDetails sx={{ p: 0, pl: 4 }}>
+                                      {enfants.map(enfant => (
+                                        <ListItemButton
+                                          key={enfant.id_famille}
+                                          selected={parseInt(formInfos.famille_id, 10) === enfant.id_famille}
+                                          onClick={() => {
+                                            setFormInfos({ ...formInfos, famille_id: enfant.id_famille })
+                                            setAncreFamille(null)
+                                          }}
+                                        >
+                                          <ListItemText primary={enfant.nom_famille} />
+                                        </ListItemButton>
+                                      ))}
+                                    </AccordionDetails>
+                                  </Accordion>
+                                )
+                              })}
+                            </List>
+                          </Popover>
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <Grid container spacing={3}>
+                            <Grid item xs={12} sm={3}>
+                              <TextField
+                                fullWidth
+                                label='Poids (grammes)'
+                                type='number'
+                                autoComplete='off'
+                                value={formInfos.poids_grammes ?? ''}
+                                onChange={e => setFormInfos({ ...formInfos, poids_grammes: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={3}>
+                              <TextField
+                                fullWidth
+                                label='Longueur (cm)'
+                                type='number'
+                                autoComplete='off'
+                                value={formInfos.longueur_cm ?? ''}
+                                onChange={e => setFormInfos({ ...formInfos, longueur_cm: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={3}>
+                              <TextField
+                                fullWidth
+                                label='Largeur (cm)'
+                                type='number'
+                                autoComplete='off'
+                                value={formInfos.largeur_cm ?? ''}
+                                onChange={e => setFormInfos({ ...formInfos, largeur_cm: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={3}>
+                              <TextField
+                                fullWidth
+                                label='Hauteur (cm)'
+                                type='number'
+                                autoComplete='off'
+                                value={formInfos.hauteur_cm ?? ''}
+                                onChange={e => setFormInfos({ ...formInfos, hauteur_cm: e.target.value })}
+                              />
+                            </Grid>
+                            <Grid item xs={12}>
+                              <Typography variant='body2' color='text.secondary'>
+                                Poids volumétrique : {formaterKg(poidsVolumetriqueKg)} — Poids facturé :{' '}
+                                {formaterKg(poidsFactureKg)}
+                              </Typography>
+                            </Grid>
+                          </Grid>
                         </Grid>
                       </Grid>
                     </CardContent>
@@ -652,16 +1108,11 @@ const ProduitsEcommerceView = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Card sx={sxCarteSection}>
-                    <CardHeader
-                      title='Publication'
-                      subheader="BROUILLON : jamais publié, invisible en boutique. ARCHIVÉ : retiré de la boutique, conservé pour l'historique."
-                    />
+                    <CardHeader title='Publication' />
                     <CardContent>
                       <Alert severity='info'>
-                        Pour publier : une description, une famille, un slug, un prix de vente et au
-                        moins 2 images. Le statut se change avec le bouton Publier / Dépublier de
-                        la liste. Un produit publié qui ne remplit plus les conditions est
-                        dépublié automatiquement.
+                        Publication : intitulé, description, famille, slug, prix de vente et au moins 2 images. Si
+                        le produit ne remplit plus ces conditions, il est dépublié automatiquement.
                       </Alert>
                     </CardContent>
                   </Card>
@@ -671,7 +1122,7 @@ const ProduitsEcommerceView = () => {
 
             {onglet === '2' && (
               <>
-                <Grid item xs={12}>
+                <Grid item xs={12} md={6}>
                   <Card sx={sxCarteSection}>
                     <CardHeader
                       title='Prix de vente'
@@ -692,9 +1143,7 @@ const ProduitsEcommerceView = () => {
                       </Grid>
                     </CardContent>
                   </Card>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Card sx={{ ...sxCarteSection, height: '100%' }}>
+                  <Card sx={{ ...sxCarteSection, height: '100%', mt: 6 }}>
                     <CardHeader
                       title='Paliers de prix par quantité'
                       subheader="Chaque palier fixe le prix UNITAIRE appliqué à partir d'une quantité (prix dégressifs). Le palier avec la plus grande quantité atteinte s'applique."
@@ -703,10 +1152,16 @@ const ProduitsEcommerceView = () => {
                       <TableContainer>
                         <Table size='small'>
                           <TableHead>
-                            <TableRow>
-                              <TableCell align='center'>Quantité minimum</TableCell>
-                              <TableCell align='right'>Prix unitaire appliqué</TableCell>
-                              <TableCell align='center'>Actions</TableCell>
+                            <TableRow sx={sxEnteteTableau}>
+                              <TableCell align='center' sx={sxCelluleEnteteTableau}>
+                                Quantité minimum
+                              </TableCell>
+                              <TableCell align='right' sx={sxCelluleEnteteTableau}>
+                                Prix unitaire appliqué
+                              </TableCell>
+                              <TableCell align='center' sx={sxCelluleEnteteTableau}>
+                                Actions
+                              </TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -820,7 +1275,9 @@ const ProduitsEcommerceView = () => {
                             {(produitSelectionne?.paliers || []).length === 0 && (
                               <TableRow>
                                 <TableCell colSpan={3} align='center'>
-                                  Aucun palier : le prix de vente s&apos;applique à toutes les quantités.
+                                  <Typography color='text.secondary'>
+                                    Aucun palier : le prix de vente s&apos;applique à toutes les quantités.
+                                  </Typography>
                                 </TableCell>
                               </TableRow>
                             )}
@@ -873,41 +1330,86 @@ const ProduitsEcommerceView = () => {
                   </Card>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Card sx={{ ...sxCarteSection, height: '100%' }}>
+                  <Card sx={sxCarteSection}>
+                    <CardHeader title='Aide à la décision' />
+                    <CardContent>
+                      <Typography variant='body2' sx={{ mb: 2 }}>
+                        Prix d&apos;achat moyen (TTC) :{' '}
+                        <strong>{formaterMontant(aideDecision?.prix_achat_dzd_moyen)}</strong>
+                      </Typography>
+                      <Typography variant='body2' sx={{ mb: 2 }}>
+                        Prix d&apos;achat moyen en devise :{' '}
+                        <strong>
+                          {aideDecision?.prix_achat_dev_moyen != null
+                            ? `${Number(aideDecision.prix_achat_dev_moyen).toLocaleString('fr-FR')} ${
+                                aideDecision.devise_achat_symbole || ''
+                              }`.trim()
+                            : '—'}
+                        </strong>
+                      </Typography>
+                      <Typography variant='body2' sx={{ mb: 2 }}>
+                        Prix de vente moyen : <strong>{formaterMontant(aideDecision?.prix_vente_moyen)}</strong>
+                      </Typography>
+                      <Typography variant='body2' color='text.secondary' sx={{ mb: 1 }}>
+                        Paliers de prix (lecture seule) :
+                      </Typography>
+                      {(produitSelectionne?.paliers || []).length === 0 ? (
+                        <Typography variant='body2' color='text.secondary'>
+                          —
+                        </Typography>
+                      ) : (
+                        (produitSelectionne?.paliers || []).map(palier => (
+                          <Typography key={palier.id_palier} variant='body2'>
+                            dès {palier.quantite_min} pièces :{' '}
+                            {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
+                          </Typography>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                  <Card sx={{ ...sxCarteSection, height: '100%', mt: 6 }}>
                     <CardHeader title='Historique des prix' />
                     <CardContent>
                       <TableContainer>
                         <Table size='small'>
                           <TableHead>
-                            <TableRow>
-                              <TableCell>Ancien prix</TableCell>
-                              <TableCell>Nouveau prix</TableCell>
-                              <TableCell>Début</TableCell>
-                              <TableCell>Fin</TableCell>
+                            <TableRow sx={sxEnteteTableau}>
+                              <TableCell align='right' sx={sxCelluleEnteteTableau}>
+                                Ancien prix
+                              </TableCell>
+                              <TableCell align='right' sx={sxCelluleEnteteTableau}>
+                                Nouveau prix
+                              </TableCell>
+                              <TableCell sx={sxCelluleEnteteTableau}>Début</TableCell>
+                              <TableCell sx={sxCelluleEnteteTableau}>Fin</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {historique.length === 0 ? (
                               <TableRow>
                                 <TableCell colSpan={4} align='center'>
-                                  Aucun historique de prix.
+                                  <Typography color='text.secondary'>Aucun historique de prix.</Typography>
                                 </TableCell>
                               </TableRow>
                             ) : (
                               historique.map(ligne => (
                                 <TableRow key={ligne.id_historique}>
-                                  <TableCell>
+                                  <TableCell align='right'>
                                     {ligne.ancien_prix != null
                                       ? `${Number(ligne.ancien_prix).toLocaleString('fr-FR')} DZD`
                                       : '—'}
                                   </TableCell>
-                                  <TableCell>
+                                  <TableCell align='right'>
                                     {ligne.nouveau_prix != null
                                       ? `${Number(ligne.nouveau_prix).toLocaleString('fr-FR')} DZD`
                                       : '—'}
                                   </TableCell>
-                                  <TableCell>{formaterDate(ligne.date_debut)}</TableCell>
-                                  <TableCell>{formaterDate(ligne.date_fin)}</TableCell>
+                                  <TableCell sx={{ color: 'text.secondary' }}>
+                                    {formaterDate(ligne.date_debut)}
+                                  </TableCell>
+                                  <TableCell sx={{ color: 'text.secondary' }}>
+                                    {formaterDate(ligne.date_fin)}
+                                  </TableCell>
                                 </TableRow>
                               ))
                             )}
@@ -926,148 +1428,243 @@ const ProduitsEcommerceView = () => {
                   <Card sx={sxCarteSection}>
                     <CardHeader
                       title='Images'
-                      subheader="L'image « Principale » sert de vignette en boutique. Glissez-déposez pour réordonner, ou utilisez les flèches. Nom de fichier vide : généré automatiquement."
-                      action={<Chip label={`${imagesTriees.length}/${NB_IMAGES_MAX}`} size='small' />}
+                      subheader='L’image nº 1 sert de vignette en boutique.'
+                      action={<Chip label={`${nbImagesTotal}/${NB_IMAGES_MAX}`} size='small' />}
                     />
                     <CardContent>
                       <Grid container spacing={3}>
-                        {imagesTriees.map((image, index) => (
-                          <Grid
-                            item
-                            key={image.id_img}
-                            xs={6}
-                            sm={4}
-                            md={3}
-                            draggable
-                            onDragStart={event => event.dataTransfer.setData('text/plain', String(index))}
-                            onDragOver={event => event.preventDefault()}
-                            onDrop={event => {
-                              event.preventDefault()
-                              const source = parseInt(event.dataTransfer.getData('text/plain'), 10)
-                              if (!isNaN(source)) replacerImageParGlisser(produitSelectionne, source, index)
-                            }}
-                          >
-                            <Box
-                              sx={{
-                                position: 'relative',
-                                borderRadius: 3,
-                                overflow: 'hidden',
-                                border: image.est_principale ? '2px solid' : '1px solid',
-                                borderColor: image.est_principale ? 'primary.main' : 'divider'
+                        {tuiles.map((tuile, index) => {
+                          const estPrincipaleServeur =
+                            tuile.type === 'serveur' && tuile.image.est_principale
+                          const estPremiere = index === 0
+                          const src = tuile.type === 'serveur' ? tuile.image.url_image : tuile.image.urlApercu
+                          const rotation = tuile.type === 'locale' ? tuile.image.rotation : 0
+
+                          const cle =
+                            tuile.type === 'serveur' ? `srv-${tuile.image.id_img}` : `loc-${tuile.image.idLocal}`
+                          
+return (
+                            <Grid
+                              item
+                              key={cle}
+                              xs={6}
+                              sm={4}
+                              md={3}
+                              draggable
+                              onDragStart={event => event.dataTransfer.setData('text/plain', String(index))}
+                              onDragOver={event => {
+                                event.preventDefault()
+                                setIndexSurvole(index)
                               }}
+                              onDragLeave={() => setIndexSurvole(null)}
+                              onDrop={event => {
+                                event.preventDefault()
+                                const source = parseInt(event.dataTransfer.getData('text/plain'), 10)
+                                if (!isNaN(source)) deplacerTuileParGlisser(source, index)
+                              }}
+                              sx={
+                                indexSurvole === index
+                                  ? { outline: '2px solid', outlineColor: 'primary.main', borderRadius: 3 }
+                                  : undefined
+                              }
                             >
                               <Box
-                                component='img'
-                                src={image.url_image}
-                                alt={`Image ${index + 1} de ${produitSelectionne?.designation_prd}`}
-                                sx={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
-                              />
-                              {image.est_principale && (
-                                <Chip
-                                  label='Principale'
-                                  color='primary'
-                                  size='small'
-                                  sx={{ position: 'absolute', top: 8, left: 8 }}
-                                />
-                              )}
-                              <Box
                                 sx={{
-                                  position: 'absolute',
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  display: 'flex',
-                                  justifyContent: 'center',
-                                  gap: 1,
-                                  py: 1,
-                                  backgroundColor: 'rgba(0,0,0,0.45)'
+                                  position: 'relative',
+                                  borderRadius: 3,
+                                  overflow: 'hidden',
+                                  border: estPrincipaleServeur ? '2px solid' : '1px solid',
+                                  borderColor: estPrincipaleServeur ? 'primary.main' : 'divider',
+                                  opacity: indexSurvole === index ? 0.6 : 1
                                 }}
                               >
-                                <Tooltip title='Déplacer à gauche'>
-                                  <span>
-                                    <IconButton
+                                <Box
+                                  component='img'
+                                  src={src}
+                                  alt={`Image ${index + 1} de ${produitSelectionne?.designation_prd}`}
+                                  sx={{
+                                    width: '100%',
+                                    aspectRatio: '1 / 1',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                    transform: rotation ? `rotate(${rotation}deg)` : 'none'
+                                  }}
+                                />
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    top: 8,
+                                    left: 8,
+                                    minWidth: 24,
+                                    height: 24,
+                                    px: 1,
+                                    borderRadius: '50%',
+                                    backgroundColor: 'primary.main',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  {index + 1}
+                                </Box>
+                                {estPrincipaleServeur && (
+                                  <>
+                                    <Chip
+                                      label='Principale'
+                                      color='primary'
                                       size='small'
-                                      sx={{ color: 'white' }}
-                                      aria-label={`Déplacer l'image ${index + 1} à gauche`}
-                                      disabled={index === 0 || deplacementEnCours}
-                                      onClick={() => deplacerImage(produitSelectionne, index, -1)}
+                                      sx={{ position: 'absolute', top: 8, left: 40 }}
+                                    />
+                                    <Box
+                                      sx={{
+                                        position: 'absolute',
+                                        top: 8,
+                                        right: 8,
+                                        width: 24,
+                                        height: 24,
+                                        borderRadius: '50%',
+                                        backgroundColor: 'primary.main',
+                                        color: 'white',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                      }}
                                     >
-                                      <Icon icon='tabler:arrow-left' />
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                                {!image.est_principale && (
-                                  <Tooltip title='Définir comme principale'>
+                                      <Icon icon='tabler:check' fontSize='1rem' />
+                                    </Box>
+                                  </>
+                                )}
+                                {tuile.type === 'locale' && (
+                                  <Chip
+                                    label='À téléverser'
+                                    color='warning'
+                                    size='small'
+                                    sx={{ position: 'absolute', top: 8, right: 8 }}
+                                  />
+                                )}
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    gap: 1,
+                                    py: 1,
+                                    backgroundColor: 'rgba(0,0,0,0.45)'
+                                  }}
+                                >
+                                  {tuile.type === 'serveur' && !tuile.image.est_principale && (
+                                    <Tooltip title='Définir comme principale'>
+                                      <IconButton
+                                        size='small'
+                                        sx={{ color: 'white' }}
+                                        aria-label={`Définir l'image ${index + 1} comme principale`}
+                                        onClick={async () => {
+                                          if (
+                                            await definirImagePrincipale(
+                                              produitSelectionne.id_prd,
+                                              tuile.image.id_img
+                                            )
+                                          ) {
+                                            await rafraichirDetail(produitSelectionne.id_prd)
+                                          }
+                                        }}
+                                      >
+                                        <Icon icon='tabler:star' />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                  {tuile.type === 'serveur' ? (
+                                    <Tooltip title='Pivoter 90° à droite'>
+                                      <IconButton
+                                        size='small'
+                                        sx={{ color: 'white' }}
+                                        aria-label={`Pivoter l'image ${index + 1} de 90 degrés`}
+                                        onClick={async () => {
+                                          if (await pivoterImage(produitSelectionne.id_prd, tuile.image.id_img)) {
+                                            await rafraichirDetail(produitSelectionne.id_prd)
+                                          }
+                                        }}
+                                      >
+                                        <Icon icon='tabler:rotate-clockwise' />
+                                      </IconButton>
+                                    </Tooltip>
+                                  ) : (
+                                    <Tooltip title='Pivoter 90° à droite'>
+                                      <IconButton
+                                        size='small'
+                                        sx={{ color: 'white' }}
+                                        aria-label={`Pivoter l'image ${index + 1} de 90 degrés`}
+                                        onClick={() => pivoterImageLocale(tuile.image)}
+                                      >
+                                        <Icon icon='tabler:rotate-clockwise' />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                  <Tooltip title='Supprimer'>
                                     <IconButton
                                       size='small'
-                                      sx={{ color: 'white' }}
-                                      aria-label={`Définir l'image ${index + 1} comme principale`}
+                                      sx={{ color: 'error.main' }}
+                                      aria-label={`Supprimer l'image ${index + 1}`}
                                       onClick={async () => {
-                                        if (
-                                          await definirImagePrincipale(produitSelectionne.id_prd, image.id_img)
-                                        ) {
+                                        if (tuile.type === 'locale') {
+                                          retirerImageLocale(tuile.image)
+                                          
+return
+                                        }
+
+                                        const resultat = await supprimerImage(
+                                          produitSelectionne.id_prd,
+                                          tuile.image.id_img
+                                        )
+                                        if (resultat) {
                                           await rafraichirDetail(produitSelectionne.id_prd)
+                                          if (resultat.depublication_auto) {
+                                            setAlerteDepublication(resultat.depublication_auto.manquants)
+                                            await chargerListe()
+                                          }
                                         }
                                       }}
                                     >
-                                      <Icon icon='tabler:star' />
+                                      <Icon icon='tabler:trash' />
                                     </IconButton>
                                   </Tooltip>
-                                )}
-                                <Tooltip title='Pivoter 90° à droite'>
-                                  <IconButton
-                                    size='small'
-                                    sx={{ color: 'white' }}
-                                    aria-label={`Pivoter l'image ${index + 1} de 90 degrés`}
-                                    onClick={async () => {
-                                      if (await pivoterImage(produitSelectionne.id_prd, image.id_img)) {
-                                        await rafraichirDetail(produitSelectionne.id_prd)
-                                      }
-                                    }}
-                                  >
-                                    <Icon icon='tabler:rotate-clockwise' />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title='Supprimer'>
-                                  <IconButton
-                                    size='small'
-                                    sx={{ color: 'error.main' }}
-                                    aria-label={`Supprimer l'image ${index + 1}`}
-                                    onClick={async () => {
-                                      const resultat = await supprimerImage(
-                                        produitSelectionne.id_prd,
-                                        image.id_img
-                                      )
-                                      if (resultat) {
-                                        await rafraichirDetail(produitSelectionne.id_prd)
-                                        if (resultat.depublication_auto) {
-                                          setAlerteDepublication(resultat.depublication_auto.manquants)
-                                          await chargerListe()
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    <Icon icon='tabler:trash' />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title='Déplacer à droite'>
-                                  <span>
-                                    <IconButton
-                                      size='small'
-                                      sx={{ color: 'white' }}
-                                      aria-label={`Déplacer l'image ${index + 1} à droite`}
-                                      disabled={index === imagesTriees.length - 1 || deplacementEnCours}
-                                      onClick={() => deplacerImage(produitSelectionne, index, 1)}
-                                    >
-                                      <Icon icon='tabler:arrow-right' />
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
+                                </Box>
                               </Box>
-                            </Box>
-                          </Grid>
-                        ))}
-                        {imagesTriees.length === 0 && (
+                              {tuile.type === 'locale' && (
+                                <TextField
+                                  fullWidth
+                                  size='small'
+                                  label='Nom du fichier'
+                                  placeholder='Vide : généré automatiquement'
+                                  autoComplete='off'
+                                  value={tuile.image.nom}
+                                  onChange={e =>
+                                    setImagesLocales(prev =>
+                                      prev.map(image =>
+                                        image.idLocal === tuile.image.idLocal
+                                          ? { ...image, nom: e.target.value }
+                                          : image
+                                      )
+                                    )
+                                  }
+                                  sx={{ mt: 1 }}
+                                />
+                              )}
+                              {tuile.type === 'serveur' && estPremiere && (
+                                <Typography variant='caption' color='text.secondary' sx={{ mt: 1, display: 'block' }}>
+                                  Vignette en boutique
+                                </Typography>
+                              )}
+                            </Grid>
+                          )
+                        })}
+                        {tuiles.length === 0 && (
                           <Grid item xs={12}>
                             <Typography color='text.secondary'>
                               Aucune image. La publication exige au moins 2 images.
@@ -1078,9 +1675,9 @@ const ProduitsEcommerceView = () => {
                       <Box
                         sx={{
                           border: '2px dashed',
-                          borderColor: fichierImage ? 'primary.main' : 'divider',
+                          borderColor: 'divider',
                           borderRadius: 3,
-                          p: 4,
+                          p: 2,
                           textAlign: 'center',
                           cursor: 'pointer',
                           mt: 6
@@ -1089,58 +1686,45 @@ const ProduitsEcommerceView = () => {
                         onDragOver={event => event.preventDefault()}
                         onDrop={event => {
                           event.preventDefault()
-                          const fichier = event.dataTransfer.files?.[0]
-                          if (fichier) setFichierImage(fichier)
+                          ajouterFichiersImages(event.dataTransfer.files)
                         }}
                       >
                         <input
                           ref={refFichierImage}
                           type='file'
                           accept='image/jpeg,image/png,image/webp'
+                          multiple
                           hidden
-                          onChange={e => setFichierImage(e.target.files?.[0] || null)}
+                          onChange={e => {
+                            ajouterFichiersImages(e.target.files)
+                            e.target.value = ''
+                          }}
                         />
-                        <Icon icon='tabler:cloud-upload' fontSize='2rem' />
-                        <Typography variant='body2' sx={{ mt: 1 }}>
-                          Glissez un fichier ici ou cliquez pour parcourir (JPEG, PNG, WebP — max 5 Mo)
-                        </Typography>
-                        {fichierImage && (
-                          <Typography variant='body2' sx={{ mt: 2, fontWeight: 600 }}>
-                            {fichierImage.name} — {(fichierImage.size / 1024).toFixed(0)} Ko
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                          <Icon icon='tabler:cloud-upload' fontSize='1.5rem' />
+                          <Typography variant='body2'>
+                            Glissez vos images ici ou cliquez pour parcourir (JPEG, PNG, WebP — max 5 Mo)
+                          </Typography>
+                        </Box>
+                        {imagesLocales.length > 0 && (
+                          <Typography variant='body2' color='warning.main' sx={{ mt: 1 }}>
+                            {imagesLocales.length} image{imagesLocales.length > 1 ? 's' : ''} en attente :
+                            téléversée{imagesLocales.length > 1 ? 's' : ''} au clic sur Enregistrer. Fermer le modal
+                            sans enregistrer les perd.
+                          </Typography>
+                        )}
+                        {messageDepot && (
+                          <Typography variant='body2' color='error.main' sx={{ mt: 1 }}>
+                            {messageDepot}
                           </Typography>
                         )}
                       </Box>
-                      <Grid container spacing={6} sx={{ mt: 2 }}>
-                        <Grid item xs={12} md={8}>
-                          <TextField
-                            fullWidth
-                            label='Nom du fichier (optionnel, format SEO)'
-                            autoComplete='off'
-                            value={nomImageSeo}
-                            onChange={e => setNomImageSeo(e.target.value)}
-                          />
-                        </Grid>
-                        <Grid item xs={12} md={4}>
-                          <Button
-                            variant='contained'
-                            fullWidth
-                            sx={{ mt: 1 }}
-                            disabled={!fichierImage || televersementEnCours || imagesTriees.length >= NB_IMAGES_MAX}
-                            onClick={televerserFichierImage}
-                          >
-                            {televersementEnCours
-                              ? 'Téléversement…'
-                              : imagesTriees.length >= NB_IMAGES_MAX
-                                ? 'Maximum atteint'
-                                : 'Téléverser'}
-                          </Button>
-                        </Grid>
-                      </Grid>
                     </CardContent>
                   </Card>
                 </Grid>
               </>
             )}
+
           </Grid>
         </DialogContent>
         <DialogActions
@@ -1152,33 +1736,29 @@ const ProduitsEcommerceView = () => {
             borderColor: 'divider'
           }}
         >
-          <Button onClick={() => setProduitSelectionne(null)}>Annuler</Button>
-          <Button
-            variant='contained'
-            onClick={enregistrerTout}
-            disabled={enregistrementEnCours || televersementEnCours}
-          >
+          <Button onClick={fermerDetail}>Annuler</Button>
+          <Button variant='contained' onClick={enregistrerTout} disabled={enregistrementEnCours}>
             Enregistrer
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(publicationEnAttente)} onClose={() => setPublicationEnAttente(null)}>
-        <DialogTitle>{aPublier ? 'Publier ce produit ?' : 'Dépublier ce produit ?'}</DialogTitle>
-        <DialogContent>
+      <ConfirmDialog
+        open={Boolean(publicationEnAttente)}
+        handleClose={() => setPublicationEnAttente(null)}
+        handleConfirm={basculerPublication}
+        actionType={aPublier ? 'info' : 'warning'}
+        title={aPublier ? 'Publier ce produit ?' : 'Dépublier ce produit ?'}
+        confirmText={aPublier ? 'Publier' : 'Dépublier'}
+        loading={publicationEnCours}
+        content={
           <Typography>
             {aPublier
-              ? `« ${publicationEnAttente?.designation_prd} » sera visible sur la boutique en ligne. La publication exige une description, une famille, un slug, un prix de vente et au moins 2 images.`
-              : `« ${publicationEnAttente?.designation_prd} » ne sera plus visible sur la boutique en ligne.`}
+              ? `« ${publicationEnAttente?.designation_prd} » sera visible sur la boutique en ligne. La publication exige : intitulé, description, famille, slug, prix de vente et au moins 2 images.`
+              : `« ${publicationEnAttente?.designation_prd} » sera retiré de la boutique. Il restera visible dans le tableau des produits, avec le statut BROUILLON.`}
           </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPublicationEnAttente(null)}>Annuler</Button>
-          <Button variant='contained' color={aPublier ? 'success' : 'warning'} onClick={basculerPublication}>
-            {aPublier ? 'Publier' : 'Dépublier'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        }
+      />
     </Grid>
   )
 }

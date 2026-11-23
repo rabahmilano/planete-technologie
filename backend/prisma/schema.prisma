@@ -74,7 +74,10 @@ model produit {
   description        String?  @db.Text
   description_ar     String?  @db.Text
   prix_vente         Decimal? @db.Decimal(10, 2)
-  poids_grammes      Int?     @default(500)
+  poids_grammes      Int?
+  longueur_cm        Int?
+  largeur_cm         Int?
+  hauteur_cm         Int?
   statut_publication String   @default("BROUILLON")
   est_mis_en_avant   Boolean  @default(false)
   famille_id         Int?

@@ -3,6 +3,7 @@ import axios from 'src/configs/axiosConfig'
 import toast from 'react-hot-toast'
 
 const ProduitEcommerceContext = createContext()
+
 export const useProduitEcommerce = () => useContext(ProduitEcommerceContext)
 
 const messageErreur = error =>
@@ -19,51 +20,60 @@ const erreurValidation = error => {
 }
 
 export const ProduitEcommerceProvider = ({ children }) => {
-  const fetchProduitEcommerce = useCallback(async id => {
+  const fetchProduitEcommerce = useCallback(async (id, avecAideDecision = false) => {
     try {
-      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/ecommerce`)
-      return data
+      const suffixe = avecAideDecision ? '?aide_decision=1' : ''
+      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/ecommerce${suffixe}`)
+      
+return data
     } catch (error) {
       toast.error(messageErreur(error))
-      return null
+      
+return null
     }
   }, [])
 
-  const modifierProduitEcommerce = async (id, data) => {
+  const modifierProduitEcommerce = async (id, data, options = {}) => {
     try {
       const { data: produit } = await axios.patch(
         `${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/ecommerce`,
         data
       )
-      toast.success('Produit mis à jour')
-      return produit
+      if (!options.silencieux) toast.success('Produit mis à jour')
+      
+return produit
     } catch (error) {
       erreurValidation(error)
-      return null
+      
+return null
     }
   }
 
-  const modifierPrix = async (id, data) => {
+  const modifierPrix = async (id, data, options = {}) => {
     try {
       const { data: produit } = await axios.patch(
         `${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/prix`,
         data
       )
-      toast.success('Prix mis à jour')
-      return produit
+      if (!options.silencieux) toast.success('Prix mis à jour')
+      
+return produit
     } catch (error) {
       erreurValidation(error)
-      return null
+      
+return null
     }
   }
 
   const fetchHistoriquePrix = useCallback(async id => {
     try {
       const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/historique-prix`)
-      return Array.isArray(data) ? data : []
+      
+return Array.isArray(data) ? data : []
     } catch (error) {
       toast.error(messageErreur(error))
-      return []
+      
+return []
     }
   }, [])
 
@@ -71,36 +81,42 @@ export const ProduitEcommerceProvider = ({ children }) => {
     try {
       await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images`, data)
       toast.success('Image ajoutée')
-      return true
+      
+return true
     } catch (error) {
       erreurValidation(error)
-      return false
+      
+return false
     }
   }
 
-  const uploaderImage = async (id, fichier, ordre_image = 0, nom_image = '') => {
+  const uploaderImage = async (id, fichier, ordre_image = 0, nom_image = '', options = {}) => {
     try {
       const donnees = new FormData()
       donnees.append('image', fichier)
       donnees.append('ordre_image', String(ordre_image))
       if (nom_image.trim()) donnees.append('nom_image', nom_image.trim())
       await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/upload`, donnees)
-      toast.success('Image téléversée')
-      return true
+      if (!options.silencieux) toast.success('Image téléversée')
+      
+return true
     } catch (error) {
-      erreurValidation(error)
-      return false
+      if (!options.silencieux) erreurValidation(error)
+      
+return false
     }
   }
 
-  const reordonnerImages = async (id, ordre) => {
+  const reordonnerImages = async (id, ordre, options = {}) => {
     try {
       await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/ordre`, { ordre })
-      toast.success('Ordre des images mis à jour')
-      return true
+      if (!options.silencieux) toast.success('Ordre des images mis à jour')
+      
+return true
     } catch (error) {
-      erreurValidation(error)
-      return false
+      if (!options.silencieux) erreurValidation(error)
+      
+return false
     }
   }
 
@@ -108,10 +124,12 @@ export const ProduitEcommerceProvider = ({ children }) => {
     try {
       await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/${idImage}/rotation`)
       toast.success('Image pivotée')
-      return true
+      
+return true
     } catch (error) {
       toast.error(messageErreur(error))
-      return false
+      
+return false
     }
   }
 
@@ -119,21 +137,25 @@ export const ProduitEcommerceProvider = ({ children }) => {
     try {
       const { data } = await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/${idImage}`)
       toast.success('Image supprimée')
-      return data
+      
+return data
     } catch (error) {
       toast.error(messageErreur(error))
-      return false
+      
+return false
     }
   }
 
-  const definirImagePrincipale = async (id, idImage) => {
+  const definirImagePrincipale = async (id, idImage, options = {}) => {
     try {
       await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/images/${idImage}/principale`)
-      toast.success('Image principale définie')
-      return true
+      if (!options.silencieux) toast.success('Image principale définie')
+      
+return true
     } catch (error) {
-      toast.error(messageErreur(error))
-      return false
+      if (!options.silencieux) toast.error(messageErreur(error))
+      
+return false
     }
   }
 
@@ -141,10 +163,12 @@ export const ProduitEcommerceProvider = ({ children }) => {
     try {
       await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/paliers`, data)
       toast.success('Palier ajouté')
-      return true
+      
+return true
     } catch (error) {
       erreurValidation(error)
-      return false
+      
+return false
     }
   }
 
@@ -152,10 +176,12 @@ export const ProduitEcommerceProvider = ({ children }) => {
     try {
       await axios.patch(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/paliers/${idPalier}`, data)
       toast.success('Palier modifié')
-      return true
+      
+return true
     } catch (error) {
       erreurValidation(error)
-      return false
+      
+return false
     }
   }
 
@@ -163,10 +189,12 @@ export const ProduitEcommerceProvider = ({ children }) => {
     try {
       await axios.delete(`${process.env.NEXT_PUBLIC_BASE_URL}produits/${id}/paliers/${idPalier}`)
       toast.success('Palier supprimé')
-      return true
+      
+return true
     } catch (error) {
       toast.error(messageErreur(error))
-      return false
+      
+return false
     }
   }
 
