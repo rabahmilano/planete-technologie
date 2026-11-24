@@ -37,6 +37,28 @@ export const arrondir = (nombre) => {
   return Math.round((nombre + Number.EPSILON) * 10000) / 10000;
 };
 
+// Poids par défaut (grammes) appliqué quand un produit n'a pas de poids
+// renseigné. Une seule source de vérité, modifiable sans toucher au code :
+// YALIDINE_DEFAULT_WEIGHT_GRAMS dans backend/.env (défaut 200 —
+// décision RABAH 24/11/2026 : 500 g trop lourd pour les produits vendus,
+// le poids est souvent absent des emballages). Valeur invalide (absente,
+// non numérique, <= 0) → 200.
+export const getPoidsDefautGrammes = () => {
+  const lu = parseInt(process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS, 10);
+  return Number.isFinite(lu) && lu > 0 ? lu : 200;
+};
+
+// Poids réellement utilisé pour un produit : son poids, ou le défaut.
+export const poidsEffectifGrammes = (poidsGrammes) =>
+  poidsGrammes === null || poidsGrammes === undefined
+    ? getPoidsDefautGrammes()
+    : poidsGrammes;
+
+// Vrai quand le poids appliqué est le défaut (poids estimé, à signaler —
+// jamais appliqué en silence).
+export const estPoidsEstime = (poidsGrammes) =>
+  poidsGrammes === null || poidsGrammes === undefined;
+
 // Poids volumétrique Yalidine (kg) : L × l × h (cm) / 5000. null si une
 // dimension manque (poids volumétrique non calculable).
 export const calculerPoidsVolumetriqueKg = (
@@ -49,21 +71,21 @@ export const calculerPoidsVolumetriqueKg = (
 };
 
 // Poids facturé Yalidine (kg) = max(poids réel, poids volumétrique).
-// Renvoie null si le poids réel est null : AUCUN repli en dur — l'appelant
-// doit bloquer avec une erreur explicite (poids manquant).
+// Poids null → poids par défaut (200 g, modifiable via
+// YALIDINE_DEFAULT_WEIGHT_GRAMS) : l'appelant signale le défaut
+// (estPoidsEstime), il n'est jamais appliqué en silence.
 export const calculerPoidsFactureKg = (
   poidsGrammes,
   longueurCm,
   largeurCm,
   hauteurCm,
 ) => {
-  if (poidsGrammes === null || poidsGrammes === undefined) return null;
   const volumetriqueKg = calculerPoidsVolumetriqueKg(
     longueurCm,
     largeurCm,
     hauteurCm,
   );
-  const reelKg = poidsGrammes / 1000;
+  const reelKg = poidsEffectifGrammes(poidsGrammes) / 1000;
   return volumetriqueKg === null ? reelKg : Math.max(reelKg, volumetriqueKg);
 };
 

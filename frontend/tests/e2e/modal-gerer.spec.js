@@ -243,4 +243,64 @@ test.describe('modal Gérer — 11 points', () => {
     await expect(page.getByText('Produit retiré de la boutique')).toBeVisible()
     await expect(ligne2.getByText('BROUILLON')).toBeVisible()
   })
+
+  test('poids vide : hint « 200 g par défaut » et poids facturé 0,2 kg', async ({ page }) => {
+    db(
+      `UPDATE produit SET poids_grammes = NULL, longueur_cm = NULL, largeur_cm = NULL, hauteur_cm = NULL WHERE id_prd = ${produit.id}`
+    )
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      await expect(modal.getByLabel('Poids (grammes)')).toHaveValue('')
+      await expect(modal.getByText('Vide : 200 g par défaut')).toBeVisible()
+      await expect(modal.getByText(/Poids volumétrique : — — Poids facturé : 0,2 kg/)).toBeVisible()
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      db(`UPDATE produit SET poids_grammes = 6000 WHERE id_prd = ${produit.id}`)
+    }
+  })
+
+  test('commande boutique sans poids : acceptée, poids estimé signalé', async ({ page, request }) => {
+    // Produit complet (slug, prix, stock) sans poids, publié pour la boutique.
+    const slug = db(`SELECT slug_prd FROM produit WHERE id_prd = ${produit.id}`)
+    db(
+      `UPDATE produit SET poids_grammes = NULL, intitule_publication = 'Intitulé E2E poids défaut', statut_publication = 'PUBLIE' WHERE id_prd = ${produit.id}`
+    )
+    const token = jwt.sign({ id: adminId, role: 'ADMIN' }, secret('JWT_SECRET'), { expiresIn: '15m' })
+    try {
+      const reponse = await request.post('http://localhost:3001/api/public/commandes', {
+        data: {
+          nom_client: 'Client Test E2E',
+          telephone: '0550123456',
+          wilaya: 'Tizi Ouzou',
+          code_wilaya: 15,
+          commune: 'Tizi Ouzou',
+          adresse_exacte: 'Rue test',
+          type_livraison: 'DOMICILE',
+          lignes: [{ slug, quantite: 1 }]
+        }
+      })
+      expect(reponse.status()).toBe(201)
+      const corps = await reponse.json()
+      expect(corps.poids_estime).toBe(true)
+      expect(corps.poids_defaut_grammes).toBe(200)
+      // Annulation : libère le stock réservé (qte_reservee).
+      const annulation = await request.patch(
+        `http://localhost:3001/api/commandes-web/${corps.id_cmd_web}/annuler`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      expect(annulation.status()).toBe(200)
+    } finally {
+      db(
+        `UPDATE produit SET statut_publication = 'BROUILLON', intitule_publication = NULL, poids_grammes = 6000 WHERE id_prd = ${produit.id}`
+      )
+    }
+  })
 })

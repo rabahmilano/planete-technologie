@@ -1,5 +1,9 @@
 import { nomWilaya } from "./wilayas.js";
-import { calculerPoidsFactureKg } from "./utils.js";
+import {
+  calculerPoidsFactureKg,
+  estPoidsEstime,
+  getPoidsDefautGrammes,
+} from "./utils.js";
 
 const BASE_URL = (
   process.env.YALIDINE_API_URL || "https://api.yalidine.app/v1"
@@ -477,17 +481,13 @@ export const creerColisDepuisCommande = async (commande, lignes) => {
   if (!origine) {
     throw new ErreurYalidine("Wilaya d'origine Yalidine non configurée.");
   }
-  // Poids : AUCUN repli en dur. Un produit sans poids bloque la création
-  // du colis avec une erreur explicite à l'admin (décision coordinateur
-  // 23/11/2026) — jamais de colis créé avec un poids inventé.
-  for (const ligne of lignes || []) {
-    if (ligne.poids_grammes === null || ligne.poids_grammes === undefined) {
-      throw new ErreurYalidine(
-        `Poids manquant pour le produit « ${ligne.designation_facturee || "sans désignation"} » : renseignez le poids avant de créer le colis.`,
-        "POIDS_MANQUANT",
-      );
-    }
-  }
+  // Poids : un produit sans poids renseigné utilise le poids par défaut
+  // (200 g, modifiable via YALIDINE_DEFAULT_WEIGHT_GRAMS — décision
+  // RABAH 24/11/2026 : le poids est souvent absent des emballages).
+  // Le défaut est signalé dans la réponse (poids_estime), jamais silencieux.
+  const poidsEstime = (lignes || []).some((ligne) =>
+    estPoidsEstime(ligne.poids_grammes),
+  );
   // Poids facturé total (kg) = Σ max(poids réel, poids volumétrique) × quantité.
   const poidsFactureKg = (lignes || []).reduce(
     (total, ligne) =>
@@ -545,5 +545,10 @@ export const creerColisDepuisCommande = async (commande, lignes) => {
   ) {
     colis.stopdesk_id = parseInt(commande.bureau_livraison, 10);
   }
-  return creerColis(colis);
+  const resultat = await creerColis(colis);
+  return {
+    ...resultat,
+    poids_estime: poidsEstime,
+    poids_defaut_grammes: poidsEstime ? getPoidsDefautGrammes() : null,
+  };
 };

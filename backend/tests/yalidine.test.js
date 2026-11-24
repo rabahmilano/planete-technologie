@@ -315,16 +315,43 @@ describe('creerColisDepuisCommande — poids facturé et dimensions', () => {
     type_livraison: 'DOMICILE',
   };
 
-  it('poids null : bloque sans appeler Yalidine, erreur explicite en français', async () => {
-    await expect(
-      yalidine.creerColisDepuisCommande(commande, [
+  it('poids null : poids par défaut (200 g) appliqué, appel Yalidine autorisé, défaut signalé', async () => {
+    global.fetch.mockResolvedValueOnce(
+      reponseMock({ corps: { 'PT-1': { success: true, tracking: 'yal-TEST', label: null } } }),
+    );
+
+    const resultat = await yalidine.creerColisDepuisCommande(commande, [
+      { designation_facturee: 'Chargeur test', quantite: 1, poids_grammes: null },
+    ]);
+
+    expect(resultat.tracking).toBe('yal-TEST');
+    expect(resultat.poids_estime).toBe(true);
+    expect(resultat.poids_defaut_grammes).toBe(200);
+    const envoye = JSON.parse(global.fetch.mock.calls[0][1].body)[0];
+    // Défaut 200 g → 0,2 kg, arrondi au kg supérieur par l'API.
+    expect(envoye.weight).toBe(1);
+  });
+
+  it('poids null + défaut personnalisé via env (300 g) : défaut appliqué et signalé', async () => {
+    const sauvegarde = process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS;
+    process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS = '300';
+    try {
+      global.fetch.mockResolvedValueOnce(
+        reponseMock({ corps: { 'PT-1': { success: true, tracking: 'yal-TEST', label: null } } }),
+      );
+
+      const resultat = await yalidine.creerColisDepuisCommande(commande, [
         { designation_facturee: 'Chargeur test', quantite: 1, poids_grammes: null },
-      ]),
-    ).rejects.toMatchObject({
-      code: 'POIDS_MANQUANT',
-      message: expect.stringContaining('Poids manquant pour le produit'),
-    });
-    expect(global.fetch).not.toHaveBeenCalled();
+      ]);
+
+      expect(resultat.poids_estime).toBe(true);
+      expect(resultat.poids_defaut_grammes).toBe(300);
+      const envoye = JSON.parse(global.fetch.mock.calls[0][1].body)[0];
+      expect(envoye.weight).toBe(1);
+    } finally {
+      if (sauvegarde === undefined) delete process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS;
+      else process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS = sauvegarde;
+    }
   });
 
   it('poids volumétrique > poids réel : weight = volumétrique, vraies dimensions envoyées', async () => {

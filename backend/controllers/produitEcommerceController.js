@@ -10,6 +10,7 @@ import {
   getMaxValue,
   genererSlug,
   getPrixEffectifProduit,
+  getPoidsDefautGrammes,
 } from "../config/utils.js";
 import {
   chargerContextePromotions,
@@ -135,6 +136,9 @@ export const getProduitEcommerce = async (req, res) => {
       ...produit,
       prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1, gagnante),
       promo_active: gagnante !== null,
+      // Poids par défaut (g) appliqué quand le produit n'a pas de poids
+      // renseigné — le modal Gérer l'affiche dans le hint du champ poids.
+      poids_defaut_grammes: getPoidsDefautGrammes(),
       promotion_active: gagnante
         ? {
             id_promotion: gagnante.promotion.id_promotion,
