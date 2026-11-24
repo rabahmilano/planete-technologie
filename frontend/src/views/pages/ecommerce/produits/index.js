@@ -1,8 +1,5 @@
-import { forwardRef, useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   AppBar,
   Box,
@@ -19,10 +16,6 @@ import {
   IconButton,
   InputAdornment,
   LinearProgress,
-  List,
-  ListItemButton,
-  ListItemText,
-  Popover,
   Slide,
   Tab,
   Table,
@@ -40,6 +33,8 @@ import {
   FormControlLabel,
   Switch
 } from '@mui/material'
+import { createFilterOptions } from '@mui/material/Autocomplete'
+import CustomAutocomplete from 'src/@core/components/mui/autocomplete'
 import Icon from 'src/@core/components/icon'
 import toast from 'react-hot-toast'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
@@ -53,6 +48,14 @@ const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MESSAGE_FORMAT_SLUG =
   'Format invalide : minuscules a-z, chiffres 0-9 et tirets uniquement, sans accents ni espaces (ex. : chargeur-ugreen-30w)'
 const NB_IMAGES_MAX = 7
+
+// Filtrage des familles : la saisie est comparée au nom du parent ET au
+// nom de la sous-famille (doc officielle MUI v5, `createFilterOptions`,
+// option `stringify`), pour que taper le nom d'un parent montre aussi
+// toutes ses sous-familles.
+const filtreFamilles = createFilterOptions({
+  stringify: option => `${option.groupe} ${option.label}`
+})
 
 const Transition = forwardRef(function Transition(props, ref) {
   return <Slide direction='up' ref={ref} {...props} />
@@ -234,8 +237,6 @@ const ProduitsEcommerceView = () => {
   const [palierEnEdition, setPalierEnEdition] = useState(null)
   const [formPalier, setFormPalier] = useState({ quantite_min: '', prix_unitaire: '' })
   const [aideDecision, setAideDecision] = useState(null)
-  const [ancreFamille, setAncreFamille] = useState(null)
-  const [familleDepliee, setFamilleDepliee] = useState(null)
 
   // Snapshots capturés à l'ouverture : Enregistrer n'appelle que ce qui a changé.
   const initialFormInfos = useRef(null)
@@ -318,7 +319,6 @@ const ProduitsEcommerceView = () => {
     setImagesLocales([])
     setOrdreTuiles([])
     setAideDecision(null)
-    setAncreFamille(null)
     setProduitSelectionne(null)
   }
 
@@ -435,8 +435,9 @@ return ordonnees
   const enregistrerTout = async () => {
     if (!produitSelectionne || enregistrementEnCours) return
 
-    // Tentative d'action : les erreurs de validation s'affichent désormais.
-    setChampsTouches({ intitule: true, slug: true, prix: true })
+    // Enregistrer = sauvegarde brouillon : les erreurs « requis pour
+    // publier » ne s'affichent pas ici (elles vivent dans la checklist et
+    // le bouton Publier). Seule l'erreur de FORMAT du slug bloque.
     const slugSaisi = (formInfos.slug_prd || '').trim()
     if (slugSaisi && !REGEX_SLUG.test(slugSaisi)) {
       setErreurSlug(MESSAGE_FORMAT_SLUG)
@@ -730,25 +731,35 @@ return detail?.statut_publication || produit.statut_publication || 'BROUILLON'
     return lignes
   })()
 
-  // Marge moyenne : vente moyenne − achat moyen TTC, uniquement à partir
-  // des deux valeurs affichées (« — » si l'une manque).
-  const margeMoyenne =
-    aideDecision?.prix_achat_dzd_moyen != null && aideDecision?.prix_vente_moyen != null
-      ? Number(aideDecision.prix_vente_moyen) - Number(aideDecision.prix_achat_dzd_moyen)
-      : null
+  // Options familles pour l'Autocomplete groupé (doc officielle MUI v5,
+  // section « Grouped » : `groupBy`, options triées par groupe pour ne pas
+  // dupliquer les en-têtes). Une option par famille et par sous-famille,
+  // 2 niveaux max ; le parent est sélectionnable comme ses enfants.
+  const optionsFamilles = useMemo(() => {
+    const liste = []
+    familles.forEach(parent => {
+      liste.push({
+        id_famille: parent.id_famille,
+        label: parent.nom_famille,
+        groupe: parent.nom_famille,
+        estParent: true
+      })
+      const enfants = parent.sous_familles || []
+      enfants.forEach(enfant => {
+        liste.push({
+          id_famille: enfant.id_famille,
+          label: enfant.nom_famille,
+          groupe: parent.nom_famille,
+          estParent: false
+        })
+      })
+    })
 
-  // Nom affiché dans le sélecteur famille (parent + sous-familles, 2 niveaux max).
-  const nomFamilleSelectionnee = () => {
-    if (formInfos.famille_id === '' || formInfos.famille_id == null) return 'Aucune'
-    const id = parseInt(formInfos.famille_id, 10)
-    for (const parent of familles) {
-      if (parent.id_famille === id) return parent.nom_famille
-      const enfant = (parent.sous_familles || []).find(f => f.id_famille === id)
-      if (enfant) return `${parent.nom_famille} › ${enfant.nom_famille}`
-    }
-    
-return 'Aucune'
-  }
+    return liste
+  }, [familles])
+
+  const optionFamilleSelectionnee =
+    optionsFamilles.find(option => option.id_famille === parseInt(formInfos.famille_id, 10)) || null
 
   return (
     <Grid container spacing={6}>
@@ -1008,111 +1019,37 @@ return (
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField
-                            fullWidth
-                            label='Famille'
-                            autoComplete='off'
-                            value={nomFamilleSelectionnee()}
-                            InputProps={{
-                              readOnly: true,
-                              endAdornment: (
-                                <InputAdornment position='end'>
-                                  <Icon icon='tabler:chevron-down' />
-                                </InputAdornment>
-                              )
-                            }}
-                            onClick={e => setAncreFamille(e.currentTarget)}
+                          <CustomAutocomplete
+                            data-testid='selecteur-famille'
+                            options={optionsFamilles}
+                            groupBy={option => option.groupe}
+                            getOptionLabel={option => (typeof option === 'string' ? option : option.label)}
+                            isOptionEqualToValue={(option, valeur) => option.id_famille === valeur?.id_famille}
+                            value={optionFamilleSelectionnee}
+                            onChange={(event, nouvelleOption) =>
+                              setFormInfos({
+                                ...formInfos,
+                                famille_id: nouvelleOption ? nouvelleOption.id_famille : ''
+                              })
+                            }
+                            filterOptions={filtreFamilles}
+                            noOptionsText='Aucune famille trouvée'
+                            clearText='Retirer la famille'
+                            renderOption={(props, option) => (
+                              <li {...props}>
+                                <Typography
+                                  variant='body2'
+                                  sx={{
+                                    pl: option.estParent ? 0 : 4,
+                                    fontWeight: option.estParent ? 600 : 400
+                                  }}
+                                >
+                                  {option.label}
+                                </Typography>
+                              </li>
+                            )}
+                            renderInput={params => <TextField {...params} label='Famille' autoComplete='off' />}
                           />
-                          <Popover
-                            open={Boolean(ancreFamille)}
-                            anchorEl={ancreFamille}
-                            onClose={() => setAncreFamille(null)}
-                            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                            PaperProps={{ sx: { width: 360, maxHeight: 480, overflow: 'auto' } }}
-                          >
-                            <List dense>
-                              <ListItemButton
-                                selected={formInfos.famille_id === '' || formInfos.famille_id == null}
-                                onClick={() => {
-                                  setFormInfos({ ...formInfos, famille_id: '' })
-                                  setAncreFamille(null)
-                                }}
-                              >
-                                <ListItemText primary='Aucune' />
-                              </ListItemButton>
-                              {familles.map(parent => {
-                                const enfants = parent.sous_familles || []
-                                if (enfants.length === 0) {
-                                  return (
-                                    <ListItemButton
-                                      key={parent.id_famille}
-                                      selected={parseInt(formInfos.famille_id, 10) === parent.id_famille}
-                                      onClick={() => {
-                                        setFormInfos({ ...formInfos, famille_id: parent.id_famille })
-                                        setAncreFamille(null)
-                                      }}
-                                    >
-                                      <ListItemText primary={parent.nom_famille} />
-                                    </ListItemButton>
-                                  )
-                                }
-                                const deplie = familleDepliee === parent.id_famille
-                                
-return (
-                                  <Accordion
-                                    key={parent.id_famille}
-                                    expanded={deplie}
-                                    onChange={() => setFamilleDepliee(deplie ? null : parent.id_famille)}
-                                    disableGutters
-                                    elevation={0}
-                                    sx={{ '&:before': { display: 'none' } }}
-                                  >
-                                    <AccordionSummary
-                                      expandIcon={<Icon icon='tabler:chevron-down' />}
-                                      sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { my: 1 } }}
-                                    >
-                                      <Typography
-                                        component='button'
-                                        type='button'
-                                        variant='body2'
-                                        onClick={e => {
-                                          e.stopPropagation()
-                                          setFormInfos({ ...formInfos, famille_id: parent.id_famille })
-                                          setAncreFamille(null)
-                                        }}
-                                        sx={{
-                                          background: 'none',
-                                          border: 'none',
-                                          cursor: 'pointer',
-                                          p: 0,
-                                          textAlign: 'left',
-                                          fontWeight:
-                                            parseInt(formInfos.famille_id, 10) === parent.id_famille ? 600 : 400
-                                        }}
-                                      >
-                                        {parent.nom_famille}
-                                      </Typography>
-                                    </AccordionSummary>
-                                    <AccordionDetails sx={{ p: 0, pl: 4 }}>
-                                      {enfants.map(enfant => (
-                                        <ListItemButton
-                                          key={enfant.id_famille}
-                                          selected={parseInt(formInfos.famille_id, 10) === enfant.id_famille}
-                                          onClick={() => {
-                                            setFormInfos({ ...formInfos, famille_id: enfant.id_famille })
-                                            setAncreFamille(null)
-                                          }}
-                                        >
-                                          <ListItemText primary={enfant.nom_famille} />
-                                        </ListItemButton>
-                                      ))}
-                                    </AccordionDetails>
-                                  </Accordion>
-                                )
-                              })}
-                            </List>
-                          </Popover>
                         </Grid>
                         <Grid item xs={12} md={6}>
                           <Grid container spacing={3}>
@@ -1217,17 +1154,23 @@ return (
                           >
                             <Box
                               sx={{
-                                color: condition.manquant ? 'error.main' : 'success.main',
+                                color: condition.manquant ? 'warning.main' : 'success.main',
                                 display: 'flex'
                               }}
                             >
-                              <Icon icon={condition.manquant ? 'tabler:x' : 'tabler:check'} />
+                              <Icon icon={condition.manquant ? 'tabler:circle' : 'tabler:check'} />
                             </Box>
                             <Typography variant='body2'>{condition.libelle}</Typography>
+                            {condition.manquant && (
+                              <Typography variant='body2' color='warning.main' sx={{ ml: 'auto' }}>
+                                À compléter
+                              </Typography>
+                            )}
                           </Box>
                         ))}
                         <Typography variant='body2' color='text.secondary' sx={{ mt: 2 }}>
-                          Si une condition n’est plus remplie, le produit est dépublié automatiquement.
+                          Ces éléments sont nécessaires pour publier. S’il en manque un, le produit n’est pas
+                          visible en boutique.
                         </Typography>
                       </Box>
                     </CardContent>
@@ -1251,8 +1194,8 @@ return (
                       subheader="Chaque changement est enregistré automatiquement dans l'historique ci-dessous."
                     />
                     <CardContent>
-                      <Grid container spacing={6}>
-                        <Grid item xs={12} md={4}>
+                      <Grid container spacing={4}>
+                        <Grid item xs={12} md={6}>
                           <TextField
                             fullWidth
                             label='Prix de vente (DZD)'
@@ -1484,35 +1427,6 @@ return (
                           {formaterMontant(aideDecision?.prix_vente_moyen)}
                         </Typography>
                       </Box>
-                      <Divider />
-                      <Box sx={sxLigneAide}>
-                        <Typography variant='body2' color='text.secondary'>
-                          Marge moyenne
-                        </Typography>
-                        <Typography variant='body2' sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          {formaterMontant(margeMoyenne)}
-                        </Typography>
-                      </Box>
-                      <Divider />
-                      <Typography variant='body2' color='text.secondary' sx={{ pt: 1.5, pb: 1 }}>
-                        Paliers de prix (lecture seule)
-                      </Typography>
-                      {(produitSelectionne?.paliers || []).length === 0 ? (
-                        <Typography variant='body2' color='text.secondary'>
-                          —
-                        </Typography>
-                      ) : (
-                        (produitSelectionne?.paliers || []).map(palier => (
-                          <Box key={palier.id_palier} sx={sxLigneAide}>
-                            <Typography variant='body2' color='text.secondary'>
-                              Dès {palier.quantite_min} pièces
-                            </Typography>
-                            <Typography variant='body2' sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                              {formaterMontant(palier.prix_unitaire)} / pièce
-                            </Typography>
-                          </Box>
-                        ))
-                      )}
                     </CardContent>
                   </Card>
                   <Card sx={{ ...sxCarteSection, flex: 1, mt: 6 }}>
@@ -1572,7 +1486,18 @@ return (
                       action={<Chip label={`${nbImagesTotal}/${NB_IMAGES_MAX}`} size='small' />}
                     />
                     <CardContent>
-                      <Grid container spacing={3}>
+                      <Grid
+                        container
+                        spacing={3}
+                        data-testid='grille-images'
+                        onDragOver={event => event.preventDefault()}
+                        onDrop={event => {
+                          event.preventDefault()
+                          if (event.target === event.currentTarget && event.dataTransfer.files?.length > 0) {
+                            ajouterFichiersImages(event.dataTransfer.files)
+                          }
+                        }}
+                      >
                         {tuiles.map((tuile, index) => {
                           const estPrincipaleServeur =
                             tuile.type === 'serveur' && tuile.image.est_principale
@@ -1594,11 +1519,20 @@ return (
                               onDragStart={event => event.dataTransfer.setData('text/plain', String(index))}
                               onDragOver={event => {
                                 event.preventDefault()
-                                setIndexSurvole(index)
+                                if (!Array.from(event.dataTransfer.types || []).includes('Files')) {
+                                  setIndexSurvole(index)
+                                }
                               }}
                               onDragLeave={() => setIndexSurvole(null)}
                               onDrop={event => {
                                 event.preventDefault()
+                                setIndexSurvole(null)
+                                if (event.dataTransfer.files?.length > 0) {
+                                  event.stopPropagation()
+                                  ajouterFichiersImages(event.dataTransfer.files)
+
+                                  return
+                                }
                                 const source = parseInt(event.dataTransfer.getData('text/plain'), 10)
                                 if (!isNaN(source)) deplacerTuileParGlisser(source, index)
                               }}
@@ -1804,61 +1738,73 @@ return
                             </Grid>
                           )
                         })}
-                        {tuiles.length === 0 && (
-                          <Grid item xs={12}>
-                            <Typography color='text.secondary'>
-                              Aucune image. La publication exige au moins 2 images.
-                            </Typography>
-                          </Grid>
-                        )}
+                        {Array.from({ length: Math.max(0, NB_IMAGES_MAX - tuiles.length) }).map((_, i) => {
+                          const position = tuiles.length + i + 1
+
+                          return (
+                            <Grid item xs={6} sm={4} md={3} key={`vide-${position}`}>
+                              <Box
+                                data-testid='emplacement-image-vide'
+                                onClick={() => refFichierImage.current?.click()}
+                                onDragOver={event => event.preventDefault()}
+                                onDrop={event => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  if (event.dataTransfer.files?.length > 0) {
+                                    ajouterFichiersImages(event.dataTransfer.files)
+                                  }
+                                }}
+                                sx={{
+                                  position: 'relative',
+                                  borderRadius: 3,
+                                  border: '2px dashed',
+                                  borderColor: 'divider',
+                                  aspectRatio: '1 / 1',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 1,
+                                  cursor: 'pointer',
+                                  color: 'text.secondary',
+                                  '&:hover': { borderColor: 'primary.main', color: 'primary.main' }
+                                }}
+                              >
+                                <Icon icon='tabler:plus' fontSize='1.75rem' />
+                                <Typography variant='caption'>{position}</Typography>
+                              </Box>
+                            </Grid>
+                          )
+                        })}
                       </Grid>
-                      <Box
-                        sx={{
-                          border: '2px dashed',
-                          borderColor: 'divider',
-                          borderRadius: 3,
-                          p: 2,
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          mt: 6
+                      {tuiles.length === 0 && (
+                        <Typography color='text.secondary' sx={{ mt: 4 }}>
+                          Aucune image. La publication exige au moins 2 images.
+                        </Typography>
+                      )}
+                      <input
+                        ref={refFichierImage}
+                        type='file'
+                        accept='image/jpeg,image/png,image/webp'
+                        multiple
+                        hidden
+                        onChange={e => {
+                          ajouterFichiersImages(e.target.files)
+                          e.target.value = ''
                         }}
-                        onClick={() => refFichierImage.current?.click()}
-                        onDragOver={event => event.preventDefault()}
-                        onDrop={event => {
-                          event.preventDefault()
-                          ajouterFichiersImages(event.dataTransfer.files)
-                        }}
-                      >
-                        <input
-                          ref={refFichierImage}
-                          type='file'
-                          accept='image/jpeg,image/png,image/webp'
-                          multiple
-                          hidden
-                          onChange={e => {
-                            ajouterFichiersImages(e.target.files)
-                            e.target.value = ''
-                          }}
-                        />
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                          <Icon icon='tabler:cloud-upload' fontSize='1.5rem' />
-                          <Typography variant='body2'>
-                            Glissez vos images ici ou cliquez pour parcourir (JPEG, PNG, WebP — max 5 Mo)
-                          </Typography>
-                        </Box>
-                        {imagesLocales.length > 0 && (
-                          <Typography variant='body2' color='warning.main' sx={{ mt: 1 }}>
-                            {imagesLocales.length} image{imagesLocales.length > 1 ? 's' : ''} en attente :
-                            téléversée{imagesLocales.length > 1 ? 's' : ''} au clic sur Enregistrer. Fermer le modal
-                            sans enregistrer les perd.
-                          </Typography>
-                        )}
-                        {messageDepot && (
-                          <Typography variant='body2' color='error.main' sx={{ mt: 1 }}>
-                            {messageDepot}
-                          </Typography>
-                        )}
-                      </Box>
+                      />
+                      {imagesLocales.length > 0 && (
+                        <Typography variant='body2' color='warning.main' sx={{ mt: 4 }}>
+                          {imagesLocales.length} image{imagesLocales.length > 1 ? 's' : ''} en attente :
+                          téléversée{imagesLocales.length > 1 ? 's' : ''} au clic sur Enregistrer. Fermer le modal
+                          sans enregistrer les perd.
+                        </Typography>
+                      )}
+                      {messageDepot && (
+                        <Typography variant='body2' color='error.main' sx={{ mt: 1 }}>
+                          {messageDepot}
+                        </Typography>
+                      )}
                     </CardContent>
                   </Card>
                 </Grid>

@@ -12,6 +12,7 @@ import {
   getPrixEffectifProduit,
   POIDS_DEFAUT_GRAMMES,
   poidsAStockerGrammes,
+  messageErreurTechnique,
 } from "../config/utils.js";
 import {
   chargerContextePromotions,
@@ -158,9 +159,8 @@ export const getProduitEcommerce = async (req, res) => {
 
     res.status(200).json(reponse);
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
+    console.error("getProduitEcommerce:", error);
+    res.status(500).json({ message: messageErreurTechnique(error, "Le chargement du produit") });
   }
 };
 
@@ -388,9 +388,8 @@ export const updateProduitEcommerce = [
           .status(409)
           .json({ message: "Ce slug est déjà utilisé par un produit." });
       }
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      console.error("updateProduitEcommerce:", error);
+      return res.status(500).json({ message: messageErreurTechnique(error) });
     }
   },
 ];
@@ -459,9 +458,8 @@ export const updatePrixProduit = [
 
       res.status(200).json(produitModifie);
     } catch (error) {
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      console.error("updatePrixProduit:", error);
+      res.status(500).json({ message: messageErreurTechnique(error) });
     }
   },
 ];

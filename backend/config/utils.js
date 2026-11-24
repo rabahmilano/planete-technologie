@@ -48,6 +48,27 @@ export const arrondir = (nombre) => {
 // le poids est souvent absent des emballages).
 export const POIDS_DEFAUT_GRAMMES = 200;
 
+// Message d'erreur lisible quand une opération échoue côté serveur : le
+// message Prisma brut (ex. « Invalid `prisma.produit.update()` ») ne doit
+// jamais arriver dans un toast. Les causes connues pointent vers l'action
+// à faire ; le détail complet part dans les journaux du serveur.
+export const messageErreurTechnique = (error, action = "La sauvegarde") => {
+  const message = error?.message || "";
+  if (message.startsWith("Invalid `prisma.")) {
+    return (
+      `${action} a échoué pour une raison technique (client de base de données obsolète ?). ` +
+      "Lancez « npx prisma generate » dans backend puis redémarrez le serveur, et réessayez."
+    );
+  }
+  if (error?.code === "P2022") {
+    return (
+      `${action} a échoué : la base de données ne contient pas une colonne attendue. ` +
+      "Lancez « npx prisma db push » dans backend puis redémarrez le serveur, et réessayez."
+    );
+  }
+  return `${action} a échoué. Réessayez ou consultez les journaux du serveur.`;
+};
+
 // Poids à stocker : la valeur saisie, ou le défaut si vide.
 export const poidsAStockerGrammes = (poidsGrammes) =>
   poidsGrammes === null || poidsGrammes === undefined || poidsGrammes === ""

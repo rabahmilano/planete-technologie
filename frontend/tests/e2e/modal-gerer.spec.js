@@ -176,21 +176,24 @@ test.describe('modal Gérer — 11 points', () => {
     await modal.getByLabel('Hauteur (cm)').fill('30')
     await expect(modal.getByText(/Poids volumétrique : 12 kg — Poids facturé : 12 kg/)).toBeVisible()
 
-    // Intitulé (requis pour publier ensuite) + famille (c).
+    // Intitulé (requis pour publier ensuite) + famille (c) : Autocomplete
+    // groupé — en-têtes parents, filtrage en tapant, parent sélectionnable.
     await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E modal Gérer')
-    const champFamille = modal.getByRole('textbox', { name: 'Famille' })
+    const champFamille = modal.getByRole('combobox', { name: 'Famille' })
     await champFamille.click()
-    const popover = page.locator('.MuiPopover-paper')
-    await expect(popover).toBeVisible()
-    const nomParent = await popover.locator('.MuiAccordionSummary-root').first().locator('button').first().innerText()
-    // Nom du parent affiché une seule fois dans le popover.
-    const occurrencesParent = (await popover.innerText()).split(nomParent).length - 1
-    expect(occurrencesParent).toBe(1)
-    await popover.locator('.MuiAccordionSummary-root').first().locator('.MuiAccordionSummary-expandIconWrapper').click()
-    const sousFamille = popover.locator('.MuiAccordionDetails-root .MuiListItemButton-root').first()
-    const nomEnfant = await sousFamille.innerText()
-    await sousFamille.click()
-    await expect(champFamille).toHaveValue(`${nomParent} › ${nomEnfant}`)
+    const liste = page.locator('.MuiAutocomplete-listbox')
+    await expect(liste).toBeVisible()
+    const enTetes = liste.locator('.MuiAutocomplete-groupLabel')
+    await expect(enTetes.first()).toBeVisible()
+    // textContent (pas innerText) : l'en-tête est affiché en capitales par
+    // le CSS (text-transform), le nom réel est « Cartes WiFi ».
+    const nomParent = (await enTetes.first().textContent()).trim()
+    // Filtrage en tapant : le nom du parent ne laisse que son groupe.
+    await champFamille.fill(nomParent)
+    await expect(liste.locator('.MuiAutocomplete-groupLabel')).toHaveCount(1)
+    // Le parent est sélectionnable comme ses enfants.
+    await liste.getByRole('option', { name: nomParent, exact: true }).click()
+    await expect(champFamille).toHaveValue(nomParent)
 
     // (d) Dépôt de 2 images → aperçu immédiat, 0 appel réseau avant Enregistrer.
     await modal.getByRole('tab', { name: 'Images' }).click()
@@ -347,7 +350,7 @@ test.describe('modal Gérer — 11 points', () => {
       await expect(checklist.getByTestId('condition-prix')).toHaveAttribute('data-etat', 'rempli')
       await expect(checklist.getByTestId('condition-images')).toHaveAttribute('data-etat', 'rempli')
       await expect(modal.getByText('Si le produit ne remplit plus ces conditions')).toHaveCount(0)
-      await expect(checklist.getByText(/dépublié automatiquement/)).toBeVisible()
+      await expect(checklist.getByText(/n’est pas visible en boutique/)).toBeVisible()
 
       // (1 suite) Blur sur le champ vide → l'erreur apparaît.
       await modal.getByLabel('Intitulé de publication').click()
@@ -393,8 +396,12 @@ test.describe('modal Gérer — 11 points', () => {
       for (const montant of montants) {
         expect(montant).toMatch(/,\d{2} DZD$/)
       }
-      // Marge affichée (vente moyenne − achat moyen TTC).
-      await expect(aide.getByText('Marge moyenne')).toBeVisible()
+      // Exactement 2 lignes : achat moyen TTC + vente moyenne (Marge et
+      // Paliers retirés).
+      await expect(aide.getByText(/Prix d’achat moyen/)).toBeVisible()
+      await expect(aide.getByText('Prix de vente moyen')).toBeVisible()
+      await expect(aide.getByText('Marge moyenne')).toHaveCount(0)
+      await expect(aide.getByText('Paliers de prix')).toHaveCount(0)
 
       // (4) Les deux colonnes ont exactement la même hauteur (± 2 px).
       const gauche = await modal.getByTestId('colonne-prix-gauche').boundingBox()
@@ -403,10 +410,220 @@ test.describe('modal Gérer — 11 points', () => {
       expect(droite).not.toBeNull()
       expect(Math.abs(gauche.height - droite.height)).toBeLessThanOrEqual(2)
 
+      // (f) Champ prix de même largeur que les champs de paliers (± 2 px).
+      const champPrix = await modal.getByLabel('Prix de vente (DZD)').boundingBox()
+      const champPalier = await modal.getByLabel('Quantité minimum (pièces)').boundingBox()
+      expect(champPrix).not.toBeNull()
+      expect(champPalier).not.toBeNull()
+      expect(Math.abs(champPrix.width - champPalier.width)).toBeLessThanOrEqual(2)
+
       await modal.getByRole('button', { name: 'Annuler' }).click()
       await expect(modal).toBeHidden()
     } finally {
       db(`UPDATE produit SET intitule_publication = NULL, poids_grammes = 6000 WHERE id_prd = ${produit.id}`)
     }
+  })
+
+  test('enregistrement état capture : intitulé + slug, description vide, famille aucune, poids 150', async ({
+    page
+  }) => {
+    // État exact de la capture de RABAH (produit 245, machine du boulot) :
+    // intitulé + slug remplis, description vide, famille « Aucune »,
+    // poids 150, dimensions vides. L'enregistrement ne doit plus échouer
+    // avec « Invalid `prisma.produit.update()` ».
+    const avant = dbJson(
+      `SELECT slug_prd, prix_vente FROM produit WHERE id_prd = ${produit.id}`
+    )[0]
+    db(
+      `UPDATE produit SET description = NULL, description_ar = NULL, famille_id = NULL, poids_grammes = 150, longueur_cm = NULL, largeur_cm = NULL, hauteur_cm = NULL, slug_prd = NULL, intitule_publication = NULL WHERE id_prd = ${produit.id}`
+    )
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      await modal.getByLabel('Intitulé de publication').fill('Adaptateur Onten OTN-UCA303 adaptateur hybride 3 en 2')
+      await modal.getByLabel('Slug (URL boutique)').fill('adaptateur-onten-uca303')
+      await modal.getByRole('button', { name: 'Enregistrer' }).click()
+      await expect(page.getByText('Modifications enregistrées')).toBeVisible()
+      // Aucun toast d'erreur Prisma (ni brut, ni traduit).
+      await expect(page.getByText(/Invalid `prisma/)).toHaveCount(0)
+      await expect(page.getByText(/Unknown argument/)).toHaveCount(0)
+      await expect(modal).toBeVisible()
+      // BDD mise à jour comme dans la capture.
+      const apres = dbJson(
+        `SELECT slug_prd, intitule_publication, description, famille_id, poids_grammes, longueur_cm, largeur_cm, hauteur_cm FROM produit WHERE id_prd = ${produit.id}`
+      )[0]
+      expect(apres[0]).toBe('adaptateur-onten-uca303')
+      expect(apres[1]).toBe('Adaptateur Onten OTN-UCA303 adaptateur hybride 3 en 2')
+      expect(apres[2]).toBe('NULL')
+      expect(apres[3]).toBe('NULL')
+      expect(apres[4]).toBe('150')
+      expect(apres[5]).toBe('NULL')
+      expect(apres[6]).toBe('NULL')
+      expect(apres[7]).toBe('NULL')
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      const o = produit.originaux
+      const sqlVal = v => (v === null || v === undefined || v === 'NULL' ? 'NULL' : JSON.stringify(String(v)))
+      db(
+        `UPDATE produit SET slug_prd = ${sqlVal(avant[0])}, prix_vente = ${avant[1] === 'NULL' ? 'NULL' : avant[1]}, description = ${sqlVal(o.description)}, description_ar = ${sqlVal(o.descriptionAr)}, famille_id = ${o.famille === 'NULL' ? 'NULL' : o.famille}, poids_grammes = 6000, intitule_publication = NULL WHERE id_prd = ${produit.id}`
+      )
+    }
+  })
+
+  test('enregistrement brouillon avec prix vide : aucune erreur rouge', async ({ page }) => {
+    const prixOrigine = db(`SELECT prix_vente FROM produit WHERE id_prd = ${produit.id}`)
+    db(`UPDATE produit SET prix_vente = NULL WHERE id_prd = ${produit.id}`)
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      // Une modification (intitulé) force l'envoi : l'enregistrement est
+      // une sauvegarde brouillon, pas une publication.
+      await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E prix vide')
+      await modal.getByRole('button', { name: 'Enregistrer' }).click()
+      await expect(page.getByText('Modifications enregistrées')).toBeVisible()
+      // Aucune erreur « requis pour publier », sur aucun champ non touché.
+      await expect(modal.getByText(/requis pour publier\./)).toHaveCount(0)
+      // Le prix reste vide en base (brouillon, pas de valeur forcée).
+      expect(db(`SELECT prix_vente FROM produit WHERE id_prd = ${produit.id}`)).toBe('NULL')
+      // Même en ouvrant l'onglet Prix, le champ n'est pas en erreur.
+      await modal.getByRole('tab', { name: 'Prix' }).click()
+      await expect(modal.getByText('Prix requis pour publier.')).toHaveCount(0)
+      await expect(modal.getByLabel('Prix de vente (DZD)')).toHaveAttribute('aria-invalid', 'false')
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      db(
+        `UPDATE produit SET prix_vente = ${prixOrigine === 'NULL' ? 'NULL' : prixOrigine}, intitule_publication = NULL WHERE id_prd = ${produit.id}`
+      )
+    }
+  })
+
+  test('checklist adoucie : manquant en ambre, jamais de rouge', async ({ page }) => {
+    db(
+      `UPDATE produit SET intitule_publication = NULL, poids_grammes = 6000, longueur_cm = NULL, largeur_cm = NULL, hauteur_cm = NULL WHERE id_prd = ${produit.id}`
+    )
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      const checklist = modal.getByTestId('checklist-publication')
+      // Manquant : pastille vide + « À compléter », jamais de ✗ rouge.
+      // (Plusieurs conditions peuvent manquer à la fois — poids 6000 sans
+      // dimensions — donc on cible la condition intitulé.)
+      const conditionIntitule = checklist.getByTestId('condition-intitule')
+      await expect(conditionIntitule).toHaveAttribute('data-etat', 'manquant')
+      await expect(conditionIntitule.getByText('À compléter')).toBeVisible()
+      await expect(modal.getByText('✗')).toHaveCount(0)
+      // La mention « À compléter » n'est pas en rouge (couleur erreur MUI).
+      const couleur = await conditionIntitule
+        .getByText('À compléter')
+        .evaluate(el => getComputedStyle(el).color)
+      expect(couleur).not.toBe('rgb(211, 47, 47)')
+      // Phrase neutre sur la visibilité en boutique.
+      await expect(
+        checklist.getByText(/Ces éléments sont nécessaires pour publier\. S’il en manque un/)
+      ).toBeVisible()
+      // Les conditions remplies gardent leur ✓ verte.
+      await expect(checklist.getByTestId('condition-description')).toHaveAttribute('data-etat', 'rempli')
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      db(`UPDATE produit SET intitule_publication = NULL, poids_grammes = 6000 WHERE id_prd = ${produit.id}`)
+    }
+  })
+
+  test('famille : Autocomplete groupé, filtrage et parent sélectionnable', async ({ page }) => {
+    await page.goto('/ecommerce/produits')
+    await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+    await page.waitForTimeout(1500)
+    const ligne = page.locator('tr', { hasText: produit.designation }).first()
+    await expect(ligne).toBeVisible()
+    await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+    const modal = page.getByRole('dialog').first()
+    await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+    const champFamille = modal.getByRole('combobox', { name: 'Famille' })
+    await champFamille.click()
+    const liste = page.locator('.MuiAutocomplete-listbox')
+    await expect(liste).toBeVisible()
+    // En-têtes de groupe = familles parentes.
+    const enTetes = liste.locator('.MuiAutocomplete-groupLabel')
+    await expect(enTetes.first()).toBeVisible()
+    expect(await enTetes.count()).toBeGreaterThan(0)
+    // Filtrage en tapant : un seul groupe reste.
+    // textContent (pas innerText) : l'en-tête est affiché en capitales par
+    // le CSS (text-transform), le nom réel est « Cartes WiFi ».
+    const nomParent = (await enTetes.first().textContent()).trim()
+    await champFamille.fill(nomParent.slice(0, 3))
+    await expect(liste.locator('.MuiAutocomplete-groupLabel')).toHaveCount(1)
+    await expect(liste.locator('.MuiAutocomplete-groupLabel').first()).toHaveText(nomParent)
+    // Le parent est sélectionnable.
+    await liste.getByRole('option', { name: nomParent, exact: true }).click()
+    await expect(champFamille).toHaveValue(nomParent)
+    // Effacer la sélection.
+    await modal.getByRole('button', { name: 'Retirer la famille' }).click()
+    await expect(champFamille).toHaveValue('')
+    // Une sous-famille : la première option dont le libellé diffère de son
+    // groupe (le parent porte le nom de son groupe, l'enfant non).
+    await champFamille.click()
+    const infos = await liste.evaluate(listeEl => {
+      const options = [...listeEl.querySelectorAll('[role="option"]')]
+      return options.map((option, index) => {
+        const ul = option.closest('ul')
+        const enTete = ul ? ul.previousElementSibling : null
+        return { index, label: option.textContent.trim(), groupe: enTete ? enTete.textContent.trim() : null }
+      })
+    })
+    const enfant = infos.find(option => option.label !== option.groupe)
+    expect(enfant).toBeDefined()
+    await liste.getByRole('option').nth(enfant.index).click()
+    await expect(champFamille).toHaveValue(enfant.label)
+    await modal.getByRole('button', { name: 'Annuler' }).click()
+    await expect(modal).toBeHidden()
+  })
+
+  test('onglet Images : grille de tuiles, 7 emplacements', async ({ page }) => {
+    const nbImages = parseInt(db(`SELECT COUNT(*) FROM image_produit WHERE prd_id = ${produit.id}`), 10)
+    expect(nbImages).toBeGreaterThanOrEqual(2)
+    await page.goto('/ecommerce/produits')
+    await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+    await page.waitForTimeout(1500)
+    const ligne = page.locator('tr', { hasText: produit.designation }).first()
+    await expect(ligne).toBeVisible()
+    await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+    const modal = page.getByRole('dialog').first()
+    await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+    await modal.getByRole('tab', { name: 'Images' }).click()
+    const grille = modal.getByTestId('grille-images')
+    await expect(grille).toBeVisible()
+    // 7 emplacements au total : tuiles remplies + tuiles vides en pointillés.
+    await expect(grille.locator('img')).toHaveCount(nbImages)
+    await expect(modal.getByTestId('emplacement-image-vide')).toHaveCount(7 - nbImages)
+    // Dépôt d'une image → nouvelle tuile avec numéro + « À téléverser ».
+    await modal.locator('input[type="file"]').setInputFiles([path.join(FIXTURES, 'test-1.png')])
+    await expect(modal.getByText('À téléverser')).toHaveCount(1)
+    await expect(grille.locator('img')).toHaveCount(nbImages + 1)
+    await expect(modal.getByTestId('emplacement-image-vide')).toHaveCount(7 - nbImages - 1)
+    // Annuler sans enregistrer : l'image locale ne part pas en base.
+    await modal.getByRole('button', { name: 'Annuler' }).click()
+    await expect(modal).toBeHidden()
+    expect(db(`SELECT COUNT(*) FROM image_produit WHERE prd_id = ${produit.id}`)).toBe(String(nbImages))
   })
 })
