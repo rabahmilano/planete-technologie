@@ -632,12 +632,11 @@ return detail?.statut_publication || produit.statut_publication || 'BROUILLON'
       5000
     : null
 
-  // Poids réel saisi, ou poids par défaut (API) quand le champ est vide.
+  // Poids réel saisi. Le défaut de 200 g est stocké sur le produit à
+  // l'enregistrement : un champ vide vaut « — » ici.
   const poidsReelKg =
     formInfos.poids_grammes === '' || formInfos.poids_grammes == null
-      ? produitSelectionne?.poids_defaut_grammes != null
-        ? produitSelectionne.poids_defaut_grammes / 1000
-        : null
+      ? null
       : parseInt(formInfos.poids_grammes, 10) / 1000
 
   const poidsFactureKg =
@@ -1035,12 +1034,6 @@ return (
                                 autoComplete='off'
                                 value={formInfos.poids_grammes ?? ''}
                                 onChange={e => setFormInfos({ ...formInfos, poids_grammes: e.target.value })}
-                                helperText={
-                                  (formInfos.poids_grammes === '' || formInfos.poids_grammes == null) &&
-                                  produitSelectionne?.poids_defaut_grammes != null
-                                    ? `Vide : ${produitSelectionne.poids_defaut_grammes} g par défaut`
-                                    : undefined
-                                }
                               />
                             </Grid>
                             <Grid item xs={12} sm={3}>

@@ -37,27 +37,22 @@ export const arrondir = (nombre) => {
   return Math.round((nombre + Number.EPSILON) * 10000) / 10000;
 };
 
-// Poids par défaut (grammes) appliqué quand un produit n'a pas de poids
-// renseigné. Une seule source de vérité, modifiable sans toucher au code :
-// YALIDINE_DEFAULT_WEIGHT_GRAMS dans backend/.env (défaut 200 —
+// Poids par défaut (grammes) appliqué à l'ÉCRITURE quand un produit n'a pas
+// de poids renseigné : création du produit, modification via le modal Gérer,
+// publication, création du colis. Le défaut est STOCKÉ sur le produit
+// (poids_grammes) ; ensuite le colis et les frais lisent le poids stocké,
+// sans repli ni dérivation. Une seule source de vérité : cette constante.
+// Pour changer la valeur, modifier cette ligne — aucun réglage, aucune
+// variable d'environnement (l'API Yalidine n'exige pas de variable ;
 // décision RABAH 24/11/2026 : 500 g trop lourd pour les produits vendus,
-// le poids est souvent absent des emballages). Valeur invalide (absente,
-// non numérique, <= 0) → 200.
-export const getPoidsDefautGrammes = () => {
-  const lu = parseInt(process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS, 10);
-  return Number.isFinite(lu) && lu > 0 ? lu : 200;
-};
+// le poids est souvent absent des emballages).
+export const POIDS_DEFAUT_GRAMMES = 200;
 
-// Poids réellement utilisé pour un produit : son poids, ou le défaut.
-export const poidsEffectifGrammes = (poidsGrammes) =>
-  poidsGrammes === null || poidsGrammes === undefined
-    ? getPoidsDefautGrammes()
-    : poidsGrammes;
-
-// Vrai quand le poids appliqué est le défaut (poids estimé, à signaler —
-// jamais appliqué en silence).
-export const estPoidsEstime = (poidsGrammes) =>
-  poidsGrammes === null || poidsGrammes === undefined;
+// Poids à stocker : la valeur saisie, ou le défaut si vide.
+export const poidsAStockerGrammes = (poidsGrammes) =>
+  poidsGrammes === null || poidsGrammes === undefined || poidsGrammes === ""
+    ? POIDS_DEFAUT_GRAMMES
+    : parseInt(poidsGrammes, 10);
 
 // Poids volumétrique Yalidine (kg) : L × l × h (cm) / 5000. null si une
 // dimension manque (poids volumétrique non calculable).
@@ -71,9 +66,10 @@ export const calculerPoidsVolumetriqueKg = (
 };
 
 // Poids facturé Yalidine (kg) = max(poids réel, poids volumétrique).
-// Poids null → poids par défaut (200 g, modifiable via
-// YALIDINE_DEFAULT_WEIGHT_GRAMS) : l'appelant signale le défaut
-// (estPoidsEstime), il n'est jamais appliqué en silence.
+// Le poids est celui STOCKÉ sur le produit : les écritures en amont
+// (création, modal Gérer, publication, colis) garantissent qu'il est
+// renseigné — aucun repli ici. Poids null → 0 kg réel (seul le
+// volumétrique compte alors, ou 0 sans dimensions).
 export const calculerPoidsFactureKg = (
   poidsGrammes,
   longueurCm,
@@ -85,7 +81,7 @@ export const calculerPoidsFactureKg = (
     largeurCm,
     hauteurCm,
   );
-  const reelKg = poidsEffectifGrammes(poidsGrammes) / 1000;
+  const reelKg = (poidsGrammes ?? 0) / 1000;
   return volumetriqueKg === null ? reelKg : Math.max(reelKg, volumetriqueKg);
 };
 

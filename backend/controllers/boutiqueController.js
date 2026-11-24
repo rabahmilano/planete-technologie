@@ -6,8 +6,7 @@ import {
   verifierCodePromoValide,
   calculerReductionPromo,
   calculerPoidsFactureKg,
-  estPoidsEstime,
-  getPoidsDefautGrammes,
+  POIDS_DEFAUT_GRAMMES,
 } from "../config/utils.js";
 import {
   chargerContextePromotions,
@@ -594,7 +593,6 @@ export const createCommandeBoutique = [
     try {
       const lignesAvecIds = [];
       let poidsFactureTotalKg = 0;
-      let poidsEstime = false;
       for (const ligne of lignes) {
         const produit = await prisma.produit.findFirst({
           where: { slug_prd: ligne.slug.trim() },
@@ -611,17 +609,24 @@ export const createCommandeBoutique = [
             message: `Produit introuvable : ${ligne.slug}.`,
           });
         }
-        // Poids : un produit sans poids renseigné utilise le poids par
-        // défaut (200 g, modifiable via YALIDINE_DEFAULT_WEIGHT_GRAMS —
-        // décision RABAH 24/11/2026) ; le défaut est signalé dans la
-        // réponse (poids_estime), jamais appliqué en silence.
+        // Poids : un produit sans poids renseigné (publié avant ce
+        // changement) reçoit le défaut (200 g), STOCKÉ sur le produit —
+        // les frais sont ensuite calculés sur le poids stocké, jamais
+        // dérivé.
+        let poidsGrammes = produit.poids_grammes;
+        if (poidsGrammes === null || poidsGrammes === undefined) {
+          await prisma.produit.update({
+            where: { id_prd: produit.id_prd },
+            data: { poids_grammes: POIDS_DEFAUT_GRAMMES },
+          });
+          poidsGrammes = POIDS_DEFAUT_GRAMMES;
+        }
         const poidsFactureKg = calculerPoidsFactureKg(
-          produit.poids_grammes,
+          poidsGrammes,
           produit.longueur_cm,
           produit.largeur_cm,
           produit.hauteur_cm,
         );
-        if (estPoidsEstime(produit.poids_grammes)) poidsEstime = true;
         lignesAvecIds.push({
           prd_id: produit.id_prd,
           quantite: parseInt(ligne.quantite, 10),
@@ -679,8 +684,6 @@ export const createCommandeBoutique = [
       res.status(201).json({
         ...commandeComplete,
         frais_livraison_source: frais.source,
-        poids_estime: poidsEstime,
-        poids_defaut_grammes: poidsEstime ? getPoidsDefautGrammes() : null,
       });
     } catch (error) {
       if (error.message === "CODE_PROMO_INTROUVABLE") {

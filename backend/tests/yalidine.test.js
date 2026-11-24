@@ -1,6 +1,11 @@
 // Tests unitaires du client Yalidine — fetch entièrement mocké : aucun appel
 // réseau réel, aucun secret réel (identifiants factices).
-import { jest, expect, describe, it, beforeEach, afterEach } from '@jest/globals';
+// Les tests de backfill du poids utilisent la BDD de test locale (produit
+// 99998, créé puis supprimé) : MySQL de test doit tourner.
+import "dotenv/config";
+import { jest, expect, describe, it, beforeEach, afterEach, afterAll } from '@jest/globals';
+import prisma from '../config/dbConfig.js';
+import { POIDS_DEFAUT_GRAMMES } from '../config/utils.js';
 import * as yalidine from '../config/yalidine.js';
 
 const reponseMock = ({ status = 200, corps = null, entetes = {} }) => ({
@@ -19,6 +24,10 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.resetAllMocks();
+});
+
+afterAll(async () => {
+  await prisma.$disconnect();
 });
 
 describe('estConfigure', () => {
@@ -315,43 +324,62 @@ describe('creerColisDepuisCommande — poids facturé et dimensions', () => {
     type_livraison: 'DOMICILE',
   };
 
-  it('poids null : poids par défaut (200 g) appliqué, appel Yalidine autorisé, défaut signalé', async () => {
-    global.fetch.mockResolvedValueOnce(
-      reponseMock({ corps: { 'PT-1': { success: true, tracking: 'yal-TEST', label: null } } }),
-    );
-
-    const resultat = await yalidine.creerColisDepuisCommande(commande, [
-      { designation_facturee: 'Chargeur test', quantite: 1, poids_grammes: null },
-    ]);
-
-    expect(resultat.tracking).toBe('yal-TEST');
-    expect(resultat.poids_estime).toBe(true);
-    expect(resultat.poids_defaut_grammes).toBe(200);
-    const envoye = JSON.parse(global.fetch.mock.calls[0][1].body)[0];
-    // Défaut 200 g → 0,2 kg, arrondi au kg supérieur par l'API.
-    expect(envoye.weight).toBe(1);
-  });
-
-  it('poids null + défaut personnalisé via env (300 g) : défaut appliqué et signalé', async () => {
-    const sauvegarde = process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS;
-    process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS = '300';
+  it('poids null : le défaut (200 g) est ÉCRIT sur le produit, le colis est créé avec 200', async () => {
+    // Produit sans poids (ex. publié avant ce changement) : le défaut est
+    // écrit une fois en base, puis le colis lit le poids stocké.
+    await prisma.produit.deleteMany({ where: { id_prd: 99998 } });
+    await prisma.produit.create({
+      // Poids null explicite (produit ancien sans poids). Explicite et non
+      // omis : la colonne peut être définie sans DEFAULT NULL selon la
+      // base (voir `db push` 6a875ff), et MySQL refuse alors l'omission.
+      data: { id_prd: 99998, designation_prd: 'Produit test poids', poids_grammes: null },
+    });
     try {
       global.fetch.mockResolvedValueOnce(
         reponseMock({ corps: { 'PT-1': { success: true, tracking: 'yal-TEST', label: null } } }),
       );
 
       const resultat = await yalidine.creerColisDepuisCommande(commande, [
-        { designation_facturee: 'Chargeur test', quantite: 1, poids_grammes: null },
+        { prd_id: 99998, designation_facturee: 'Produit test poids', quantite: 1, poids_grammes: null },
       ]);
 
-      expect(resultat.poids_estime).toBe(true);
-      expect(resultat.poids_defaut_grammes).toBe(300);
+      expect(resultat.tracking).toBe('yal-TEST');
+      const apres = await prisma.produit.findUnique({ where: { id_prd: 99998 } });
+      expect(apres.poids_grammes).toBe(200);
+      const envoye = JSON.parse(global.fetch.mock.calls[0][1].body)[0];
+      // Défaut 200 g → 0,2 kg, arrondi au kg supérieur par l'API.
+      expect(envoye.weight).toBe(1);
+    } finally {
+      await prisma.produit.deleteMany({ where: { id_prd: 99998 } });
+    }
+  });
+
+  it('poids renseigné : utilisé tel quel, aucune écriture en base', async () => {
+    await prisma.produit.deleteMany({ where: { id_prd: 99998 } });
+    await prisma.produit.create({
+      data: { id_prd: 99998, designation_prd: 'Produit test poids', poids_grammes: 800 },
+    });
+    try {
+      global.fetch.mockResolvedValueOnce(
+        reponseMock({ corps: { 'PT-1': { success: true, tracking: 'yal-TEST', label: null } } }),
+      );
+
+      const resultat = await yalidine.creerColisDepuisCommande(commande, [
+        { prd_id: 99998, designation_facturee: 'Produit test poids', quantite: 1, poids_grammes: 800 },
+      ]);
+
+      expect(resultat.tracking).toBe('yal-TEST');
+      const apres = await prisma.produit.findUnique({ where: { id_prd: 99998 } });
+      expect(apres.poids_grammes).toBe(800);
       const envoye = JSON.parse(global.fetch.mock.calls[0][1].body)[0];
       expect(envoye.weight).toBe(1);
     } finally {
-      if (sauvegarde === undefined) delete process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS;
-      else process.env.YALIDINE_DEFAULT_WEIGHT_GRAMS = sauvegarde;
+      await prisma.produit.deleteMany({ where: { id_prd: 99998 } });
     }
+  });
+
+  it('constante du défaut : 200 g, une seule source de vérité', () => {
+    expect(POIDS_DEFAUT_GRAMMES).toBe(200);
   });
 
   it('poids volumétrique > poids réel : weight = volumétrique, vraies dimensions envoyées', async () => {

@@ -700,9 +700,6 @@ export const updateStatutCommandeWeb = [
         });
       });
 
-      // Poids estimé : signalé dans la réponse quand le colis a été créé
-      // avec le poids par défaut (produit sans poids renseigné).
-      let poidsEstimeColis = null;
       if (
         statut_commande === "CONFIRMEE" &&
         yalidineConfigure() &&
@@ -738,9 +735,6 @@ export const updateStatutCommandeWeb = [
             data: { code_tracking: colis.tracking },
           });
           commandeModifiee.code_tracking = colis.tracking;
-          if (colis.poids_estime) {
-            poidsEstimeColis = colis.poids_defaut_grammes;
-          }
         } catch (erreur) {
           console.error(
             `Création du colis Yalidine impossible pour la commande ${idCommande} :`,
@@ -749,15 +743,7 @@ export const updateStatutCommandeWeb = [
         }
       }
 
-      res.status(200).json(
-        poidsEstimeColis === null
-          ? commandeModifiee
-          : {
-              ...commandeModifiee,
-              poids_estime: true,
-              poids_defaut_grammes: poidsEstimeColis,
-            },
-      );
+      res.status(200).json(commandeModifiee);
     } catch (error) {
       if (error.message === "COMMANDE_DEJA_LIVREE") {
         return res.status(400).json({

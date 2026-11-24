@@ -1,6 +1,6 @@
 import prisma from "../config/dbConfig.js";
 import { body, param, validationResult } from "express-validator";
-import { arrondir, getMaxValue } from "../config/utils.js";
+import { arrondir, getMaxValue, POIDS_DEFAUT_GRAMMES } from "../config/utils.js";
 
 export const getAllVoyages = async (req, res) => {
   try {
@@ -620,6 +620,9 @@ export const addTransactionVoyage = [
                   id_prd: prd_id,
                   designation_prd: article.desPrd.trim(),
                   qte_dispo: qte,
+                  // Poids : un produit créé sans poids reçoit le défaut
+                  // (200 g), stocké sur le produit.
+                  poids_grammes: POIDS_DEFAUT_GRAMMES,
                 },
               });
               nextPrdId++;

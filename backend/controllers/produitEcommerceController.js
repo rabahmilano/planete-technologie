@@ -10,7 +10,8 @@ import {
   getMaxValue,
   genererSlug,
   getPrixEffectifProduit,
-  getPoidsDefautGrammes,
+  POIDS_DEFAUT_GRAMMES,
+  poidsAStockerGrammes,
 } from "../config/utils.js";
 import {
   chargerContextePromotions,
@@ -136,9 +137,6 @@ export const getProduitEcommerce = async (req, res) => {
       ...produit,
       prix_effectif: getPrixEffectifProduit(produit, produit.paliers, 1, gagnante),
       promo_active: gagnante !== null,
-      // Poids par défaut (g) appliqué quand le produit n'a pas de poids
-      // renseigné — le modal Gérer l'affiche dans le hint du champ poids.
-      poids_defaut_grammes: getPoidsDefautGrammes(),
       promotion_active: gagnante
         ? {
             id_promotion: gagnante.promotion.id_promotion,
@@ -281,8 +279,8 @@ export const updateProduitEcommerce = [
         dataToUpdate.qte_dispo = parseInt(qte_dispo, 10);
       }
       if (poids_grammes !== undefined) {
-        dataToUpdate.poids_grammes =
-          poids_grammes === null ? null : parseInt(poids_grammes, 10);
+        // Poids vide → défaut (200 g) STOCKÉ sur le produit.
+        dataToUpdate.poids_grammes = poidsAStockerGrammes(poids_grammes);
       }
       if (longueur_cm !== undefined) {
         dataToUpdate.longueur_cm =
@@ -349,6 +347,15 @@ export const updateProduitEcommerce = [
         produit.statut_publication !== "PUBLIE"
       ) {
         const produitFutur = { ...produit, ...dataToUpdate };
+        // Poids : à la publication, un poids vide est rempli avec le défaut
+        // (200 g) et STOCKÉ sur le produit, puis la publication continue.
+        if (
+          produitFutur.poids_grammes === null ||
+          produitFutur.poids_grammes === undefined
+        ) {
+          dataToUpdate.poids_grammes = POIDS_DEFAUT_GRAMMES;
+          produitFutur.poids_grammes = POIDS_DEFAUT_GRAMMES;
+        }
         const manquants = await verifierPublication(produitFutur);
         if (manquants.length > 0) {
           return res.status(400).json({

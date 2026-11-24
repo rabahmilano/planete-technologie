@@ -6,7 +6,7 @@ import "dayjs/locale/fr.js";
 
 dayjs.locale("fr");
 
-import { getMaxValue, arrondir } from "../config/utils.js";
+import { getMaxValue, arrondir, POIDS_DEFAUT_GRAMMES } from "../config/utils.js";
 import { calculerAideDecisionProduit } from "../config/aideDecision.js";
 
 export const addCatProduit = [
@@ -183,6 +183,9 @@ export const addColis = [
             data: {
               id_prd: prd_id,
               designation_prd: desPrd,
+              // Poids : un produit créé sans poids reçoit le défaut (200 g),
+              // stocké sur le produit — le colis lira ensuite ce poids.
+              poids_grammes: POIDS_DEFAUT_GRAMMES,
             },
           });
         } else {

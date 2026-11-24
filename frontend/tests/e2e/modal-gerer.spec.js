@@ -244,7 +244,7 @@ test.describe('modal Gérer — 11 points', () => {
     await expect(ligne2.getByText('BROUILLON')).toBeVisible()
   })
 
-  test('poids vide : hint « 200 g par défaut » et poids facturé 0,2 kg', async ({ page }) => {
+  test('poids vide : après Enregistrer, 200 g stockés et affichés à la réouverture', async ({ page }) => {
     db(
       `UPDATE produit SET poids_grammes = NULL, longueur_cm = NULL, largeur_cm = NULL, hauteur_cm = NULL WHERE id_prd = ${produit.id}`
     )
@@ -257,23 +257,38 @@ test.describe('modal Gérer — 11 points', () => {
       await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
       const modal = page.getByRole('dialog').first()
       await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      // Champ vide : plus de hint « par défaut », poids facturé « — ».
       await expect(modal.getByLabel('Poids (grammes)')).toHaveValue('')
-      await expect(modal.getByText('Vide : 200 g par défaut')).toBeVisible()
-      await expect(modal.getByText(/Poids volumétrique : — — Poids facturé : 0,2 kg/)).toBeVisible()
+      await expect(modal.getByText('Vide : 200 g par défaut')).toHaveCount(0)
+      await expect(modal.getByText(/Poids volumétrique : — — Poids facturé : —/)).toBeVisible()
+      // Une modification (intitulé) force l'envoi : le poids vide part en
+      // null et le backend stocke 200.
+      await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E poids défaut')
+      await modal.getByRole('button', { name: 'Enregistrer' }).click()
+      await expect(page.getByText('Modifications enregistrées')).toBeVisible()
+      await expect(modal).toBeVisible()
+      expect(db(`SELECT poids_grammes FROM produit WHERE id_prd = ${produit.id}`)).toBe('200')
+      // À la réouverture, le champ affiche la valeur stockée (200).
       await modal.getByRole('button', { name: 'Annuler' }).click()
       await expect(modal).toBeHidden()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal2 = page.getByRole('dialog').first()
+      await expect(modal2.getByText('Produit', { exact: true }).first()).toBeVisible()
+      await expect(modal2.getByLabel('Poids (grammes)')).toHaveValue('200')
+      await expect(modal2.getByText(/Poids volumétrique : — — Poids facturé : 0,2 kg/)).toBeVisible()
+      await modal2.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal2).toBeHidden()
     } finally {
-      db(`UPDATE produit SET poids_grammes = 6000 WHERE id_prd = ${produit.id}`)
+      db(`UPDATE produit SET poids_grammes = 6000, intitule_publication = NULL WHERE id_prd = ${produit.id}`)
     }
   })
 
-  test('commande boutique sans poids : acceptée, poids estimé signalé', async ({ page, request }) => {
+  test('commande boutique sans poids : acceptée, 200 g stockés sur le produit', async ({ page, request }) => {
     // Produit complet (slug, prix, stock) sans poids, publié pour la boutique.
     const slug = db(`SELECT slug_prd FROM produit WHERE id_prd = ${produit.id}`)
     db(
       `UPDATE produit SET poids_grammes = NULL, intitule_publication = 'Intitulé E2E poids défaut', statut_publication = 'PUBLIE' WHERE id_prd = ${produit.id}`
     )
-    const token = jwt.sign({ id: adminId, role: 'ADMIN' }, secret('JWT_SECRET'), { expiresIn: '15m' })
     try {
       const reponse = await request.post('http://localhost:3001/api/public/commandes', {
         data: {
@@ -289,9 +304,10 @@ test.describe('modal Gérer — 11 points', () => {
       })
       expect(reponse.status()).toBe(201)
       const corps = await reponse.json()
-      expect(corps.poids_estime).toBe(true)
-      expect(corps.poids_defaut_grammes).toBe(200)
+      // Le défaut a été écrit une fois sur le produit (frais calculés dessus).
+      expect(db(`SELECT poids_grammes FROM produit WHERE id_prd = ${produit.id}`)).toBe('200')
       // Annulation : libère le stock réservé (qte_reservee).
+      const token = jwt.sign({ id: adminId, role: 'ADMIN' }, secret('JWT_SECRET'), { expiresIn: '15m' })
       const annulation = await request.patch(
         `http://localhost:3001/api/commandes-web/${corps.id_cmd_web}/annuler`,
         { headers: { Authorization: `Bearer ${token}` } }
