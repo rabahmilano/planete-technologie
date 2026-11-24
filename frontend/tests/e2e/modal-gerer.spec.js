@@ -319,4 +319,94 @@ test.describe('modal Gérer — 11 points', () => {
       )
     }
   })
+
+  test('aucune erreur rouge à l’ouverture, checklist live, erreur après blur', async ({ page }) => {
+    db(
+      `UPDATE produit SET intitule_publication = NULL, poids_grammes = 6000, longueur_cm = NULL, largeur_cm = NULL, hauteur_cm = NULL WHERE id_prd = ${produit.id}`
+    )
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+
+      // (1) Aucune erreur rouge à l'ouverture (intitulé vide, slug sans erreur).
+      await expect(modal.getByText('Intitulé requis pour publier.')).toHaveCount(0)
+      await expect(modal.getByLabel('Intitulé de publication')).toHaveAttribute('aria-invalid', 'false')
+      // (2) Checklist live : intitulé manquant, le reste rempli (produit
+      // complet, >= 2 images). Ancienne phrase statique disparue.
+      const checklist = modal.getByTestId('checklist-publication')
+      await expect(checklist.getByTestId('condition-intitule')).toHaveAttribute('data-etat', 'manquant')
+      await expect(checklist.getByTestId('condition-description')).toHaveAttribute('data-etat', 'rempli')
+      await expect(checklist.getByTestId('condition-famille')).toHaveAttribute('data-etat', 'rempli')
+      await expect(checklist.getByTestId('condition-slug')).toHaveAttribute('data-etat', 'rempli')
+      await expect(checklist.getByTestId('condition-prix')).toHaveAttribute('data-etat', 'rempli')
+      await expect(checklist.getByTestId('condition-images')).toHaveAttribute('data-etat', 'rempli')
+      await expect(modal.getByText('Si le produit ne remplit plus ces conditions')).toHaveCount(0)
+      await expect(checklist.getByText(/dépublié automatiquement/)).toBeVisible()
+
+      // (1 suite) Blur sur le champ vide → l'erreur apparaît.
+      await modal.getByLabel('Intitulé de publication').click()
+      await modal.getByLabel('Slug (URL boutique)').click()
+      await expect(modal.getByText('Intitulé requis pour publier.')).toBeVisible()
+      await expect(modal.getByLabel('Intitulé de publication')).toHaveAttribute('aria-invalid', 'true')
+      // (2 suite) Remplir l'intitulé → checklist à jour, erreur disparue.
+      await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E checklist')
+      await expect(checklist.getByTestId('condition-intitule')).toHaveAttribute('data-etat', 'rempli')
+      await expect(modal.getByText('Intitulé requis pour publier.')).toHaveCount(0)
+
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      db(`UPDATE produit SET intitule_publication = NULL, poids_grammes = 6000 WHERE id_prd = ${produit.id}`)
+    }
+  })
+
+  test('onglet Prix : aide sans devise, montants à 2 décimales, colonnes de même hauteur', async ({ page }) => {
+    db(
+      `UPDATE produit SET intitule_publication = NULL, poids_grammes = 6000, longueur_cm = NULL, largeur_cm = NULL, hauteur_cm = NULL WHERE id_prd = ${produit.id}`
+    )
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      await modal.getByRole('tab', { name: 'Prix' }).click()
+      const aide = modal.getByTestId('aide-decision')
+      await expect(aide).toBeVisible()
+
+      // (3) Pas de ligne devise.
+      await expect(aide.getByText('en devise')).toHaveCount(0)
+      // Tous les montants de la carte ont exactement 2 décimales
+      // (U+202F espace fine insécable et U+00A0 normalisés avant le test).
+      const texteAide = (await aide.innerText()).replace(/[\u202F\u00A0]/g, ' ')
+      const montants = texteAide.match(/[\d ]+,\d+ DZD/g) || []
+      expect(montants.length).toBeGreaterThanOrEqual(2)
+      for (const montant of montants) {
+        expect(montant).toMatch(/,\d{2} DZD$/)
+      }
+      // Marge affichée (vente moyenne − achat moyen TTC).
+      await expect(aide.getByText('Marge moyenne')).toBeVisible()
+
+      // (4) Les deux colonnes ont exactement la même hauteur (± 2 px).
+      const gauche = await modal.getByTestId('colonne-prix-gauche').boundingBox()
+      const droite = await modal.getByTestId('colonne-prix-droite').boundingBox()
+      expect(gauche).not.toBeNull()
+      expect(droite).not.toBeNull()
+      expect(Math.abs(gauche.height - droite.height)).toBeLessThanOrEqual(2)
+
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      db(`UPDATE produit SET intitule_publication = NULL, poids_grammes = 6000 WHERE id_prd = ${produit.id}`)
+    }
+  })
 })

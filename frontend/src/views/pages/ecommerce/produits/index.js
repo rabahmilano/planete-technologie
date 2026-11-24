@@ -14,6 +14,7 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
+  Divider,
   Grid,
   IconButton,
   InputAdornment,
@@ -61,6 +62,16 @@ const Transition = forwardRef(function Transition(props, ref) {
 // (HistoriqueCrediterDialog, ProductDetailModal) — ombre douce, pas de bordure.
 const sxCarteSection = { border: 'none', boxShadow: '0 4px 24px 0 rgba(0,0,0,0.05)', borderRadius: 3 }
 
+// Ligne label/valeur de la carte « Aide à la décision » : libellé à gauche,
+// montant aligné à droite, séparateur discret entre les lignes.
+const sxLigneAide = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'baseline',
+  gap: 4,
+  py: 1.5
+}
+
 const couleurStatut = statut => {
   switch (statut) {
     case 'PUBLIE':
@@ -98,10 +109,12 @@ const formaterKg = kg => {
 return `${Number(kg.toFixed(2)).toLocaleString('fr-FR')} kg`
 }
 
+// Montants en DZD, toujours avec 2 décimales (« 2 990,00 DZD ») : un seul
+// formateur partagé pour tout le modal, fr-FR.
 const formaterMontant = valeur => {
   if (valeur == null) return '—'
-  
-return `${Number(valeur).toLocaleString('fr-FR')} DZD`
+
+  return `${Number(valeur).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DZD`
 }
 
 // Style d'en-tête de table du projet (tableau principal de cette page,
@@ -201,6 +214,12 @@ const ProduitsEcommerceView = () => {
   const [formInfos, setFormInfos] = useState({})
   const [formPrix, setFormPrix] = useState({})
   const [erreurSlug, setErreurSlug] = useState('')
+
+  // Champs déjà visités : aucune erreur de validation ne s'affiche à
+  // l'ouverture du modal — seulement après un blur sur le champ ou une
+  // tentative d'enregistrement (qui marque tout).
+  const [champsTouches, setChampsTouches] = useState({})
+  const marquerChampTouche = nom => setChampsTouches(precedent => ({ ...precedent, [nom]: true }))
   const [enregistrementEnCours, setEnregistrementEnCours] = useState(false)
   const [historique, setHistorique] = useState([])
   const [nouveauPalier, setNouveauPalier] = useState({ quantite_min: '', prix_unitaire: '' })
@@ -330,6 +349,7 @@ const ProduitsEcommerceView = () => {
     initialFormPrix.current = normaliserPrix(prix)
     setOrdreTuiles((detail.images || []).map(image => `srv-${image.id_img}`))
     setErreurSlug('')
+    setChampsTouches({})
     setAlerteDepublication(null)
     setPalierEnEdition(null)
     setHistorique(detail.historiques_prix_vente || [])
@@ -386,6 +406,13 @@ return detail
     if (erreurSlug) setErreurSlug('')
   }
 
+  // Validation du slug au blur (jamais à l'ouverture) : l'erreur ne
+  // s'affiche qu'après interaction avec le champ ou tentative d'enregistrement.
+  const validerSlugProduit = () => {
+    const slugSaisi = (formInfos.slug_prd || '').trim()
+    setErreurSlug(slugSaisi && !REGEX_SLUG.test(slugSaisi) ? MESSAGE_FORMAT_SLUG : '')
+  }
+
   // Liste fusionnée (images serveur triées + images locales), dans l'ordre
   // choisi par l'admin. Les clés absentes (image supprimée entre-temps)
   // sont ignorées, les nouvelles sont ajoutées à la fin.
@@ -407,6 +434,9 @@ return ordonnees
 
   const enregistrerTout = async () => {
     if (!produitSelectionne || enregistrementEnCours) return
+
+    // Tentative d'action : les erreurs de validation s'affichent désormais.
+    setChampsTouches({ intitule: true, slug: true, prix: true })
     const slugSaisi = (formInfos.slug_prd || '').trim()
     if (slugSaisi && !REGEX_SLUG.test(slugSaisi)) {
       setErreurSlug(MESSAGE_FORMAT_SLUG)
@@ -647,6 +677,66 @@ return detail?.statut_publication || produit.statut_publication || 'BROUILLON'
         : Math.max(poidsReelKg, poidsVolumetriqueKg)
   const intituleVide = !(formInfos.intitule_publication || '').trim()
 
+  const prixVide = formPrix.prix_vente === '' || formPrix.prix_vente == null
+
+  // Checklist Publication, en direct sur le formulaire (pas seulement les
+  // valeurs enregistrées) : chaque condition affiche son état actuel.
+  const conditionsPublication = (() => {
+    const detailCourant = {
+      ...produitSelectionne,
+      intitule_publication: formInfos.intitule_publication,
+      description: formInfos.description,
+      famille_id: formInfos.famille_id === '' || formInfos.famille_id == null ? null : formInfos.famille_id,
+      slug_prd: formInfos.slug_prd,
+      prix_vente: formPrix.prix_vente === '' || formPrix.prix_vente == null ? null : formPrix.prix_vente,
+      poids_grammes:
+        formInfos.poids_grammes === '' || formInfos.poids_grammes == null
+          ? null
+          : parseInt(formInfos.poids_grammes, 10),
+      longueur_cm:
+        formInfos.longueur_cm === '' || formInfos.longueur_cm == null
+          ? null
+          : parseInt(formInfos.longueur_cm, 10),
+      largeur_cm:
+        formInfos.largeur_cm === '' || formInfos.largeur_cm == null ? null : parseInt(formInfos.largeur_cm, 10),
+      hauteur_cm:
+        formInfos.hauteur_cm === '' || formInfos.hauteur_cm == null ? null : parseInt(formInfos.hauteur_cm, 10),
+      images: tuiles
+    }
+    const manquants = manquantsPourPublication(detailCourant)
+
+    const lignes = [
+      {
+        cle: 'intitule',
+        libelle: 'Intitulé de publication',
+        manquant: manquants.includes('un intitulé de publication')
+      },
+      { cle: 'description', libelle: 'Description', manquant: manquants.includes('une description') },
+      { cle: 'famille', libelle: 'Famille', manquant: manquants.includes('une famille') },
+      { cle: 'slug', libelle: 'Slug', manquant: manquants.includes('un slug') },
+      { cle: 'prix', libelle: 'Prix de vente', manquant: manquants.includes('un prix de vente') },
+      { cle: 'images', libelle: 'Au moins 2 images', manquant: manquants.includes('au moins 2 images') }
+    ]
+
+    // 7e condition, seulement quand elle s'applique (poids > 5 kg).
+    if (detailCourant.poids_grammes != null && detailCourant.poids_grammes > 5000) {
+      lignes.push({
+        cle: 'dimensions',
+        libelle: 'Dimensions du colis (poids > 5 kg)',
+        manquant: manquants.includes('les dimensions du colis (poids > 5 kg)')
+      })
+    }
+
+    return lignes
+  })()
+
+  // Marge moyenne : vente moyenne − achat moyen TTC, uniquement à partir
+  // des deux valeurs affichées (« — » si l'une manque).
+  const margeMoyenne =
+    aideDecision?.prix_achat_dzd_moyen != null && aideDecision?.prix_vente_moyen != null
+      ? Number(aideDecision.prix_vente_moyen) - Number(aideDecision.prix_achat_dzd_moyen)
+      : null
+
   // Nom affiché dans le sélecteur famille (parent + sous-familles, 2 niveaux max).
   const nomFamilleSelectionnee = () => {
     if (formInfos.famille_id === '' || formInfos.famille_id == null) return 'Aucune'
@@ -750,11 +840,7 @@ return (
                           )}
                         </TableCell>
                         <TableCell>{detail?.famille?.nom_famille || '—'}</TableCell>
-                        <TableCell align='right'>
-                          {detail?.prix_effectif != null
-                            ? `${Number(detail.prix_effectif).toLocaleString('fr-FR')} DZD`
-                            : '—'}
-                        </TableCell>
+                        <TableCell align='right'>{formaterMontant(detail?.prix_effectif)}</TableCell>
                         <TableCell align='center'>
                           <Chip
                             label={libelleStatut(statutAffiche(produit))}
@@ -844,7 +930,7 @@ return (
                 </Typography>
                 {produitSelectionne?.prix_effectif != null && (
                   <Typography variant='body2' sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                    Prix effectif : {Number(produitSelectionne.prix_effectif).toLocaleString('fr-FR')} DZD
+                    Prix effectif : {formaterMontant(produitSelectionne.prix_effectif)}
                     {produitSelectionne.promo_active ? ' (promo active)' : ''}
                   </Typography>
                 )}
@@ -896,13 +982,16 @@ return (
                             label='Intitulé de publication'
                             autoComplete='off'
                             required
-                            error={intituleVide}
+                            error={Boolean(champsTouches.intitule) && intituleVide}
                             helperText={
-                              intituleVide ? 'Intitulé requis pour publier.' : 'S’affiche dans la boutique.'
+                              Boolean(champsTouches.intitule) && intituleVide
+                                ? 'Intitulé requis pour publier.'
+                                : 'S’affiche dans la boutique.'
                             }
                             inputProps={{ maxLength: 150 }}
                             value={formInfos.intitule_publication || ''}
                             onChange={e => setFormInfos({ ...formInfos, intitule_publication: e.target.value })}
+                            onBlur={() => marquerChampTouche('intitule')}
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
@@ -915,6 +1004,7 @@ return (
                             helperText={erreurSlug || 'Minuscules a-z, chiffres 0-9 et tirets uniquement'}
                             value={formInfos.slug_prd || ''}
                             onChange={e => changerSlugProduit(e.target.value)}
+                            onBlur={validerSlugProduit}
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
@@ -1117,10 +1207,29 @@ return (
                   <Card sx={sxCarteSection}>
                     <CardHeader title='Publication' />
                     <CardContent>
-                      <Alert severity='info'>
-                        Publication : intitulé, description, famille, slug, prix de vente et au moins 2 images. Si
-                        le produit ne remplit plus ces conditions, il est dépublié automatiquement.
-                      </Alert>
+                      <Box data-testid='checklist-publication'>
+                        {conditionsPublication.map(condition => (
+                          <Box
+                            key={condition.cle}
+                            data-testid={`condition-${condition.cle}`}
+                            data-etat={condition.manquant ? 'manquant' : 'rempli'}
+                            sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}
+                          >
+                            <Box
+                              sx={{
+                                color: condition.manquant ? 'error.main' : 'success.main',
+                                display: 'flex'
+                              }}
+                            >
+                              <Icon icon={condition.manquant ? 'tabler:x' : 'tabler:check'} />
+                            </Box>
+                            <Typography variant='body2'>{condition.libelle}</Typography>
+                          </Box>
+                        ))}
+                        <Typography variant='body2' color='text.secondary' sx={{ mt: 2 }}>
+                          Si une condition n’est plus remplie, le produit est dépublié automatiquement.
+                        </Typography>
+                      </Box>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -1129,7 +1238,13 @@ return (
 
             {onglet === '2' && (
               <>
-                <Grid item xs={12} md={6}>
+                <Grid
+                  item
+                  xs={12}
+                  md={6}
+                  data-testid='colonne-prix-gauche'
+                  sx={{ display: 'flex', flexDirection: 'column' }}
+                >
                   <Card sx={sxCarteSection}>
                     <CardHeader
                       title='Prix de vente'
@@ -1143,14 +1258,20 @@ return (
                             label='Prix de vente (DZD)'
                             type='number'
                             autoComplete='off'
+                            required
+                            error={Boolean(champsTouches.prix) && prixVide}
+                            helperText={
+                              Boolean(champsTouches.prix) && prixVide ? 'Prix requis pour publier.' : undefined
+                            }
                             value={formPrix.prix_vente ?? ''}
                             onChange={e => setFormPrix({ ...formPrix, prix_vente: e.target.value })}
+                            onBlur={() => marquerChampTouche('prix')}
                           />
                         </Grid>
                       </Grid>
                     </CardContent>
                   </Card>
-                  <Card sx={{ ...sxCarteSection, height: '100%', mt: 6 }}>
+                  <Card sx={{ ...sxCarteSection, flex: 1, mt: 6 }}>
                     <CardHeader
                       title='Paliers de prix par quantité'
                       subheader="Chaque palier fixe le prix UNITAIRE appliqué à partir d'une quantité (prix dégressifs). Le palier avec la plus grande quantité atteinte s'applique."
@@ -1240,7 +1361,7 @@ return (
                                   <>
                                     <TableCell align='center'>dès {palier.quantite_min} pièces</TableCell>
                                     <TableCell align='right'>
-                                      {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
+                                      {formaterMontant(palier.prix_unitaire)} / pièce
                                     </TableCell>
                                     <TableCell align='center'>
                                       <Tooltip title='Modifier le palier'>
@@ -1336,29 +1457,45 @@ return (
                     </CardContent>
                   </Card>
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Card sx={sxCarteSection}>
+                <Grid
+                  item
+                  xs={12}
+                  md={6}
+                  data-testid='colonne-prix-droite'
+                  sx={{ display: 'flex', flexDirection: 'column' }}
+                >
+                  <Card sx={sxCarteSection} data-testid='aide-decision'>
                     <CardHeader title='Aide à la décision' />
                     <CardContent>
-                      <Typography variant='body2' sx={{ mb: 2 }}>
-                        Prix d&apos;achat moyen (TTC) :{' '}
-                        <strong>{formaterMontant(aideDecision?.prix_achat_dzd_moyen)}</strong>
-                      </Typography>
-                      <Typography variant='body2' sx={{ mb: 2 }}>
-                        Prix d&apos;achat moyen en devise :{' '}
-                        <strong>
-                          {aideDecision?.prix_achat_dev_moyen != null
-                            ? `${Number(aideDecision.prix_achat_dev_moyen).toLocaleString('fr-FR')} ${
-                                aideDecision.devise_achat_symbole || ''
-                              }`.trim()
-                            : '—'}
-                        </strong>
-                      </Typography>
-                      <Typography variant='body2' sx={{ mb: 2 }}>
-                        Prix de vente moyen : <strong>{formaterMontant(aideDecision?.prix_vente_moyen)}</strong>
-                      </Typography>
-                      <Typography variant='body2' color='text.secondary' sx={{ mb: 1 }}>
-                        Paliers de prix (lecture seule) :
+                      <Box sx={sxLigneAide}>
+                        <Typography variant='body2' color='text.secondary'>
+                          Prix d’achat moyen (TTC)
+                        </Typography>
+                        <Typography variant='body2' sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {formaterMontant(aideDecision?.prix_achat_dzd_moyen)}
+                        </Typography>
+                      </Box>
+                      <Divider />
+                      <Box sx={sxLigneAide}>
+                        <Typography variant='body2' color='text.secondary'>
+                          Prix de vente moyen
+                        </Typography>
+                        <Typography variant='body2' sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {formaterMontant(aideDecision?.prix_vente_moyen)}
+                        </Typography>
+                      </Box>
+                      <Divider />
+                      <Box sx={sxLigneAide}>
+                        <Typography variant='body2' color='text.secondary'>
+                          Marge moyenne
+                        </Typography>
+                        <Typography variant='body2' sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {formaterMontant(margeMoyenne)}
+                        </Typography>
+                      </Box>
+                      <Divider />
+                      <Typography variant='body2' color='text.secondary' sx={{ pt: 1.5, pb: 1 }}>
+                        Paliers de prix (lecture seule)
                       </Typography>
                       {(produitSelectionne?.paliers || []).length === 0 ? (
                         <Typography variant='body2' color='text.secondary'>
@@ -1366,15 +1503,19 @@ return (
                         </Typography>
                       ) : (
                         (produitSelectionne?.paliers || []).map(palier => (
-                          <Typography key={palier.id_palier} variant='body2'>
-                            dès {palier.quantite_min} pièces :{' '}
-                            {Number(palier.prix_unitaire).toLocaleString('fr-FR')} DZD / pièce
-                          </Typography>
+                          <Box key={palier.id_palier} sx={sxLigneAide}>
+                            <Typography variant='body2' color='text.secondary'>
+                              Dès {palier.quantite_min} pièces
+                            </Typography>
+                            <Typography variant='body2' sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {formaterMontant(palier.prix_unitaire)} / pièce
+                            </Typography>
+                          </Box>
                         ))
                       )}
                     </CardContent>
                   </Card>
-                  <Card sx={{ ...sxCarteSection, height: '100%', mt: 6 }}>
+                  <Card sx={{ ...sxCarteSection, flex: 1, mt: 6 }}>
                     <CardHeader title='Historique des prix' />
                     <CardContent>
                       <TableContainer>
@@ -1401,16 +1542,8 @@ return (
                             ) : (
                               historique.map(ligne => (
                                 <TableRow key={ligne.id_historique}>
-                                  <TableCell align='right'>
-                                    {ligne.ancien_prix != null
-                                      ? `${Number(ligne.ancien_prix).toLocaleString('fr-FR')} DZD`
-                                      : '—'}
-                                  </TableCell>
-                                  <TableCell align='right'>
-                                    {ligne.nouveau_prix != null
-                                      ? `${Number(ligne.nouveau_prix).toLocaleString('fr-FR')} DZD`
-                                      : '—'}
-                                  </TableCell>
+                                  <TableCell align='right'>{formaterMontant(ligne.ancien_prix)}</TableCell>
+                                  <TableCell align='right'>{formaterMontant(ligne.nouveau_prix)}</TableCell>
                                   <TableCell sx={{ color: 'text.secondary' }}>
                                     {formaterDate(ligne.date_debut)}
                                   </TableCell>
