@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
 import {
   Alert,
   AppBar,
@@ -33,11 +33,10 @@ import {
   FormControlLabel,
   Switch
 } from '@mui/material'
-import { createFilterOptions } from '@mui/material/Autocomplete'
-import CustomAutocomplete from 'src/@core/components/mui/autocomplete'
 import Icon from 'src/@core/components/icon'
 import toast from 'react-hot-toast'
 import ConfirmDialog from 'src/components/dialogs/ConfirmDialog'
+import FamilleSelect from './FamilleSelect'
 import { useDebounce } from 'src/@core/hooks/useDebounce'
 import { useProduitDashboard } from 'src/context/ProduitDashboardContext'
 import { useProduitEcommerce } from 'src/context/ProduitEcommerceContext'
@@ -48,14 +47,6 @@ const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MESSAGE_FORMAT_SLUG =
   'Format invalide : minuscules a-z, chiffres 0-9 et tirets uniquement, sans accents ni espaces (ex. : chargeur-ugreen-30w)'
 const NB_IMAGES_MAX = 7
-
-// Filtrage des familles : la saisie est comparée au nom du parent ET au
-// nom de la sous-famille (doc officielle MUI v5, `createFilterOptions`,
-// option `stringify`), pour que taper le nom d'un parent montre aussi
-// toutes ses sous-familles.
-const filtreFamilles = createFilterOptions({
-  stringify: option => `${option.groupe} ${option.label}`
-})
 
 const Transition = forwardRef(function Transition(props, ref) {
   return <Slide direction='up' ref={ref} {...props} />
@@ -229,6 +220,7 @@ const ProduitsEcommerceView = () => {
   const [imagesLocales, setImagesLocales] = useState([])
   const [ordreTuiles, setOrdreTuiles] = useState([])
   const [indexSurvole, setIndexSurvole] = useState(null)
+  const [emplacementSurvole, setEmplacementSurvole] = useState(null)
   const [messageDepot, setMessageDepot] = useState('')
   const refFichierImage = useRef(null)
   const [publicationEnAttente, setPublicationEnAttente] = useState(null)
@@ -390,7 +382,11 @@ return detail
       )
       if (misAJour) {
         setDetails(prev => ({ ...prev, [produit.id_prd]: { ...prev[produit.id_prd], statut_publication: suivant } }))
-        setProduits(prev => prev.map(p => (p.id_prd === produit.id_prd ? { ...p, statut_publication: suivant } : p)))
+
+        // Rechargement immédiat avec le tri serveur : le produit prend sa
+        // place triée tout seul (un PUBLIE descend parmi les PUBLIEs, un
+        // BROUILLON remonte en tête) — sans actualisation manuelle.
+        await chargerListe()
         toast.success(
           suivant === 'PUBLIE' ? 'Produit publié — visible dans la boutique' : 'Produit retiré de la boutique'
         )
@@ -432,8 +428,11 @@ return detail
 return ordonnees
   }
 
+  // Enregistre (brouillon) et dit si le modal peut se fermer : false quand
+  // la validation bloque ou que la sauvegarde échoue, true sinon (y compris
+  // quand il n'y avait rien à enregistrer).
   const enregistrerTout = async () => {
-    if (!produitSelectionne || enregistrementEnCours) return
+    if (!produitSelectionne || enregistrementEnCours) return false
 
     // Enregistrer = sauvegarde brouillon : les erreurs « requis pour
     // publier » ne s'affichent pas ici (elles vivent dans la checklist et
@@ -442,8 +441,8 @@ return ordonnees
     if (slugSaisi && !REGEX_SLUG.test(slugSaisi)) {
       setErreurSlug(MESSAGE_FORMAT_SLUG)
       setOnglet('1')
-      
-return
+
+      return false
     }
     const donneesInfos = normaliserInfos(formInfos)
     const donneesPrix = normaliserPrix(formPrix)
@@ -461,7 +460,7 @@ return
     const ordreAChange =
       locales.length > 0 ||
       JSON.stringify(ordreServeurFinal) !== JSON.stringify(ordreServeurInitial)
-    if (!infosOntChange && !prixAChange && locales.length === 0 && !ordreAChange) return
+    if (!infosOntChange && !prixAChange && locales.length === 0 && !ordreAChange) return true
     setEnregistrementEnCours(true)
     let depublication = null
     let echecUpload = 0
@@ -470,12 +469,12 @@ return
         const infosAJour = await modifierProduitEcommerce(produitSelectionne.id_prd, donneesInfos, {
           silencieux: true
         })
-        if (!infosAJour) return
+        if (!infosAJour) return false
         depublication = infosAJour.depublication_auto || null
       }
       if (prixAChange) {
         const prixAJour = await modifierPrix(produitSelectionne.id_prd, donneesPrix, { silencieux: true })
-        if (!prixAJour) return
+        if (!prixAJour) return false
         depublication = depublication || prixAJour.depublication_auto || null
       }
 
@@ -556,6 +555,20 @@ return
         )
       }
       const detailFrais = await rafraichirDetail(produitSelectionne.id_prd)
+
+      // La 1re tuile est l'image principale : si l'ordre a changé et que
+      // l'image en tête n'est pas la principale, on la déclare (le flag
+      // `est_principale` seul ne suit pas l'ordre).
+      if (ordreAChange && detailFrais) {
+        const imagesTriees = (detailFrais.images || [])
+          .slice()
+          .sort((a, b) => a.ordre_image - b.ordre_image || a.id_img - b.id_img)
+        const premiere = imagesTriees[0]
+        if (premiere && !premiere.est_principale) {
+          await definirImagePrincipale(produitSelectionne.id_prd, premiere.id_img, { silencieux: true })
+          await rafraichirDetail(produitSelectionne.id_prd)
+        }
+      }
       await chargerListe()
       if (echecUpload > 0) {
         const reussies = locales.length - echecUpload
@@ -573,9 +586,20 @@ return
         setAlerteDepublication(depublication.manquants)
       }
       marquerCommeEnregistre(detailFrais, localesReussies)
+
+      return true
     } finally {
       setEnregistrementEnCours(false)
     }
+  }
+
+  // « Enregistrer et fermer » : même enregistrement (même validation, même
+  // toast), puis fermeture du modal. La liste est déjà rechargée par
+  // enregistrerTout ; sans modification, on ferme simplement.
+  const enregistrerEtFermer = async () => {
+    if (enregistrementEnCours) return
+    const ok = await enregistrerTout()
+    if (ok) fermerDetail()
   }
 
   const ajouterFichiersImages = fichiers => {
@@ -630,12 +654,16 @@ return
   const deplacerTuileParGlisser = (indexSource, indexCible) => {
     if (indexCible === indexSource || indexCible < 0) return
     const tuiles = tuilesFusionnees()
-    if (indexCible >= tuiles.length) return
+
+    // indexCible == tuiles.length : dépôt sur un emplacement vide en fin
+    // de grille (splice tronque à la fin, la tuile atterrit en dernière).
+    if (indexCible > tuiles.length) return
     const cles = tuiles.map(tuile => (tuile.type === 'serveur' ? `srv-${tuile.image.id_img}` : `loc-${tuile.image.idLocal}`))
     const [deplacee] = cles.splice(indexSource, 1)
     cles.splice(indexCible, 0, deplacee)
     setOrdreTuiles(cles)
     setIndexSurvole(null)
+    setEmplacementSurvole(null)
   }
 
   const statutAffiche = produit => {
@@ -710,13 +738,45 @@ return detail?.statut_publication || produit.statut_publication || 'BROUILLON'
       {
         cle: 'intitule',
         libelle: 'Intitulé de publication',
-        manquant: manquants.includes('un intitulé de publication')
+        manquant: manquants.includes('un intitulé de publication'),
+        onglet: '1',
+        ongletNom: 'Info'
       },
-      { cle: 'description', libelle: 'Description', manquant: manquants.includes('une description') },
-      { cle: 'famille', libelle: 'Famille', manquant: manquants.includes('une famille') },
-      { cle: 'slug', libelle: 'Slug', manquant: manquants.includes('un slug') },
-      { cle: 'prix', libelle: 'Prix de vente', manquant: manquants.includes('un prix de vente') },
-      { cle: 'images', libelle: 'Au moins 2 images', manquant: manquants.includes('au moins 2 images') }
+      {
+        cle: 'description',
+        libelle: 'Description',
+        manquant: manquants.includes('une description'),
+        onglet: '1',
+        ongletNom: 'Info'
+      },
+      {
+        cle: 'famille',
+        libelle: 'Famille',
+        manquant: manquants.includes('une famille'),
+        onglet: '1',
+        ongletNom: 'Info'
+      },
+      {
+        cle: 'slug',
+        libelle: 'Slug',
+        manquant: manquants.includes('un slug'),
+        onglet: '1',
+        ongletNom: 'Info'
+      },
+      {
+        cle: 'prix',
+        libelle: 'Prix de vente',
+        manquant: manquants.includes('un prix de vente'),
+        onglet: '2',
+        ongletNom: 'Prix'
+      },
+      {
+        cle: 'images',
+        libelle: 'Au moins 2 images',
+        manquant: manquants.includes('au moins 2 images'),
+        onglet: '3',
+        ongletNom: 'Images'
+      }
     ]
 
     // 7e condition, seulement quand elle s'applique (poids > 5 kg).
@@ -724,42 +784,28 @@ return detail?.statut_publication || produit.statut_publication || 'BROUILLON'
       lignes.push({
         cle: 'dimensions',
         libelle: 'Dimensions du colis (poids > 5 kg)',
-        manquant: manquants.includes('les dimensions du colis (poids > 5 kg)')
+        manquant: manquants.includes('les dimensions du colis (poids > 5 kg)'),
+        onglet: '1',
+        ongletNom: 'Info'
       })
     }
 
     return lignes
   })()
 
-  // Options familles pour l'Autocomplete groupé (doc officielle MUI v5,
-  // section « Grouped » : `groupBy`, options triées par groupe pour ne pas
-  // dupliquer les en-têtes). Une option par famille et par sous-famille,
-  // 2 niveaux max ; le parent est sélectionnable comme ses enfants.
-  const optionsFamilles = useMemo(() => {
-    const liste = []
-    familles.forEach(parent => {
-      liste.push({
-        id_famille: parent.id_famille,
-        label: parent.nom_famille,
-        groupe: parent.nom_famille,
-        estParent: true
-      })
-      const enfants = parent.sous_familles || []
-      enfants.forEach(enfant => {
-        liste.push({
-          id_famille: enfant.id_famille,
-          label: enfant.nom_famille,
-          groupe: parent.nom_famille,
-          estParent: false
-        })
-      })
-    })
+  // Famille sélectionnée (objet de l'arbre, parent ou enfant) à partir de
+  // famille_id, pour le sélecteur accordéon.
+  const familleSelectionnee = (() => {
+    const id = parseInt(formInfos.famille_id, 10)
+    if (isNaN(id)) return null
+    for (const parent of familles) {
+      if (parent.id_famille === id) return parent
+      const enfant = (parent.sous_familles || []).find(e => e.id_famille === id)
+      if (enfant) return enfant
+    }
 
-    return liste
-  }, [familles])
-
-  const optionFamilleSelectionnee =
-    optionsFamilles.find(option => option.id_famille === parseInt(formInfos.famille_id, 10)) || null
+    return null
+  })()
 
   return (
     <Grid container spacing={6}>
@@ -1019,36 +1065,15 @@ return (
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <CustomAutocomplete
-                            data-testid='selecteur-famille'
-                            options={optionsFamilles}
-                            groupBy={option => option.groupe}
-                            getOptionLabel={option => (typeof option === 'string' ? option : option.label)}
-                            isOptionEqualToValue={(option, valeur) => option.id_famille === valeur?.id_famille}
-                            value={optionFamilleSelectionnee}
-                            onChange={(event, nouvelleOption) =>
+                          <FamilleSelect
+                            familles={familles}
+                            value={familleSelectionnee}
+                            onChange={nouvelle =>
                               setFormInfos({
                                 ...formInfos,
-                                famille_id: nouvelleOption ? nouvelleOption.id_famille : ''
+                                famille_id: nouvelle ? nouvelle.id_famille : ''
                               })
                             }
-                            filterOptions={filtreFamilles}
-                            noOptionsText='Aucune famille trouvée'
-                            clearText='Retirer la famille'
-                            renderOption={(props, option) => (
-                              <li {...props}>
-                                <Typography
-                                  variant='body2'
-                                  sx={{
-                                    pl: option.estParent ? 0 : 4,
-                                    fontWeight: option.estParent ? 600 : 400
-                                  }}
-                                >
-                                  {option.label}
-                                </Typography>
-                              </li>
-                            )}
-                            renderInput={params => <TextField {...params} label='Famille' autoComplete='off' />}
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
@@ -1137,42 +1162,6 @@ return (
                           />
                         </Grid>
                       </Grid>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12}>
-                  <Card sx={sxCarteSection}>
-                    <CardHeader title='Publication' />
-                    <CardContent>
-                      <Box data-testid='checklist-publication'>
-                        {conditionsPublication.map(condition => (
-                          <Box
-                            key={condition.cle}
-                            data-testid={`condition-${condition.cle}`}
-                            data-etat={condition.manquant ? 'manquant' : 'rempli'}
-                            sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}
-                          >
-                            <Box
-                              sx={{
-                                color: condition.manquant ? 'warning.main' : 'success.main',
-                                display: 'flex'
-                              }}
-                            >
-                              <Icon icon={condition.manquant ? 'tabler:circle' : 'tabler:check'} />
-                            </Box>
-                            <Typography variant='body2'>{condition.libelle}</Typography>
-                            {condition.manquant && (
-                              <Typography variant='body2' color='warning.main' sx={{ ml: 'auto' }}>
-                                À compléter
-                              </Typography>
-                            )}
-                          </Box>
-                        ))}
-                        <Typography variant='body2' color='text.secondary' sx={{ mt: 2 }}>
-                          Ces éléments sont nécessaires pour publier. S’il en manque un, le produit n’est pas
-                          visible en boutique.
-                        </Typography>
-                      </Box>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -1499,8 +1488,10 @@ return (
                         }}
                       >
                         {tuiles.map((tuile, index) => {
-                          const estPrincipaleServeur =
-                            tuile.type === 'serveur' && tuile.image.est_principale
+                          // La 1re tuile EST l'image principale (vignette en
+                          // boutique) : la pastille et le chip suivent la
+                          // position, pas le flag `est_principale` (qui ne
+                          // bouge pas quand on réordonne).
                           const estPremiere = index === 0
                           const src = tuile.type === 'serveur' ? tuile.image.url_image : tuile.image.urlApercu
                           const rotation = tuile.type === 'locale' ? tuile.image.rotation : 0
@@ -1517,6 +1508,7 @@ return (
                               md={3}
                               draggable
                               onDragStart={event => event.dataTransfer.setData('text/plain', String(index))}
+                              onDragEnd={() => setIndexSurvole(null)}
                               onDragOver={event => {
                                 event.preventDefault()
                                 if (!Array.from(event.dataTransfer.types || []).includes('Files')) {
@@ -1527,6 +1519,7 @@ return (
                               onDrop={event => {
                                 event.preventDefault()
                                 setIndexSurvole(null)
+                                setEmplacementSurvole(null)
                                 if (event.dataTransfer.files?.length > 0) {
                                   event.stopPropagation()
                                   ajouterFichiersImages(event.dataTransfer.files)
@@ -1547,8 +1540,8 @@ return (
                                   position: 'relative',
                                   borderRadius: 3,
                                   overflow: 'hidden',
-                                  border: estPrincipaleServeur ? '2px solid' : '1px solid',
-                                  borderColor: estPrincipaleServeur ? 'primary.main' : 'divider',
+                                  border: estPremiere ? '2px solid' : '1px solid',
+                                  borderColor: estPremiere ? 'primary.main' : 'divider',
                                   opacity: indexSurvole === index ? 0.6 : 1
                                 }}
                               >
@@ -1556,6 +1549,7 @@ return (
                                   component='img'
                                   src={src}
                                   alt={`Image ${index + 1} de ${produitSelectionne?.designation_prd}`}
+                                  draggable={false}
                                   sx={{
                                     width: '100%',
                                     aspectRatio: '1 / 1',
@@ -1584,7 +1578,7 @@ return (
                                 >
                                   {index + 1}
                                 </Box>
-                                {estPrincipaleServeur && (
+                                {estPremiere && (
                                   <>
                                     <Chip
                                       label='Principale'
@@ -1592,23 +1586,25 @@ return (
                                       size='small'
                                       sx={{ position: 'absolute', top: 8, left: 40 }}
                                     />
-                                    <Box
-                                      sx={{
-                                        position: 'absolute',
-                                        top: 8,
-                                        right: 8,
-                                        width: 24,
-                                        height: 24,
-                                        borderRadius: '50%',
-                                        backgroundColor: 'primary.main',
-                                        color: 'white',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
-                                      }}
-                                    >
-                                      <Icon icon='tabler:check' fontSize='1rem' />
-                                    </Box>
+                                    {tuile.type === 'serveur' && (
+                                      <Box
+                                        sx={{
+                                          position: 'absolute',
+                                          top: 8,
+                                          right: 8,
+                                          width: 24,
+                                          height: 24,
+                                          borderRadius: '50%',
+                                          backgroundColor: 'primary.main',
+                                          color: 'white',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center'
+                                        }}
+                                      >
+                                        <Icon icon='tabler:check' fontSize='1rem' />
+                                      </Box>
+                                    )}
                                   </>
                                 )}
                                 {tuile.type === 'locale' && (
@@ -1632,22 +1628,13 @@ return (
                                     backgroundColor: 'rgba(0,0,0,0.45)'
                                   }}
                                 >
-                                  {tuile.type === 'serveur' && !tuile.image.est_principale && (
+                                  {!estPremiere && (
                                     <Tooltip title='Définir comme principale'>
                                       <IconButton
                                         size='small'
                                         sx={{ color: 'white' }}
                                         aria-label={`Définir l'image ${index + 1} comme principale`}
-                                        onClick={async () => {
-                                          if (
-                                            await definirImagePrincipale(
-                                              produitSelectionne.id_prd,
-                                              tuile.image.id_img
-                                            )
-                                          ) {
-                                            await rafraichirDetail(produitSelectionne.id_prd)
-                                          }
-                                        }}
+                                        onClick={() => deplacerTuileParGlisser(index, 0)}
                                       >
                                         <Icon icon='tabler:star' />
                                       </IconButton>
@@ -1746,19 +1733,31 @@ return
                               <Box
                                 data-testid='emplacement-image-vide'
                                 onClick={() => refFichierImage.current?.click()}
-                                onDragOver={event => event.preventDefault()}
+                                onDragOver={event => {
+                                  event.preventDefault()
+                                  if (!Array.from(event.dataTransfer.types || []).includes('Files')) {
+                                    setEmplacementSurvole(position)
+                                  }
+                                }}
+                                onDragLeave={() => setEmplacementSurvole(null)}
                                 onDrop={event => {
                                   event.preventDefault()
                                   event.stopPropagation()
+                                  setEmplacementSurvole(null)
                                   if (event.dataTransfer.files?.length > 0) {
                                     ajouterFichiersImages(event.dataTransfer.files)
+
+                                    return
                                   }
+                                  const source = parseInt(event.dataTransfer.getData('text/plain'), 10)
+                                  if (!isNaN(source)) deplacerTuileParGlisser(source, position - 1)
                                 }}
                                 sx={{
                                   position: 'relative',
                                   borderRadius: 3,
                                   border: '2px dashed',
-                                  borderColor: 'divider',
+                                  borderColor:
+                                    emplacementSurvole === position ? 'primary.main' : 'divider',
                                   aspectRatio: '1 / 1',
                                   display: 'flex',
                                   flexDirection: 'column',
@@ -1796,8 +1795,8 @@ return
                       {imagesLocales.length > 0 && (
                         <Typography variant='body2' color='warning.main' sx={{ mt: 4 }}>
                           {imagesLocales.length} image{imagesLocales.length > 1 ? 's' : ''} en attente :
-                          téléversée{imagesLocales.length > 1 ? 's' : ''} au clic sur Enregistrer. Fermer le modal
-                          sans enregistrer les perd.
+                          téléversée{imagesLocales.length > 1 ? 's' : ''} au clic sur Enregistrer ou sur
+                          Enregistrer et fermer. Fermer le modal sans enregistrer les perd.
                         </Typography>
                       )}
                       {messageDepot && (
@@ -1816,16 +1815,98 @@ return
         <DialogActions
           sx={{
             px: { xs: 3, md: 8 },
-            py: 3,
+            py: 2,
             backgroundColor: 'background.paper',
             borderTop: 1,
-            borderColor: 'divider'
+            borderColor: 'divider',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 2
           }}
         >
-          <Button onClick={fermerDetail}>Annuler</Button>
-          <Button variant='contained' onClick={enregistrerTout} disabled={enregistrementEnCours}>
-            Enregistrer
-          </Button>
+          {/* Checklist Publication : visible en permanence, quel que soit
+              l'onglet — les 6 conditions sont réparties sur les 3 onglets.
+              Chaque condition ouvre l'onglet concerné. */}
+          <Box data-testid='checklist-publication' sx={{ flex: '1 1 360px', minWidth: 0 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(3, minmax(0, 1fr))' },
+                columnGap: 2,
+                rowGap: 0.5
+              }}
+            >
+              {conditionsPublication.map(condition => (
+                <Box
+                  component='button'
+                  type='button'
+                  key={condition.cle}
+                  data-testid={`condition-${condition.cle}`}
+                  data-etat={condition.manquant ? 'manquant' : 'rempli'}
+                  title={`Ouvrir l’onglet ${condition.ongletNom}`}
+                  onClick={() => setOnglet(condition.onglet)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    minWidth: 0,
+                    padding: '2px 4px',
+                    border: 0,
+                    borderRadius: 1,
+                    background: 'none',
+                    font: 'inherit',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    color: 'text.primary',
+                    '&:hover': { backgroundColor: 'action.hover' },
+                    '&:focus-visible': { outline: 2, outlineColor: 'primary.main', outlineStyle: 'solid' }
+                  }}
+                >
+                  <Box
+                    sx={{
+                      color: condition.manquant ? 'warning.main' : 'success.main',
+                      display: 'flex',
+                      flexShrink: 0
+                    }}
+                  >
+                    <Icon icon={condition.manquant ? 'tabler:circle' : 'tabler:check'} fontSize='1rem' />
+                  </Box>
+                  <Typography variant='caption' sx={{ lineHeight: 1.3 }}>
+                    {condition.libelle}
+                  </Typography>
+                  {condition.manquant && (
+                    <Typography variant='caption' color='warning.main' sx={{ flexShrink: 0, lineHeight: 1.3 }}>
+                      À compléter
+                    </Typography>
+                  )}
+                </Box>
+              ))}
+            </Box>
+            <Typography variant='caption' color='text.secondary' sx={{ mt: 0.5, display: 'block' }}>
+              Ces éléments sont nécessaires pour publier. S’il en manque un, le produit n’est pas visible en
+              boutique.
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', ml: 'auto', flexShrink: 0 }}>
+            <Button onClick={fermerDetail}>Annuler</Button>
+            <Button
+              variant='outlined'
+              onClick={enregistrerEtFermer}
+              disabled={enregistrementEnCours}
+              data-testid='bouton-enregistrer-fermer'
+            >
+              Enregistrer et fermer
+            </Button>
+            <Button
+              variant='contained'
+              onClick={enregistrerTout}
+              disabled={enregistrementEnCours}
+              data-testid='bouton-enregistrer'
+            >
+              Enregistrer
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
 

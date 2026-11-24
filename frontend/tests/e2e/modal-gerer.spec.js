@@ -176,24 +176,19 @@ test.describe('modal Gérer — 11 points', () => {
     await modal.getByLabel('Hauteur (cm)').fill('30')
     await expect(modal.getByText(/Poids volumétrique : 12 kg — Poids facturé : 12 kg/)).toBeVisible()
 
-    // Intitulé (requis pour publier ensuite) + famille (c) : Autocomplete
-    // groupé — en-têtes parents, filtrage en tapant, parent sélectionnable.
+    // Intitulé (requis pour publier ensuite) + famille (c) : accordéon —
+    // le parent est sélectionnable, le chevron déplie les enfants.
     await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E modal Gérer')
-    const champFamille = modal.getByRole('combobox', { name: 'Famille' })
+    const parent = dbJson(
+      'SELECT id_famille, nom_famille FROM famille_produit WHERE famille_parente_id IS NULL ORDER BY ordre_famille, nom_famille LIMIT 1'
+    )[0]
+    const champFamille = modal.getByLabel('Famille')
     await champFamille.click()
-    const liste = page.locator('.MuiAutocomplete-listbox')
-    await expect(liste).toBeVisible()
-    const enTetes = liste.locator('.MuiAutocomplete-groupLabel')
-    await expect(enTetes.first()).toBeVisible()
-    // textContent (pas innerText) : l'en-tête est affiché en capitales par
-    // le CSS (text-transform), le nom réel est « Cartes WiFi ».
-    const nomParent = (await enTetes.first().textContent()).trim()
-    // Filtrage en tapant : le nom du parent ne laisse que son groupe.
-    await champFamille.fill(nomParent)
-    await expect(liste.locator('.MuiAutocomplete-groupLabel')).toHaveCount(1)
-    // Le parent est sélectionnable comme ses enfants.
-    await liste.getByRole('option', { name: nomParent, exact: true }).click()
-    await expect(champFamille).toHaveValue(nomParent)
+    const popover = page.locator('.MuiPopover-paper')
+    await expect(popover.getByTestId('option-famille-aucune')).toBeVisible()
+    // Le parent est sélectionnable directement (sans déplier).
+    await popover.getByTestId(`option-famille-${parent[0]}`).click()
+    await expect(champFamille).toHaveValue(parent[1])
 
     // (d) Dépôt de 2 images → aperçu immédiat, 0 appel réseau avant Enregistrer.
     await modal.getByRole('tab', { name: 'Images' }).click()
@@ -206,7 +201,7 @@ test.describe('modal Gérer — 11 points', () => {
     expect(appelsUpload.length).toBe(0)
 
     // (e) Enregistrer → 1 seul toast + modal toujours ouvert.
-    await modal.getByRole('button', { name: 'Enregistrer' }).click()
+    await modal.getByRole('button', { name: 'Enregistrer', exact: true }).click()
     await expect(page.getByText('Modifications enregistrées')).toBeVisible()
     await expect(page.getByText('Produit mis à jour')).toHaveCount(0)
     await expect(page.getByText('Prix mis à jour')).toHaveCount(0)
@@ -267,7 +262,7 @@ test.describe('modal Gérer — 11 points', () => {
       // Une modification (intitulé) force l'envoi : le poids vide part en
       // null et le backend stocke 200.
       await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E poids défaut')
-      await modal.getByRole('button', { name: 'Enregistrer' }).click()
+      await modal.getByRole('button', { name: 'Enregistrer', exact: true }).click()
       await expect(page.getByText('Modifications enregistrées')).toBeVisible()
       await expect(modal).toBeVisible()
       expect(db(`SELECT poids_grammes FROM produit WHERE id_prd = ${produit.id}`)).toBe('200')
@@ -448,7 +443,7 @@ test.describe('modal Gérer — 11 points', () => {
       await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
       await modal.getByLabel('Intitulé de publication').fill('Adaptateur Onten OTN-UCA303 adaptateur hybride 3 en 2')
       await modal.getByLabel('Slug (URL boutique)').fill('adaptateur-onten-uca303')
-      await modal.getByRole('button', { name: 'Enregistrer' }).click()
+      await modal.getByRole('button', { name: 'Enregistrer', exact: true }).click()
       await expect(page.getByText('Modifications enregistrées')).toBeVisible()
       // Aucun toast d'erreur Prisma (ni brut, ni traduit).
       await expect(page.getByText(/Invalid `prisma/)).toHaveCount(0)
@@ -492,7 +487,7 @@ test.describe('modal Gérer — 11 points', () => {
       // Une modification (intitulé) force l'envoi : l'enregistrement est
       // une sauvegarde brouillon, pas une publication.
       await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E prix vide')
-      await modal.getByRole('button', { name: 'Enregistrer' }).click()
+      await modal.getByRole('button', { name: 'Enregistrer', exact: true }).click()
       await expect(page.getByText('Modifications enregistrées')).toBeVisible()
       // Aucune erreur « requis pour publier », sur aucun champ non touché.
       await expect(modal.getByText(/requis pour publier\./)).toHaveCount(0)
@@ -550,7 +545,76 @@ test.describe('modal Gérer — 11 points', () => {
     }
   })
 
-  test('famille : Autocomplete groupé, filtrage et parent sélectionnable', async ({ page }) => {
+  test('checklist en pied de modal : 2 lignes, visible sur tous les onglets, clic vers l’onglet', async ({
+    page
+  }) => {
+    // Poids 500 g : 6 conditions exactement (pas de 7e « Dimensions ») → 2 lignes de 3.
+    db(`UPDATE produit SET poids_grammes = 500 WHERE id_prd = ${produit.id}`)
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+
+      // (1) La checklist est dans le pied du modal, à gauche des boutons.
+      const pied = modal.locator('.MuiDialogActions-root')
+      const checklist = pied.getByTestId('checklist-publication')
+      await expect(checklist).toBeVisible()
+      await expect(pied.getByRole('button', { name: 'Annuler' })).toBeVisible()
+      await expect(pied.getByRole('button', { name: 'Enregistrer et fermer' })).toBeVisible()
+      await expect(pied.getByRole('button', { name: 'Enregistrer', exact: true })).toBeVisible()
+      // La checklist est à gauche des boutons (même pied, x inférieur).
+      const xChecklist = (await checklist.boundingBox()).x
+      const xBoutons = (await pied.getByRole('button', { name: 'Enregistrer', exact: true }).boundingBox()).x
+      expect(xChecklist).toBeLessThan(xBoutons)
+
+      // (2) 2 lignes de 3 conditions : les 3 premières partagent (à 1 px
+      // près — le positionnement sous-pixel du Dialog peut décaler
+      // l'arrondi) la même ordonnée, les 3 suivantes une ordonnée inférieure.
+      const conditions = ['intitule', 'description', 'famille', 'slug', 'prix', 'images']
+      const boites = []
+      for (const cle of conditions) {
+        boites.push(await checklist.getByTestId(`condition-${cle}`).boundingBox())
+      }
+      expect(boites.every(b => b !== null)).toBe(true)
+      const y1 = boites[0].y
+      const y2 = boites[3].y
+      for (const i of [1, 2]) expect(Math.abs(boites[i].y - y1)).toBeLessThanOrEqual(1)
+      for (const i of [4, 5]) expect(Math.abs(boites[i].y - y2)).toBeLessThanOrEqual(1)
+      expect(y2 - y1).toBeGreaterThan(10)
+
+      // (3) Clic sur une condition → l'onglet concerné s'ouvre, et la
+      // checklist reste visible (elle est dans le pied, pas dans le corps).
+      await checklist.getByTestId('condition-prix').click()
+      await expect(modal.getByRole('tab', { name: 'Prix' })).toHaveAttribute('aria-selected', 'true')
+      await expect(modal.getByText('Aide à la décision')).toBeVisible()
+      await expect(checklist).toBeVisible()
+      await checklist.getByTestId('condition-images').click()
+      await expect(modal.getByRole('tab', { name: 'Images' })).toHaveAttribute('aria-selected', 'true')
+      await expect(modal.getByTestId('grille-images')).toBeVisible()
+      await expect(checklist).toBeVisible()
+      await checklist.getByTestId('condition-intitule').click()
+      await expect(modal.getByRole('tab', { name: 'Info' })).toHaveAttribute('aria-selected', 'true')
+      await expect(checklist).toBeVisible()
+
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      db(`UPDATE produit SET poids_grammes = 6000 WHERE id_prd = ${produit.id}`)
+    }
+  })
+
+  test('famille : accordéon, déplier, choisir enfant, choisir parent, retirer', async ({ page }) => {
+    const parent = dbJson(
+      'SELECT id_famille, nom_famille FROM famille_produit WHERE EXISTS (SELECT 1 FROM famille_produit e WHERE e.famille_parente_id = famille_produit.id_famille) ORDER BY id_famille LIMIT 1'
+    )[0]
+    const enfant = dbJson(
+      `SELECT id_famille, nom_famille FROM famille_produit WHERE famille_parente_id = ${parent[0]} ORDER BY id_famille LIMIT 1`
+    )[0]
     await page.goto('/ecommerce/produits')
     await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
     await page.waitForTimeout(1500)
@@ -559,42 +623,34 @@ test.describe('modal Gérer — 11 points', () => {
     await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
     const modal = page.getByRole('dialog').first()
     await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
-    const champFamille = modal.getByRole('combobox', { name: 'Famille' })
+    const champFamille = modal.getByLabel('Famille')
+    const popover = page.locator('.MuiPopover-paper')
+
+    // Ouvrir : « Aucune famille » en tête de liste, parents visibles.
     await champFamille.click()
-    const liste = page.locator('.MuiAutocomplete-listbox')
-    await expect(liste).toBeVisible()
-    // En-têtes de groupe = familles parentes.
-    const enTetes = liste.locator('.MuiAutocomplete-groupLabel')
-    await expect(enTetes.first()).toBeVisible()
-    expect(await enTetes.count()).toBeGreaterThan(0)
-    // Filtrage en tapant : un seul groupe reste.
-    // textContent (pas innerText) : l'en-tête est affiché en capitales par
-    // le CSS (text-transform), le nom réel est « Cartes WiFi ».
-    const nomParent = (await enTetes.first().textContent()).trim()
-    await champFamille.fill(nomParent.slice(0, 3))
-    await expect(liste.locator('.MuiAutocomplete-groupLabel')).toHaveCount(1)
-    await expect(liste.locator('.MuiAutocomplete-groupLabel').first()).toHaveText(nomParent)
-    // Le parent est sélectionnable.
-    await liste.getByRole('option', { name: nomParent, exact: true }).click()
-    await expect(champFamille).toHaveValue(nomParent)
-    // Effacer la sélection.
-    await modal.getByRole('button', { name: 'Retirer la famille' }).click()
+    await expect(popover.getByTestId('option-famille-aucune')).toBeVisible()
+    await expect(popover.getByTestId(`option-famille-${parent[0]}`)).toBeVisible()
+
+    // Déplier le parent (chevron) puis choisir l'enfant. Le chevron est
+    // ciblé dans la ligne du parent : son nom accessible est aussi repris
+    // dans le nom de la ligne (strict mode sinon).
+    await popover
+      .getByTestId(`option-famille-${parent[0]}`)
+      .getByRole('button', { name: `Déplier ${parent[1]}` })
+      .click()
+    await expect(popover.getByTestId(`option-famille-${enfant[0]}`)).toBeVisible()
+    await popover.getByTestId(`option-famille-${enfant[0]}`).click()
+    await expect(champFamille).toHaveValue(enfant[1])
+
+    // Le parent est sélectionnable directement (sans déplier).
+    await champFamille.click()
+    await popover.getByTestId(`option-famille-${parent[0]}`).click()
+    await expect(champFamille).toHaveValue(parent[1])
+
+    // Retirer la famille.
+    await champFamille.click()
+    await popover.getByTestId('option-famille-aucune').click()
     await expect(champFamille).toHaveValue('')
-    // Une sous-famille : la première option dont le libellé diffère de son
-    // groupe (le parent porte le nom de son groupe, l'enfant non).
-    await champFamille.click()
-    const infos = await liste.evaluate(listeEl => {
-      const options = [...listeEl.querySelectorAll('[role="option"]')]
-      return options.map((option, index) => {
-        const ul = option.closest('ul')
-        const enTete = ul ? ul.previousElementSibling : null
-        return { index, label: option.textContent.trim(), groupe: enTete ? enTete.textContent.trim() : null }
-      })
-    })
-    const enfant = infos.find(option => option.label !== option.groupe)
-    expect(enfant).toBeDefined()
-    await liste.getByRole('option').nth(enfant.index).click()
-    await expect(champFamille).toHaveValue(enfant.label)
     await modal.getByRole('button', { name: 'Annuler' }).click()
     await expect(modal).toBeHidden()
   })
@@ -625,5 +681,169 @@ test.describe('modal Gérer — 11 points', () => {
     await modal.getByRole('button', { name: 'Annuler' }).click()
     await expect(modal).toBeHidden()
     expect(db(`SELECT COUNT(*) FROM image_produit WHERE prd_id = ${produit.id}`)).toBe(String(nbImages))
+  })
+
+  test('tri liste : publier fait descendre la ligne sans rechargement', async ({ page }) => {
+    // Le fixture est BROUILLON avec intitulé NULL et poids 6000 sans
+    // dimensions : la publication exige intitulé + dimensions.
+    db(
+      `UPDATE produit SET intitule_publication = 'Intitulé tri E2E', longueur_cm = 50, largeur_cm = 40, hauteur_cm = 30 WHERE id_prd = ${produit.id}`
+    )
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.waitForTimeout(1500)
+      const lignes = page.locator('tbody tr')
+      const indexAvant = await lignes.evaluateAll(
+        (trs, designation) => trs.findIndex(tr => tr.textContent.includes(designation)),
+        produit.designation
+      )
+      expect(indexAvant).toBeGreaterThanOrEqual(0)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await ligne.getByRole('button', { name: `Publier ${produit.designation}` }).click()
+      await expect(page.getByText('Publier ce produit ?')).toBeVisible()
+      await page.getByRole('button', { name: 'Publier', exact: true }).click()
+      await expect(page.getByText('Produit publié — visible dans la boutique')).toBeVisible()
+      // Sans rechargement de page : la ligne a changé de place (un PUBLIE
+      // descend parmi les PUBLIEs, après les BROUILLONs en stock).
+      const indexApres = await lignes.evaluateAll(
+        (trs, designation) => trs.findIndex(tr => tr.textContent.includes(designation)),
+        produit.designation
+      )
+      expect(indexApres).toBeGreaterThan(indexAvant)
+      await expect(
+        page.locator('tr', { hasText: produit.designation }).first().getByText('PUBLIÉ')
+      ).toBeVisible()
+      // Dépublier pour laisser le fixture comme avant le test.
+      await page
+        .locator('tr', { hasText: produit.designation })
+        .first()
+        .getByRole('button', { name: `Dépublier ${produit.designation}` })
+        .click()
+      await expect(page.getByText('Dépublier ce produit ?')).toBeVisible()
+      await page.getByRole('button', { name: 'Dépublier', exact: true }).click()
+      await expect(page.getByText('Produit retiré de la boutique')).toBeVisible()
+    } finally {
+      db(
+        `UPDATE produit SET intitule_publication = NULL, longueur_cm = NULL, largeur_cm = NULL, hauteur_cm = NULL WHERE id_prd = ${produit.id}`
+      )
+    }
+  })
+
+  test('images : glisser-déposer réordonne, la principale suit la 1re tuile et persiste', async ({ page }) => {
+    const imagesAvant = dbJson(
+      `SELECT id_img, ordre_image, est_principale FROM image_produit WHERE prd_id = ${produit.id} ORDER BY ordre_image, id_img`
+    )
+    expect(imagesAvant.length).toBeGreaterThanOrEqual(2)
+    const ouvrirModalImages = async () => {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      await modal.getByRole('tab', { name: 'Images' }).click()
+      await expect(modal.getByTestId('grille-images')).toBeVisible()
+
+      return modal
+    }
+    const srcsGrille = modal =>
+      modal.getByTestId('grille-images').locator('img').evaluateAll(imgs => imgs.map(img => img.getAttribute('src')))
+    const glisserTuile = (de, vers) =>
+      page.evaluate(
+        ({ de, vers }) => {
+          const tuiles = [...document.querySelectorAll('[data-testid="grille-images"] [draggable="true"]')]
+          const dt = new DataTransfer()
+          tuiles[de].dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }))
+          tuiles[vers].dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }))
+          tuiles[vers].dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }))
+          tuiles[de].dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }))
+        },
+        { de, vers }
+      )
+    try {
+      const modal = await ouvrirModalImages()
+      const grille = modal.getByTestId('grille-images')
+      const srcsAvant = await srcsGrille(modal)
+      expect(srcsAvant.length).toBeGreaterThanOrEqual(2)
+      // Glisser la tuile 2 sur la tuile 1 : l'ordre s'inverse.
+      await glisserTuile(1, 0)
+      const srcsApres = await srcsGrille(modal)
+      expect(srcsApres[0]).toBe(srcsAvant[1])
+      expect(srcsApres[1]).toBe(srcsAvant[0])
+      // La pastille « Principale » a suivi la 1re tuile.
+      await expect(grille.locator('[draggable="true"]').first().getByText('Principale')).toBeVisible()
+      // Enregistrer puis rouvrir : l'ordre est conservé.
+      await modal.getByRole('button', { name: 'Enregistrer', exact: true }).click()
+      await expect(page.getByText('Modifications enregistrées')).toBeVisible()
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+      const modal2 = await ouvrirModalImages()
+      const srcsRouverts = await srcsGrille(modal2)
+      expect(srcsRouverts[0]).toBe(srcsAvant[1])
+      expect(srcsRouverts[1]).toBe(srcsAvant[0])
+      const apres = dbJson(
+        `SELECT id_img, ordre_image, est_principale FROM image_produit WHERE prd_id = ${produit.id} ORDER BY ordre_image, id_img`
+      )
+      expect(apres[0][0]).toBe(imagesAvant[1][0])
+      expect(apres[0][2]).toBe('1')
+      await modal2.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal2).toBeHidden()
+    } finally {
+      // Restaurer l'ordre et la principale d'origine en base.
+      imagesAvant.forEach(([id, ordre, principale]) => {
+        db(`UPDATE image_produit SET ordre_image = ${ordre}, est_principale = ${principale} WHERE id_img = ${id}`)
+      })
+    }
+  })
+
+  test('Enregistrer et fermer : toast, modal fermé, liste rechargée', async ({ page }) => {
+    const familleOrigine = produit.originaux.famille
+    const nouvelleFamille = dbJson(
+      `SELECT id_famille, nom_famille FROM famille_produit WHERE famille_parente_id IS NULL AND id_famille <> ${familleOrigine} ORDER BY id_famille LIMIT 1`
+    )[0]
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      await modal.getByLabel('Famille').click()
+      await page.locator('.MuiPopover-paper').getByTestId(`option-famille-${nouvelleFamille[0]}`).click()
+      await expect(modal.getByLabel('Famille')).toHaveValue(nouvelleFamille[1])
+      await modal.getByRole('button', { name: 'Enregistrer et fermer' }).click()
+      await expect(page.getByText('Modifications enregistrées')).toBeVisible()
+      await expect(modal).toBeHidden()
+      // La liste est rechargée avec la nouvelle famille.
+      const ligneApres = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligneApres.locator('td').nth(2)).toHaveText(nouvelleFamille[1])
+    } finally {
+      db(`UPDATE produit SET famille_id = ${familleOrigine} WHERE id_prd = ${produit.id}`)
+    }
+  })
+
+  test('Enregistrer seul : modal toujours ouvert après le toast (régression)', async ({ page }) => {
+    try {
+      await page.goto('/ecommerce/produits')
+      await page.getByPlaceholder('Rechercher un produit...').fill(produit.designation)
+      await page.waitForTimeout(1500)
+      const ligne = page.locator('tr', { hasText: produit.designation }).first()
+      await expect(ligne).toBeVisible()
+      await ligne.getByRole('button', { name: `Gérer ${produit.designation}` }).click()
+      const modal = page.getByRole('dialog').first()
+      await expect(modal.getByText('Produit', { exact: true }).first()).toBeVisible()
+      await modal.getByLabel('Intitulé de publication').fill('Intitulé E2E enregistrer seul')
+      await modal.getByRole('button', { name: 'Enregistrer', exact: true }).click()
+      await expect(page.getByText('Modifications enregistrées')).toBeVisible()
+      await expect(modal).toBeVisible()
+      await modal.getByRole('button', { name: 'Annuler' }).click()
+      await expect(modal).toBeHidden()
+    } finally {
+      db(`UPDATE produit SET intitule_publication = NULL WHERE id_prd = ${produit.id}`)
+    }
   })
 })

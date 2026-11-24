@@ -122,7 +122,7 @@ test.describe('modal Gérer — échec upload (Cloudinary non configuré)', () =
       path.join(FIXTURES, 'test-2.png')
     ])
     await expect(modal.getByText('À téléverser')).toHaveCount(2)
-    await modal.getByRole('button', { name: 'Enregistrer' }).click()
+    await modal.getByRole('button', { name: 'Enregistrer', exact: true }).click()
     // Un seul toast récapitulatif, pas de toast de succès.
     await expect(page.getByText('0 images sur 2 téléversées')).toBeVisible()
     await expect(page.getByText('Modifications enregistrées')).toHaveCount(0)
