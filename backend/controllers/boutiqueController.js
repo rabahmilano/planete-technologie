@@ -90,6 +90,38 @@ const inclureProduitBoutique = {
   paliers: { orderBy: { quantite_min: "asc" } },
 };
 
+// Familles masquées en boutique : inactives + toute leur descendance.
+// La table est minuscule (8 lignes) : lecture complète + calcul en JS,
+// pas de jointure récursive en SQL. Les produits sans famille ne sont
+// jamais masqués (famille_id null hors de l'ensemble).
+const getIdsFamillesMasquees = async () => {
+  const toutes = await prisma.famille_produit.findMany({
+    select: {
+      id_famille: true,
+      est_active_famille: true,
+      famille_parente_id: true,
+    },
+  });
+  const enfantsParParent = new Map();
+  for (const famille of toutes) {
+    if (!enfantsParParent.has(famille.famille_parente_id)) {
+      enfantsParParent.set(famille.famille_parente_id, []);
+    }
+    enfantsParParent.get(famille.famille_parente_id).push(famille);
+  }
+  const masquees = new Set();
+  const masquerSousArbre = (famille) => {
+    masquees.add(famille.id_famille);
+    for (const enfant of enfantsParParent.get(famille.id_famille) || []) {
+      masquerSousArbre(enfant);
+    }
+  };
+  for (const famille of toutes) {
+    if (!famille.est_active_famille) masquerSousArbre(famille);
+  }
+  return masquees;
+};
+
 // `poidsKg` = poids FACTURÉ total de la commande (max(poids réel, poids
 // volumétrique), voir calculerPoidsFactureKg) — c'est lui qui détermine le
 // supplément surpoids côté Yalidine, pas le poids réel seul.
@@ -222,6 +254,16 @@ export const getProduitsBoutique = async (req, res) => {
     whereClause.id_prd = { in: enStock.map((ligne) => ligne.id_prd) };
   }
 
+  // Familles masquées : leurs produits ne sortent ni en liste, ni en
+  // recherche, ni via le filtre `famille` (in + notIn = ensemble vide).
+  const famillesMasquees = await getIdsFamillesMasquees();
+  if (famillesMasquees.size > 0) {
+    whereClause.famille_id = {
+      ...(whereClause.famille_id || {}),
+      notIn: [...famillesMasquees],
+    };
+  }
+
   const triChoisi = TRIS.includes(tri) ? tri : "pertinence";
   const orderBy =
     triChoisi === "prix_asc"
@@ -277,6 +319,17 @@ export const getProduitBoutiqueParSlug = async (req, res) => {
       return res.status(404).json({ message: "Produit introuvable." });
     }
 
+    // Famille masquée (ou ancêtre masqué) : la fiche n'existe pas côté
+    // boutique. Les « produits liés » partagent la même famille, ils sont
+    // donc exclus de fait par ce 404.
+    const famillesMasquees = await getIdsFamillesMasquees();
+    if (
+      produit.famille_id !== null &&
+      famillesMasquees.has(produit.famille_id)
+    ) {
+      return res.status(404).json({ message: "Produit introuvable." });
+    }
+
     const lies = await prisma.produit.findMany({
       where: {
         statut_publication: "PUBLIE",
@@ -306,9 +359,10 @@ export const getFamillesBoutique = async (req, res) => {
   try {
     const [racines, comptes] = await Promise.all([
       prisma.famille_produit.findMany({
-        where: { famille_parente_id: null },
+        where: { famille_parente_id: null, est_active_famille: true },
         include: {
           sous_familles: {
+            where: { est_active_famille: true },
             orderBy: [{ ordre_famille: "asc" }, { nom_famille: "asc" }],
           },
         },

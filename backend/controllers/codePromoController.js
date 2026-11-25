@@ -27,6 +27,10 @@ export const addCodePromo = [
   body("valeur_reduction")
     .isFloat({ gt: 0 })
     .withMessage("La valeur de la réduction doit être supérieure à 0"),
+  body("date_debut")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("La date de début doit être une date valide"),
   body("date_expiration")
     .isISO8601()
     .withMessage("La date d'expiration doit être une date valide"),
@@ -52,6 +56,7 @@ export const addCodePromo = [
       code,
       type_reduction,
       valeur_reduction,
+      date_debut,
       date_expiration,
       utilisation_max,
       montant_min_promo,
@@ -64,6 +69,16 @@ export const addCodePromo = [
     ) {
       return res.status(400).json({
         message: "Une réduction en pourcentage ne peut pas dépasser 100.",
+      });
+    }
+
+    if (
+      date_debut &&
+      new Date(date_debut) > new Date(date_expiration)
+    ) {
+      return res.status(400).json({
+        message:
+          "La date de début doit être antérieure ou égale à la date d'expiration.",
       });
     }
 
@@ -86,6 +101,7 @@ export const addCodePromo = [
           code: codeNormalise,
           type_reduction,
           valeur_reduction: parseFloat(valeur_reduction),
+          date_debut: date_debut ? new Date(date_debut) : null,
           date_expiration: new Date(date_expiration),
           montant_min_promo:
             montant_min_promo === null ||
@@ -179,6 +195,10 @@ export const updateCodePromo = [
     .optional()
     .isFloat({ gt: 0 })
     .withMessage("La valeur de la réduction doit être supérieure à 0"),
+  body("date_debut")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("La date de début doit être une date valide"),
   body("date_expiration")
     .optional()
     .isISO8601()
@@ -211,6 +231,7 @@ export const updateCodePromo = [
       code,
       type_reduction,
       valeur_reduction,
+      date_debut,
       date_expiration,
       utilisation_max,
       montant_min_promo,
@@ -223,6 +244,28 @@ export const updateCodePromo = [
       });
       if (!codePromo) {
         return res.status(404).json({ message: "Code promo introuvable." });
+      }
+
+      const dateDebutEffective =
+        date_debut !== undefined
+          ? date_debut
+            ? new Date(date_debut)
+            : null
+          : codePromo.date_debut
+            ? new Date(codePromo.date_debut)
+            : null;
+      const dateExpirationEffective =
+        date_expiration !== undefined
+          ? new Date(date_expiration)
+          : new Date(codePromo.date_expiration);
+      if (
+        dateDebutEffective &&
+        dateDebutEffective > dateExpirationEffective
+      ) {
+        return res.status(400).json({
+          message:
+            "La date de début doit être antérieure ou égale à la date d'expiration.",
+        });
       }
 
       const typeEffectif =
@@ -257,6 +300,9 @@ export const updateCodePromo = [
       }
       if (valeur_reduction !== undefined) {
         dataToUpdate.valeur_reduction = parseFloat(valeur_reduction);
+      }
+      if (date_debut !== undefined) {
+        dataToUpdate.date_debut = date_debut ? new Date(date_debut) : null;
       }
       if (date_expiration !== undefined) {
         dataToUpdate.date_expiration = new Date(date_expiration);

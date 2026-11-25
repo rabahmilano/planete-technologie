@@ -8,26 +8,26 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
-  InputLabel,
   LinearProgress,
-  MenuItem,
-  Select,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Switch,
   TextField,
   Typography
 } from '@mui/material'
 import Icon from 'src/@core/components/icon'
 import { useFamille } from 'src/context/FamilleContext'
+import FamilleSelect from '../produits/FamilleSelect'
 
 const REGEX_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 const MESSAGE_FORMAT_SLUG =
   'Format invalide : minuscules a-z, chiffres 0-9 et tirets uniquement, sans accents ni espaces (ex. : reseau-cle-wifi)'
 
@@ -38,7 +38,8 @@ const flatten = (familles, niveau = 0, lignes = []) => {
       flatten(famille.sous_familles, niveau + 1, lignes)
     }
   })
-  return lignes
+  
+return lignes
 }
 
 const FamillesView = () => {
@@ -46,23 +47,50 @@ const FamillesView = () => {
   const [dialogOuvert, setDialogOuvert] = useState(false)
   const [familleEnCours, setFamilleEnCours] = useState(null)
   const [aSupprimer, setASupprimer] = useState(null)
+
   const [formulaire, setFormulaire] = useState({
     nom_famille: '',
     slug_famille: '',
     famille_parente_id: '',
     image_famille: '',
-    ordre_famille: 0
+    ordre_famille: 0,
+    est_active_famille: true
   })
   const [erreurSlug, setErreurSlug] = useState('')
+  const [erreurImage, setErreurImage] = useState('')
   const [televersementEnCours, setTeleversementEnCours] = useState(false)
   const [enregistrementEnCours, setEnregistrementEnCours] = useState(false)
+
+  // Image choisie mais pas encore envoyée : aperçu LOCAL uniquement, aucun
+  // envoi vers Cloudinary avant Enregistrer (même règle que le modal Gérer).
+  const [fichierImageLocal, setFichierImageLocal] = useState(null)
+  const [apercuLocal, setApercuLocal] = useState(null)
   const refFichierImage = useRef(null)
 
+  const libererApercuLocal = () => {
+    if (apercuLocal) URL.revokeObjectURL(apercuLocal)
+    setApercuLocal(null)
+    setFichierImageLocal(null)
+  }
+
   const lignes = flatten(familles)
-  const racines = familles.map(f => ({ id_famille: f.id_famille, nom_famille: f.nom_famille, slug_famille: f.slug_famille }))
   const ordreMax = lignes.reduce((max, l) => Math.max(max, l.ordre_famille || 0), 0)
-  const parentChoisi = racines.find(r => r.id_famille === parseInt(formulaire.famille_parente_id, 10))
+  // Intervalle de +3 : les nouvelles familles sont numérotées 3, 6, 9…
+  // (2 places libres entre deux familles pour insérer).
+  const prochainOrdre = Math.floor(ordreMax / 3) * 3 + 3
+  const parentChoisi = lignes.find(l => l.id_famille === parseInt(formulaire.famille_parente_id, 10))
+
+
+  // Arbre proposé au sélecteur : la famille en cours d'édition (et toute sa
+  // descendance) en est exclue — on ne peut pas choisir sa propre
+  // descendante comme parente (le backend refuse le cycle de toute façon).
+  const retirerSousArbre = (arbre, idExclu) =>
+    (arbre || [])
+      .filter(f => f.id_famille !== idExclu)
+      .map(f => ({ ...f, sous_familles: retirerSousArbre(f.sous_familles, idExclu) }))
+  const famillesPourSelection = retirerSousArbre(familles, familleEnCours?.id_famille)
   const slugModifie = Boolean(familleEnCours) && formulaire.slug_famille.trim() !== familleEnCours?.slug_famille
+
   const texteAideSlug = erreurSlug
     ? erreurSlug
     : [
@@ -70,7 +98,7 @@ const FamillesView = () => {
           ? `Convention sous-famille : ${parentChoisi.slug_famille}-<slug> (ex. : ${parentChoisi.slug_famille}-cle-wifi)`
           : 'Minuscules a-z, chiffres 0-9 et tirets uniquement',
         slugModifie
-          ? "Attention : le slug sert d'identifiant côté boutique, le modifier peut casser les noms traduits de cette famille."
+          ? "Attention : le slug sert d'identifiant côté boutique, le modifier casse les URL partagées (fiches produits, liens déjà envoyés)."
           : ''
       ]
         .filter(Boolean)
@@ -83,9 +111,12 @@ const FamillesView = () => {
       slug_famille: '',
       famille_parente_id: parentId,
       image_famille: '',
-      ordre_famille: ordreMax + 1
+      ordre_famille: prochainOrdre,
+      est_active_famille: true
     })
     setErreurSlug('')
+    setErreurImage('')
+    libererApercuLocal()
     setDialogOuvert(true)
   }
 
@@ -96,9 +127,12 @@ const FamillesView = () => {
       slug_famille: famille.slug_famille,
       famille_parente_id: famille.famille_parente_id ?? '',
       image_famille: famille.image_famille || '',
-      ordre_famille: famille.ordre_famille ?? 0
+      ordre_famille: famille.ordre_famille ?? 0,
+      est_active_famille: famille.est_active_famille ?? true
     })
     setErreurSlug('')
+    setErreurImage('')
+    libererApercuLocal()
     setDialogOuvert(true)
   }
 
@@ -107,16 +141,34 @@ const FamillesView = () => {
     if (erreurSlug) setErreurSlug('')
   }
 
-  const choisirFichierImage = async event => {
+  // Aperçu LOCAL uniquement : aucun envoi vers Cloudinary avant Enregistrer
+  // (même règle que le modal Gérer). L'envoi a lieu dans `soumettre`.
+  const TYPES_IMAGE_ACCEPTES = ['image/jpeg', 'image/png', 'image/webp']
+  const TAILLE_MAX_IMAGE = 5 * 1024 * 1024
+
+  const choisirFichierImage = event => {
     const fichier = event.target.files?.[0]
     event.target.value = ''
     if (!fichier) return
-    setTeleversementEnCours(true)
-    const resultat = await televerserImageFamille(fichier)
-    setTeleversementEnCours(false)
-    if (resultat?.url_image) {
-      setFormulaire(precedent => ({ ...precedent, image_famille: resultat.url_image }))
+    if (!TYPES_IMAGE_ACCEPTES.includes(fichier.type)) {
+      setErreurImage('Format accepté : JPEG, PNG ou WebP.')
+      
+return
     }
+    if (fichier.size > TAILLE_MAX_IMAGE) {
+      setErreurImage("L'image dépasse 5 Mo.")
+      
+return
+    }
+    setErreurImage('')
+    if (apercuLocal) URL.revokeObjectURL(apercuLocal)
+    setFichierImageLocal(fichier)
+    setApercuLocal(URL.createObjectURL(fichier))
+  }
+
+  const retirerImage = () => {
+    libererApercuLocal()
+    setFormulaire(precedent => ({ ...precedent, image_famille: '' }))
   }
 
   const soumettre = async () => {
@@ -124,21 +176,42 @@ const FamillesView = () => {
     const slugSaisi = formulaire.slug_famille.trim()
     if (!REGEX_SLUG.test(slugSaisi)) {
       setErreurSlug(MESSAGE_FORMAT_SLUG)
-      return
+      
+return
     }
     setEnregistrementEnCours(true)
+
+    // Envoi de l'image vers Cloudinary seulement maintenant, à l'enregistrement.
+    let urlImage = formulaire.image_famille.trim() || null
+    if (fichierImageLocal) {
+      setTeleversementEnCours(true)
+      const resultat = await televerserImageFamille(fichierImageLocal)
+      setTeleversementEnCours(false)
+      if (!resultat?.url_image) {
+        setEnregistrementEnCours(false)
+        
+return
+      }
+      urlImage = resultat.url_image
+    }
+
     const donnees = {
       nom_famille: formulaire.nom_famille.trim(),
       slug_famille: slugSaisi,
       famille_parente_id: formulaire.famille_parente_id === '' ? null : parseInt(formulaire.famille_parente_id, 10),
-      image_famille: formulaire.image_famille.trim() || null,
-      ordre_famille: parseInt(formulaire.ordre_famille, 10) || 0
+      image_famille: urlImage,
+      ordre_famille: parseInt(formulaire.ordre_famille, 10) || 0,
+      est_active_famille: formulaire.est_active_famille
     }
+
     const ok = familleEnCours
       ? await modifierFamille(familleEnCours.id_famille, donnees)
       : await ajouterFamille(donnees)
     setEnregistrementEnCours(false)
-    if (ok) setDialogOuvert(false)
+    if (ok) {
+      libererApercuLocal()
+      setDialogOuvert(false)
+    }
   }
 
   const confirmerSuppression = async () => {
@@ -215,6 +288,9 @@ const FamillesView = () => {
                           {famille.niveau === 0 && (
                             <Chip label='Racine' size='small' sx={{ ml: 2 }} />
                           )}
+                          {!famille.est_active_famille && (
+                            <Chip label='Masquée' size='small' color='warning' sx={{ ml: 2 }} />
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell>{famille.slug_famille}</TableCell>
@@ -281,31 +357,22 @@ const FamillesView = () => {
               />
             </Grid>
             <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Famille parente</InputLabel>
-                <Select
-                  label='Famille parente'
-                  autoComplete='off'
-                  value={formulaire.famille_parente_id}
-                  onChange={e => setFormulaire({ ...formulaire, famille_parente_id: e.target.value })}
-                >
-                  <MenuItem value=''>Aucune (famille racine)</MenuItem>
-                  {racines
-                    .filter(r => r.id_famille !== familleEnCours?.id_famille)
-                    .map(r => (
-                      <MenuItem key={r.id_famille} value={r.id_famille}>
-                        {r.nom_famille}
-                      </MenuItem>
-                    ))}
-                </Select>
-              </FormControl>
+              <FamilleSelect
+                familles={famillesPourSelection}
+                label='Famille parente'
+                labelAucune='Aucune (famille racine)'
+                value={parentChoisi || null}
+                onChange={item =>
+                  setFormulaire({ ...formulaire, famille_parente_id: item ? item.id_famille : '' })
+                }
+              />
             </Grid>
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                {formulaire.image_famille && (
+                {(apercuLocal || formulaire.image_famille) && (
                   <Box
                     component='img'
-                    src={formulaire.image_famille}
+                    src={apercuLocal || formulaire.image_famille}
                     alt='Image de la famille'
                     sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1 }}
                   />
@@ -321,19 +388,26 @@ const FamillesView = () => {
                   variant='outlined'
                   startIcon={<Icon icon='tabler:upload' />}
                   onClick={() => refFichierImage.current?.click()}
-                  disabled={televersementEnCours}
+                  disabled={enregistrementEnCours}
                 >
-                  {televersementEnCours ? 'Téléversement…' : formulaire.image_famille ? 'Remplacer' : 'Téléverser une image'}
+                  {apercuLocal || formulaire.image_famille ? 'Remplacer' : "Choisir une image"}
                 </Button>
-                {formulaire.image_famille && (
-                  <Button
-                    color='error'
-                    onClick={() => setFormulaire({ ...formulaire, image_famille: '' })}
-                  >
+                {(apercuLocal || formulaire.image_famille) && (
+                  <Button color='error' onClick={retirerImage}>
                     Retirer
                   </Button>
                 )}
               </Box>
+              {erreurImage && (
+                <Typography color='error' sx={{ mt: 2 }}>
+                  {erreurImage}
+                </Typography>
+              )}
+              {apercuLocal && (
+                <Typography variant='body2' color='text.secondary' sx={{ mt: 2 }}>
+                  Aperçu local — l&apos;image ne sera envoyée qu&apos;à l&apos;enregistrement.
+                </Typography>
+              )}
             </Grid>
             <Grid item xs={12}>
               <TextField
@@ -344,6 +418,22 @@ const FamillesView = () => {
                 value={formulaire.ordre_famille}
                 onChange={e => setFormulaire({ ...formulaire, ordre_famille: e.target.value })}
               />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formulaire.est_active_famille}
+                    onChange={e => setFormulaire({ ...formulaire, est_active_famille: e.target.checked })}
+                  />
+                }
+                label='Visible en boutique'
+              />
+              {!formulaire.est_active_famille && (
+                <Typography variant='body2' color='text.secondary'>
+                  Masquée : la famille, ses sous-familles et leurs produits ne seront pas visibles en boutique.
+                </Typography>
+              )}
             </Grid>
           </Grid>
         </DialogContent>

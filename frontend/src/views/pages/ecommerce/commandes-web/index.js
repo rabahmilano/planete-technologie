@@ -43,7 +43,8 @@ const couleurStatut = statut => {
 
 const formaterDate = valeur => {
   if (!valeur) return '—'
-  return new Date(valeur).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  
+return new Date(valeur).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 const CommandesWebView = () => {
@@ -138,7 +139,13 @@ const CommandesWebView = () => {
                         <Chip label={commande.statut_commande} color={couleurStatut(commande.statut_commande)} size='small' />
                       </TableCell>
                       <TableCell align='center'>
-                        {commande.commande_interne ? `#${commande.commande_interne.id_cde}` : '—'}
+                        {commande.commande_interne ? (
+                          `#${commande.commande_interne.id_cde}`
+                        ) : commande.statut_commande === 'LIVREE' ? (
+                          <Chip label='À convertir' color='warning' size='small' />
+                        ) : (
+                          '—'
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

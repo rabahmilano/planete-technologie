@@ -3,6 +3,7 @@ import axios from 'src/configs/axiosConfig'
 import toast from 'react-hot-toast'
 
 const CommandeWebContext = createContext()
+
 export const useCommandeWeb = () => useContext(CommandeWebContext)
 
 const messageErreur = error =>
@@ -31,10 +32,12 @@ export const CommandeWebProvider = ({ children }) => {
   const fetchCommande = useCallback(async id => {
     try {
       const { data } = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}commandes-web/${id}`)
-      return data
+      
+return data
     } catch (error) {
       toast.error(messageErreur(error))
-      return null
+      
+return null
     }
   }, [])
 
@@ -45,14 +48,16 @@ export const CommandeWebProvider = ({ children }) => {
         data
       )
       toast.success('Statut mis à jour')
-      return commande
+      
+return commande
     } catch (error) {
       if (error.response?.status === 400 && error.response?.data?.errors) {
         toast.error('Erreur de validation : ' + error.response.data.errors.map(err => err.msg).join(', '))
       } else {
         toast.error(messageErreur(error))
       }
-      return null
+      
+return null
     }
   }
 
@@ -62,10 +67,27 @@ export const CommandeWebProvider = ({ children }) => {
         `${process.env.NEXT_PUBLIC_BASE_URL}commandes-web/${id}/annuler`
       )
       toast.success('Commande annulée')
-      return commande
+      
+return commande
     } catch (error) {
       toast.error(messageErreur(error))
-      return null
+      
+return null
+    }
+  }
+
+  const convertirEnVente = async id => {
+    try {
+      const { data: commande } = await axios.post(
+        `${process.env.NEXT_PUBLIC_BASE_URL}commandes-web/${id}/convertir-vente`
+      )
+      toast.success('Vente créée')
+      
+return commande
+    } catch (error) {
+      toast.error(messageErreur(error))
+      
+return null
     }
   }
 
@@ -76,20 +98,22 @@ export const CommandeWebProvider = ({ children }) => {
         data
       )
       toast.success('Commande modifiée')
-      return commande
+      
+return commande
     } catch (error) {
       if (error.response?.status === 400 && error.response?.data?.errors) {
         toast.error('Erreur de validation : ' + error.response.data.errors.map(err => err.msg).join(', '))
       } else {
         toast.error(messageErreur(error))
       }
-      return null
+      
+return null
     }
   }
 
   return (
     <CommandeWebContext.Provider
-      value={{ commandes, total, loading, fetchCommandes, fetchCommande, changerStatut, annulerCommande, modifierCommande }}
+      value={{ commandes, total, loading, fetchCommandes, fetchCommande, changerStatut, annulerCommande, modifierCommande, convertirEnVente }}
     >
       {children}
     </CommandeWebContext.Provider>

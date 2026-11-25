@@ -31,12 +31,14 @@ import { useCodePromo } from 'src/context/CodePromoContext'
 
 const formaterDate = valeur => {
   if (!valeur) return '—'
-  return new Date(valeur).toLocaleDateString('fr-FR')
+  
+return new Date(valeur).toLocaleDateString('fr-FR')
 }
 
 const formaterReduction = code => {
   if (code.type_reduction === 'POURCENTAGE') return `${code.valeur_reduction} %`
-  return `${Number(code.valeur_reduction).toLocaleString('fr-FR')} DZD`
+  
+return `${Number(code.valeur_reduction).toLocaleString('fr-FR')} DZD`
 }
 
 const CodesPromoView = () => {
@@ -44,10 +46,12 @@ const CodesPromoView = () => {
   const [dialogOuvert, setDialogOuvert] = useState(false)
   const [codeEnCours, setCodeEnCours] = useState(null)
   const [aSupprimer, setASupprimer] = useState(null)
+
   const [formulaire, setFormulaire] = useState({
     code: '',
     type_reduction: 'POURCENTAGE',
     valeur_reduction: '',
+    date_debut: '',
     date_expiration: '',
     utilisation_max: '',
     montant_min_promo: '',
@@ -63,6 +67,7 @@ const CodesPromoView = () => {
       code: '',
       type_reduction: 'POURCENTAGE',
       valeur_reduction: '',
+      date_debut: '',
       date_expiration: '',
       utilisation_max: '',
       montant_min_promo: '',
@@ -77,6 +82,7 @@ const CodesPromoView = () => {
       code: code.code,
       type_reduction: code.type_reduction,
       valeur_reduction: code.valeur_reduction,
+      date_debut: code.date_debut ? new Date(code.date_debut).toISOString().slice(0, 10) : '',
       date_expiration: code.date_expiration ? new Date(code.date_expiration).toISOString().slice(0, 10) : '',
       utilisation_max: code.utilisation_max,
       montant_min_promo: code.montant_min_promo ?? '',
@@ -90,6 +96,7 @@ const CodesPromoView = () => {
       code: formulaire.code.trim().toUpperCase(),
       type_reduction: formulaire.type_reduction,
       valeur_reduction: parseFloat(formulaire.valeur_reduction),
+      date_debut: formulaire.date_debut || null,
       date_expiration: formulaire.date_expiration,
       utilisation_max: parseInt(formulaire.utilisation_max, 10),
       montant_min_promo:
@@ -116,7 +123,11 @@ const CodesPromoView = () => {
   }
 
   const expire = code => new Date(code.date_expiration) < new Date(new Date().toDateString())
+  const aVenir = code => code.date_debut && new Date(code.date_debut) > new Date(new Date().toDateString())
   const epuise = code => code.utilisation_actuelle >= code.utilisation_max
+
+  const datesIncoherentes =
+    formulaire.date_debut && formulaire.date_expiration && formulaire.date_debut > formulaire.date_expiration
 
   return (
     <Grid container spacing={6}>
@@ -183,6 +194,7 @@ const CodesPromoView = () => {
                   <TableCell sx={{ color: 'white' }} align='center'>Minimum</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Utilisation</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Commandes web</TableCell>
+                  <TableCell sx={{ color: 'white' }}>Début</TableCell>
                   <TableCell sx={{ color: 'white' }}>Expiration</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Statut</TableCell>
                   <TableCell sx={{ color: 'white' }} align='center'>Actions</TableCell>
@@ -191,7 +203,7 @@ const CodesPromoView = () => {
               <TableBody>
                 {codes.length === 0 && !loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} align='center'>
+                    <TableCell colSpan={9} align='center'>
                       <Typography sx={{ p: 4 }}>Aucun code promo.</Typography>
                     </TableCell>
                   </TableRow>
@@ -209,10 +221,13 @@ const CodesPromoView = () => {
                         {code.utilisation_actuelle} / {code.utilisation_max}
                       </TableCell>
                       <TableCell align='center'>{code._count?.commandes ?? 0}</TableCell>
+                      <TableCell>{formaterDate(code.date_debut)}</TableCell>
                       <TableCell>{formaterDate(code.date_expiration)}</TableCell>
                       <TableCell align='center'>
                         {!code.est_actif_promo ? (
                           <Chip label='Désactivé' color='default' size='small' />
+                        ) : aVenir(code) ? (
+                          <Chip label='À venir' color='info' size='small' />
                         ) : expire(code) ? (
                           <Chip label='Expiré' color='error' size='small' />
                         ) : epuise(code) ? (
@@ -297,6 +312,23 @@ const CodesPromoView = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                label='Date de début'
+                type='date'
+                InputLabelProps={{ shrink: true }}
+                autoComplete='off'
+                helperText={
+                  datesIncoherentes
+                    ? "La date de début doit être antérieure ou égale à la date d'expiration"
+                    : 'Vide = actif immédiatement'
+                }
+                error={Boolean(datesIncoherentes)}
+                value={formulaire.date_debut}
+                onChange={e => setFormulaire({ ...formulaire, date_debut: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
                 label="Date d'expiration"
                 type='date'
                 InputLabelProps={{ shrink: true }}
@@ -343,7 +375,7 @@ const CodesPromoView = () => {
           <Button
             variant='contained'
             onClick={soumettre}
-            disabled={!formulaire.code.trim() || !formulaire.valeur_reduction || !formulaire.date_expiration || !formulaire.utilisation_max}
+            disabled={!formulaire.code.trim() || !formulaire.valeur_reduction || !formulaire.date_expiration || !formulaire.utilisation_max || datesIncoherentes}
           >
             Enregistrer
           </Button>

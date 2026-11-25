@@ -10,6 +10,7 @@ import {
   getPrixEffectifProduit,
   verifierCodePromoValide,
   calculerReductionPromo,
+  messageErreurTechnique,
 } from "../config/utils.js";
 import {
   creerCommandeInterne,
@@ -42,7 +43,12 @@ const libererReservationStock = async (tx, lignes) => {
   }
 };
 
-const appliquerLivraison = async (tx, commande) => {
+// Conversion MANUELLE en vente (décision RABAH 24/11/2026) : passer une
+// commande à LIVRÉE ne crée PLUS de commande interne — c'est le bouton
+// « Convertir en vente » du détail qui déclenche cette fonction, une fois
+// la livraison constatée. Mêmes gardes qu'avant : commande déjà convertie
+// ou lignes en double → refus.
+const convertirEnVente = async (tx, commande) => {
   if (commande.commande_interne_id) {
     throw new Error("COMMANDE_DEJA_LIVREE");
   }
@@ -416,9 +422,10 @@ export const createCommandeWeb = [
         });
       }
 
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      console.error("Création de la commande web :", error);
+      res.status(500).json({
+        message: messageErreurTechnique(error, "La création de la commande"),
+      });
     }
   },
 ];
@@ -460,9 +467,10 @@ export const getAllCommandesWeb = async (req, res) => {
 
     res.status(200).json({ commandes, total });
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
+    console.error("Chargement des commandes web :", error);
+    res.status(500).json({
+      message: messageErreurTechnique(error, "Le chargement des commandes web"),
+    });
   }
 };
 
@@ -520,9 +528,10 @@ export const getCommandeWebById = async (req, res) => {
 
     res.status(200).json({ ...commande, colis_yalidine: colisYalidine });
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: { code: error.code, message: error.message } });
+    console.error("Chargement de la commande web :", error);
+    res.status(500).json({
+      message: messageErreurTechnique(error, "Le chargement de la commande"),
+    });
   }
 };
 
@@ -607,9 +616,10 @@ export const updateCommandeWeb = [
 
       res.status(200).json(commandeModifiee);
     } catch (error) {
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      console.error("Modification de la commande web :", error);
+      res.status(500).json({
+        message: messageErreurTechnique(error, "La modification de la commande"),
+      });
     }
   },
 ];
@@ -686,12 +696,8 @@ export const updateStatutCommandeWeb = [
             await appliquerAnnulation(tx, commande),
           );
         }
-        if (statut_commande === "LIVREE") {
-          Object.assign(
-            dataToUpdate,
-            await appliquerLivraison(tx, commande),
-          );
-        }
+        // LIVRÉE est un simple changement de statut : la commande interne
+        // n'est créée que par la conversion manuelle (POST /:id/convertir-vente).
 
         return tx.commande_web.update({
           where: { id_cmd_web: idCommande },
@@ -745,17 +751,6 @@ export const updateStatutCommandeWeb = [
 
       res.status(200).json(commandeModifiee);
     } catch (error) {
-      if (error.message === "COMMANDE_DEJA_LIVREE") {
-        return res.status(400).json({
-          message: "La commande a déjà été enregistrée comme vente.",
-        });
-      }
-      if (error.message === "LIGNES_DUPLIQUEES") {
-        return res.status(400).json({
-          message:
-            "La commande contient deux fois le même produit, livraison impossible.",
-        });
-      }
       if (error.message === "CAISSE_NOT_FOUND") {
         return res.status(409).json({
           message: "Annulation impossible : Le compte 'Caisse' est introuvable.",
@@ -769,12 +764,85 @@ export const updateStatutCommandeWeb = [
         return res.status(409).json({ message: error.message });
       }
 
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      console.error("Changement de statut de la commande web :", error);
+      res.status(500).json({
+        message: messageErreurTechnique(error, "Le changement de statut"),
+      });
     }
   },
 ];
+
+// POST /:id/convertir-vente — conversion MANUELLE en vente (décision
+// RABAH 24/11/2026). Réservé aux commandes LIVRÉE sans commande interne :
+// crée la commande interne (vente en caisse, FIFO) et libère les quantités
+// réservées, en transaction. L'annulation ultérieure supprime la commande
+// interne et restaure le stock (voir appliquerAnnulation).
+export const convertirVenteCommandeWeb = async (req, res) => {
+  const idCommande = parseInt(req.params.id, 10);
+  if (isNaN(idCommande)) {
+    return res.status(400).json({ message: "Identifiant invalide." });
+  }
+
+  try {
+    const commande = await prisma.commande_web.findUnique({
+      where: { id_cmd_web: idCommande },
+      include: { lignes: true },
+    });
+    if (!commande) {
+      return res.status(404).json({ message: "Commande introuvable." });
+    }
+    if (commande.statut_commande !== "LIVREE") {
+      return res.status(400).json({
+        message: "Seule une commande livrée peut être convertie en vente.",
+      });
+    }
+    if (commande.commande_interne_id) {
+      return res.status(400).json({
+        message: "La commande a déjà été enregistrée comme vente.",
+      });
+    }
+
+    const commandeModifiee = await prisma.$transaction(async (tx) => {
+      const conversion = await convertirEnVente(tx, commande);
+      return tx.commande_web.update({
+        where: { id_cmd_web: idCommande },
+        data: conversion,
+        include: inclureCommande,
+      });
+    });
+
+    res.status(200).json(commandeModifiee);
+  } catch (error) {
+    if (error.message === "COMMANDE_DEJA_LIVREE") {
+      return res.status(400).json({
+        message: "La commande a déjà été enregistrée comme vente.",
+      });
+    }
+    if (error.message === "LIGNES_DUPLIQUEES") {
+      return res.status(400).json({
+        message:
+          "La commande contient deux fois le même produit, conversion impossible.",
+      });
+    }
+    if (error.message === "CAISSE_NOT_FOUND") {
+      return res.status(409).json({
+        message: "Conversion impossible : Le compte 'Caisse' est introuvable.",
+      });
+    }
+    if (
+      error.message.includes("insuffisant") ||
+      error.message.includes("Conflit") ||
+      error.message.includes("Incohérence")
+    ) {
+      return res.status(409).json({ message: error.message });
+    }
+
+    console.error("Conversion en vente de la commande web :", error);
+    res.status(500).json({
+      message: messageErreurTechnique(error, "La conversion en vente"),
+    });
+  }
+};
 
 export const annulerCommandeWeb = [
   body("note_admin")
@@ -835,9 +903,10 @@ export const annulerCommandeWeb = [
         });
       }
 
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
+      console.error("Annulation de la commande web :", error);
+      res.status(500).json({
+        message: messageErreurTechnique(error, "L'annulation de la commande"),
+      });
     }
   },
 ];

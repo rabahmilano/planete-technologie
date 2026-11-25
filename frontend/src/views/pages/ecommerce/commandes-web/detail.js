@@ -49,7 +49,8 @@ const couleurStatut = statut => {
 
 const formaterDate = valeur => {
   if (!valeur) return '—'
-  return new Date(valeur).toLocaleString('fr-FR')
+  
+return new Date(valeur).toLocaleString('fr-FR')
 }
 
 const formaterMontant = valeur => `${Number(valeur || 0).toLocaleString('fr-FR')} DZD`
@@ -61,7 +62,7 @@ const formaterDateYalidine = valeur => (valeur ? String(valeur) : '—')
 const CommandeWebDetailView = () => {
   const router = useRouter()
   const { id } = router.query
-  const { fetchCommande, changerStatut, annulerCommande, modifierCommande } = useCommandeWeb()
+  const { fetchCommande, changerStatut, annulerCommande, modifierCommande, convertirEnVente } = useCommandeWeb()
   const [commande, setCommande] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [dialogStatut, setDialogStatut] = useState(false)
@@ -100,6 +101,13 @@ const CommandeWebDetailView = () => {
     const miseAJour = await annulerCommande(id)
     if (miseAJour) {
       setDialogAnnuler(false)
+      await charger()
+    }
+  }
+
+  const convertir = async () => {
+    const miseAJour = await convertirEnVente(id)
+    if (miseAJour) {
       await charger()
     }
   }
@@ -183,6 +191,16 @@ const CommandeWebDetailView = () => {
                 Changer le statut
               </Button>
             )}
+            {livree && !commande.commande_interne && (
+              <Button
+                variant='contained'
+                color='success'
+                startIcon={<Icon icon='tabler:receipt' />}
+                onClick={convertir}
+              >
+                Convertir en vente
+              </Button>
+            )}
           </Box>
         </Box>
       </Grid>
@@ -259,8 +277,10 @@ const CommandeWebDetailView = () => {
             <Typography sx={{ mt: 2 }}>
               <strong>Commande interne :</strong>{' '}
               {commande.commande_interne
-                ? `#${commande.commande_interne.id_cde} — ${formaterDate(commande.commande_interne.date_cde)} — ${formaterMontant(commande.commande_interne.mnt_cde)}`
-                : 'Aucune (créée automatiquement à la livraison)'}
+                ? `Vente créée — #${commande.commande_interne.id_cde} — ${formaterDate(commande.commande_interne.date_cde)} — ${formaterMontant(commande.commande_interne.mnt_cde)}`
+                : commande.statut_commande === 'LIVREE'
+                  ? 'À convertir'
+                  : 'Aucune (conversion possible après la livraison)'}
             </Typography>
           </CardContent>
         </Card>
@@ -348,7 +368,12 @@ const CommandeWebDetailView = () => {
               <TableBody>
                 {(commande.lignes || []).map(ligne => (
                   <TableRow key={ligne.id_ligne}>
-                    <TableCell>{ligne.designation_facturee}</TableCell>
+                    <TableCell>
+                      {!ligne.produit && (
+                        <Chip label='Produit supprimé' color='warning' size='small' sx={{ mr: 1 }} />
+                      )}
+                      {ligne.designation_facturee || ligne.produit?.designation_prd || '—'}
+                    </TableCell>
                     <TableCell align='center'>{ligne.quantite}</TableCell>
                     <TableCell align='right'>{formaterMontant(ligne.prix_unitaire_facture)}</TableCell>
                     <TableCell align='right'>

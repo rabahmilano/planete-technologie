@@ -418,6 +418,7 @@ model famille_produit {
   slug_famille       String @unique @db.VarChar(100)
   image_famille      String? @db.VarChar(500)
   ordre_famille      Int @default(0)
+  est_active_famille Boolean @default(true)
   famille_parente_id Int?
 
   famille_parente famille_produit?  @relation("HierarchieFamille", fields: [famille_parente_id], references: [id_famille])
@@ -462,6 +463,7 @@ model code_promo {
   code                 String   @unique @db.VarChar(50)
   type_reduction       String
   valeur_reduction     Decimal  @db.Decimal(10, 2)
+  date_debut           DateTime? @db.Date()
   date_expiration      DateTime @db.Date()
   montant_min_promo    Decimal? @db.Decimal(10, 2) @default(0)
   est_actif_promo      Boolean @default(true)
@@ -509,7 +511,7 @@ model ligne_commande_web {
   prd_id                Int
 
   commande commande_web @relation(fields: [cmd_web_id], references: [id_cmd_web])
-  produit  produit      @relation(fields: [prd_id], references: [id_prd])
+  produit  produit?     @relation(fields: [prd_id], references: [id_prd])
 }
 
 model tarif_livraison {

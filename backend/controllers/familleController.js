@@ -70,6 +70,11 @@ export const addFamille = [
     .optional()
     .isInt({ min: 0 })
     .withMessage("L'ordre d'affichage doit être un entier positif ou nul"),
+  body("est_active_famille")
+    .optional()
+    .isBoolean()
+    .withMessage("La visibilité doit être vrai ou faux")
+    .toBoolean(),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -83,6 +88,7 @@ export const addFamille = [
       famille_parente_id,
       image_famille,
       ordre_famille,
+      est_active_famille,
     } = req.body;
 
     try {
@@ -115,6 +121,8 @@ export const addFamille = [
           image_famille: image_famille || null,
           ordre_famille:
             ordre_famille !== undefined ? parseInt(ordre_famille, 10) : 0,
+          est_active_famille:
+            est_active_famille !== undefined ? est_active_famille : true,
           famille_parente_id: parentId,
         },
       });
@@ -240,6 +248,11 @@ export const updateFamille = [
     .optional()
     .isInt({ min: 0 })
     .withMessage("L'ordre d'affichage doit être un entier positif ou nul"),
+  body("est_active_famille")
+    .optional()
+    .isBoolean()
+    .withMessage("La visibilité doit être vrai ou faux")
+    .toBoolean(),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -258,6 +271,7 @@ export const updateFamille = [
       famille_parente_id,
       image_famille,
       ordre_famille,
+      est_active_famille,
     } = req.body;
 
     try {
@@ -285,6 +299,9 @@ export const updateFamille = [
       }
       if (ordre_famille !== undefined) {
         dataToUpdate.ordre_famille = parseInt(ordre_famille, 10);
+      }
+      if (est_active_famille !== undefined) {
+        dataToUpdate.est_active_famille = est_active_famille;
       }
       if (famille_parente_id !== undefined) {
         if (famille_parente_id === null) {
@@ -361,7 +378,9 @@ export const deleteFamille = async (req, res) => {
       where: { famille_parente_id: idFamille },
     });
     if (nbSousFamilles > 0) {
-      return res.status(403).json({
+      // 409 (conflit métier), pas 403 : l'intercepteur axios traite tout 403
+      // comme un token expiré et renverrait l'utilisateur vers /login.
+      return res.status(409).json({
         message:
           "Impossible de supprimer une famille qui possède des sous-familles.",
       });
@@ -371,7 +390,7 @@ export const deleteFamille = async (req, res) => {
       where: { famille_id: idFamille },
     });
     if (nbProduits > 0) {
-      return res.status(403).json({
+      return res.status(409).json({
         message:
           "Impossible de supprimer une famille à laquelle des produits sont rattachés.",
       });

@@ -156,6 +156,13 @@ export const verifierCodePromoValide = (codePromo, montantProduits) => {
 
   const aujourdHui = new Date();
   aujourdHui.setHours(0, 0, 0, 0);
+  if (codePromo.date_debut) {
+    const dateDebut = new Date(codePromo.date_debut);
+    dateDebut.setHours(0, 0, 0, 0);
+    if (dateDebut > aujourdHui) {
+      return { valide: false, message: "Code promo pas encore actif." };
+    }
+  }
   if (new Date(codePromo.date_expiration) < aujourdHui) {
     return { valide: false, message: "Code promo expiré." };
   }

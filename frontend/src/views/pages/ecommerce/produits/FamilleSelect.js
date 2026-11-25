@@ -14,7 +14,9 @@ import Icon from 'src/@core/components/icon'
 // Sélecteur de famille en accordéon (2 niveaux max) : le parent est
 // sélectionnable comme ses enfants ; le chevron ne fait que déplier.
 // « Aucune famille » en tête de liste retire la famille.
-export default function FamilleSelect({ familles, value, onChange }) {
+// `label` et `labelAucune` permettent de réutiliser le composant ailleurs
+// (ex. choix de la famille parente dans le formulaire Familles).
+export default function FamilleSelect({ familles, value, onChange, label = 'Famille', labelAucune = 'Aucune famille' }) {
   const [anchorEl, setAnchorEl] = useState(null)
   const [openIds, setOpenIds] = useState({})
 
@@ -50,7 +52,7 @@ export default function FamilleSelect({ familles, value, onChange }) {
   return (
     <>
       <TextField
-        label='Famille'
+        label={label}
         data-testid='selecteur-famille'
         value={value?.nom_famille || ''}
         onClick={ouvrirListe}
@@ -79,7 +81,7 @@ export default function FamilleSelect({ familles, value, onChange }) {
             onClick={() => handleSelect(null)}
           >
             <ListItemText
-              primary='Aucune famille'
+              primary={labelAucune}
               primaryTypographyProps={{ color: 'text.secondary', fontStyle: 'italic' }}
             />
           </ListItemButton>
