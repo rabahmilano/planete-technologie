@@ -69,6 +69,7 @@ const formaterProduitBoutique = (produit, contextePromotions) => {
       ? {
           id: produit.famille.id_famille,
           nom: produit.famille.nom_famille,
+          nom_famille_ar: produit.famille.nom_famille_ar || null,
           slug: produit.famille.slug_famille,
         }
       : null,
@@ -84,7 +85,7 @@ const formaterProduitBoutique = (produit, contextePromotions) => {
 
 const inclureProduitBoutique = {
   famille: {
-    select: { id_famille: true, nom_famille: true, slug_famille: true },
+    select: { id_famille: true, nom_famille: true, nom_famille_ar: true, slug_famille: true },
   },
   images: { orderBy: [{ ordre_image: "asc" }, { id_img: "asc" }] },
   paliers: { orderBy: { quantite_min: "asc" } },
@@ -385,6 +386,7 @@ export const getFamillesBoutique = async (req, res) => {
       return {
         id: famille.id_famille,
         nom: famille.nom_famille,
+        nom_famille_ar: famille.nom_famille_ar || null,
         slug: famille.slug_famille,
         image: famille.image_famille,
         ordre: famille.ordre_famille,

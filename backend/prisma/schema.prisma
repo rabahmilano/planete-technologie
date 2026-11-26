@@ -415,6 +415,7 @@ model ajustement_compte {
 model famille_produit {
   id_famille         Int    @id
   nom_famille        String @db.VarChar(100)
+  nom_famille_ar     String? @db.VarChar(100)
   slug_famille       String @unique @db.VarChar(100)
   image_famille      String? @db.VarChar(500)
   ordre_famille      Int @default(0)

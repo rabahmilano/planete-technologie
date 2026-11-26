@@ -50,6 +50,7 @@ const FamillesView = () => {
 
   const [formulaire, setFormulaire] = useState({
     nom_famille: '',
+    nom_famille_ar: '',
     slug_famille: '',
     famille_parente_id: '',
     image_famille: '',
@@ -108,6 +109,7 @@ const FamillesView = () => {
     setFamilleEnCours(null)
     setFormulaire({
       nom_famille: '',
+      nom_famille_ar: '',
       slug_famille: '',
       famille_parente_id: parentId,
       image_famille: '',
@@ -124,6 +126,7 @@ const FamillesView = () => {
     setFamilleEnCours(famille)
     setFormulaire({
       nom_famille: famille.nom_famille,
+      nom_famille_ar: famille.nom_famille_ar || '',
       slug_famille: famille.slug_famille,
       famille_parente_id: famille.famille_parente_id ?? '',
       image_famille: famille.image_famille || '',
@@ -197,6 +200,7 @@ return
 
     const donnees = {
       nom_famille: formulaire.nom_famille.trim(),
+      nom_famille_ar: formulaire.nom_famille_ar.trim(),
       slug_famille: slugSaisi,
       famille_parente_id: formulaire.famille_parente_id === '' ? null : parseInt(formulaire.famille_parente_id, 10),
       image_famille: urlImage,
@@ -342,6 +346,17 @@ return
                 autoComplete='off'
                 value={formulaire.nom_famille}
                 onChange={e => setFormulaire({ ...formulaire, nom_famille: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label='Nom en arabe'
+                autoComplete='off'
+                dir='rtl'
+                value={formulaire.nom_famille_ar}
+                onChange={e => setFormulaire({ ...formulaire, nom_famille_ar: e.target.value })}
+                helperText='Optionnel — affiché en boutique quand la langue arabe est active. Laisser vide = pas de nom arabe.'
               />
             </Grid>
             <Grid item xs={12}>

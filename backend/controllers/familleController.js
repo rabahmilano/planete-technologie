@@ -45,6 +45,12 @@ export const addFamille = [
     .withMessage("Le nom de la famille est obligatoire")
     .isLength({ max: 100 })
     .withMessage("Le nom de la famille ne peut pas dépasser 100 caractères"),
+  body("nom_famille_ar")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Le nom en arabe ne peut pas dépasser 100 caractères"),
   body("slug_famille")
     .isString()
     .trim()
@@ -84,6 +90,7 @@ export const addFamille = [
 
     const {
       nom_famille,
+      nom_famille_ar,
       slug_famille,
       famille_parente_id,
       image_famille,
@@ -117,6 +124,10 @@ export const addFamille = [
         data: {
           id_famille,
           nom_famille: nom_famille.trim(),
+          nom_famille_ar:
+            typeof nom_famille_ar === "string" && nom_famille_ar.trim()
+              ? nom_famille_ar.trim()
+              : null,
           slug_famille: slug_famille.trim(),
           image_famille: image_famille || null,
           ordre_famille:
@@ -222,6 +233,12 @@ export const updateFamille = [
     .withMessage("Le nom de la famille est obligatoire")
     .isLength({ max: 100 })
     .withMessage("Le nom de la famille ne peut pas dépasser 100 caractères"),
+  body("nom_famille_ar")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Le nom en arabe ne peut pas dépasser 100 caractères"),
   body("slug_famille")
     .optional()
     .isString()
@@ -267,6 +284,7 @@ export const updateFamille = [
 
     const {
       nom_famille,
+      nom_famille_ar,
       slug_famille,
       famille_parente_id,
       image_famille,
@@ -285,6 +303,13 @@ export const updateFamille = [
       const dataToUpdate = {};
       if (nom_famille !== undefined) {
         dataToUpdate.nom_famille = nom_famille.trim();
+      }
+      if (nom_famille_ar !== undefined) {
+        // Chaîne vide = pas de nom arabe → null.
+        dataToUpdate.nom_famille_ar =
+          typeof nom_famille_ar === "string" && nom_famille_ar.trim()
+            ? nom_famille_ar.trim()
+            : null;
       }
       if (slug_famille !== undefined) {
         if (!(await slugDisponible(slug_famille.trim(), idFamille))) {
