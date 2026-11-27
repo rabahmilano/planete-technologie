@@ -1,117 +1,149 @@
+// Phase 7 (28/11/2026) : la grille de secours tarif_livraison est supprimée
+// (schéma, table et CRUD) — le devis lit désormais commune_livraison en
+// premier, avec repli Yalidine en direct (voir boutiqueController). Ce
+// contrôleur ne garde que les déclencheurs et les lectures de synchronisation.
+import {
+  synchroniserGlobale,
+  synchroniserWilaya,
+  getJournalSynchronisation,
+  estSynchronisationEnCours,
+} from "../config/syncTarifs.js";
 import prisma from "../config/dbConfig.js";
-import { body, validationResult } from "express-validator";
-import { getMaxValue } from "../config/utils.js";
 
-const TYPES_LIVRAISON = ["DOMICILE", "BUREAU"];
-
-export const addTarifLivraison = [
-  body("code_wilaya_tarif")
-    .isInt({ min: 1, max: 58 })
-    .withMessage("Le code wilaya doit être entre 1 et 58"),
-  body("nom_wilaya_tarif")
-    .isString()
-    .trim()
-    .notEmpty()
-    .withMessage("Le nom de la wilaya est obligatoire"),
-  body("type_livraison_tarif")
-    .customSanitizer((value) =>
-      typeof value === "string" ? value.trim().toUpperCase() : value,
-    )
-    .isIn(TYPES_LIVRAISON)
-    .withMessage(
-      `Le type de livraison doit être ${TYPES_LIVRAISON.join(", ")}`,
-    ),
-  body("prix_livraison_tarif")
-    .isFloat({ min: 0 })
-    .withMessage("Le prix de livraison doit être un nombre positif ou nul"),
-  body("actif_tarif")
-    .optional()
-    .isBoolean()
-    .withMessage("L'activation du tarif doit être un booléen"),
-
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const {
-      code_wilaya_tarif,
-      nom_wilaya_tarif,
-      type_livraison_tarif,
-      prix_livraison_tarif,
-      actif_tarif,
-    } = req.body;
-
-    try {
-      const existant = await prisma.tarif_livraison.findUnique({
-        where: {
-          code_wilaya_tarif_type_livraison_tarif: {
-            code_wilaya_tarif: parseInt(code_wilaya_tarif, 10),
-            type_livraison_tarif,
-          },
-        },
-      });
-      if (existant) {
-        return res.status(409).json({
-          message: "Un tarif existe déjà pour cette wilaya et ce type de livraison.",
-        });
-      }
-
-      const idTarif = await getMaxValue("tarif_livraison", "id_tarif", null);
-
-      const nouveauTarif = await prisma.tarif_livraison.create({
-        data: {
-          id_tarif: idTarif,
-          code_wilaya_tarif: parseInt(code_wilaya_tarif, 10),
-          nom_wilaya_tarif: nom_wilaya_tarif.trim(),
-          type_livraison_tarif,
-          prix_livraison_tarif: parseFloat(prix_livraison_tarif),
-          actif_tarif: actif_tarif !== undefined ? actif_tarif : true,
-        },
-      });
-
-      res.status(201).json(nouveauTarif);
-    } catch (error) {
-      if (error.code === "P2002") {
-        return res.status(409).json({
-          message: "Un tarif existe déjà pour cette wilaya et ce type de livraison.",
-        });
-      }
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
-    }
-  },
-];
-
-export const getAllTarifsLivraison = async (req, res) => {
-  const { code_wilaya_tarif, type_livraison_tarif, actif_tarif } = req.query;
-
-  const whereClause = {};
-  if (code_wilaya_tarif && !isNaN(parseInt(code_wilaya_tarif, 10))) {
-    whereClause.code_wilaya_tarif = parseInt(code_wilaya_tarif, 10);
-  }
-  if (
-    type_livraison_tarif &&
-    TYPES_LIVRAISON.includes(type_livraison_tarif.toUpperCase())
-  ) {
-    whereClause.type_livraison_tarif = type_livraison_tarif.toUpperCase();
-  }
-  if (actif_tarif === "true" || actif_tarif === "false") {
-    whereClause.actif_tarif = actif_tarif === "true";
-  }
-
+// D2 : synchro globale forcée depuis l'admin (~62 appels API, ~2 min).
+export const lancerSynchronisationGlobale = async (req, res) => {
   try {
-    const tarifs = await prisma.tarif_livraison.findMany({
-      where: whereClause,
-      orderBy: [
-        { code_wilaya_tarif: "asc" },
-        { type_livraison_tarif: "asc" },
-      ],
+    const resultat = await synchroniserGlobale("MANUEL");
+    res.status(200).json(resultat);
+  } catch (error) {
+    if (error.code === "SYNCHRO_DEJA_EN_COURS") {
+      return res.status(409).json({
+        message:
+          "Une synchronisation est déjà en cours — attendez sa fin avant de relancer.",
+      });
+    }
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+// D3 : synchro d'une wilaya seule (3 appels API).
+export const lancerSynchronisationWilaya = async (req, res) => {
+  const codeWilaya = parseInt(req.params.code, 10);
+  if (isNaN(codeWilaya) || codeWilaya < 1 || codeWilaya > 58) {
+    return res
+      .status(400)
+      .json({ message: "Le code wilaya doit être entre 1 et 58." });
+  }
+  try {
+    const resultat = await synchroniserWilaya(codeWilaya, "MANUEL");
+    res.status(200).json(resultat);
+  } catch (error) {
+    if (error.code === "SYNCHRO_DEJA_EN_COURS") {
+      return res.status(409).json({
+        message:
+          "Une synchronisation est déjà en cours — attendez sa fin avant de relancer.",
+      });
+    }
+    res
+      .status(500)
+      .json({ error: { code: error.code, message: error.message } });
+  }
+};
+
+// Journal des synchro (en mémoire, les 20 dernières) + état en cours.
+export const lireJournalSynchronisation = async (req, res) => {
+  res.status(200).json({
+    journal: getJournalSynchronisation(),
+    en_cours: estSynchronisationEnCours(),
+  });
+};
+
+// ---- Lecture du référentiel commune/bureau (phase 5) -----------------------
+
+// D7 : seuil d'alerte de la bannière « dernière synchronisation » (proposé,
+// à confirmer par le propriétaire). Exposé aussi côté API pour que le
+// dashboard et le backend restent d'accord.
+export const SEUIL_ALERTE_JOURS = 14;
+
+// Liste des wilayas du référentiel en base : une ligne par wilaya avec les
+// comptages, la date de dernière synchro et, si la wilaya est uniforme, son
+// groupe de tarifs unique (cas Alger : 650/500/500/400).
+export const getReferentielLivraison = async (req, res) => {
+  try {
+    const communes = await prisma.commune_livraison.findMany({
+      select: {
+        id_commune: true,
+        code_wilaya_commune: true,
+        nom_wilaya_commune: true,
+        nom_commune: true,
+        livrable: true,
+        a_bureau: true,
+        delai_livraison_jours: true,
+        express_home: true,
+        express_desk: true,
+        economic_home: true,
+        economic_desk: true,
+        retour_fee: true,
+        oversize_fee: true,
+        date_synchro: true,
+        _count: { select: { bureaux: true } },
+      },
+      orderBy: [{ code_wilaya_commune: "asc" }, { nom_commune: "asc" }],
     });
 
-    res.status(200).json(tarifs);
+    const parWilaya = new Map();
+    for (const c of communes) {
+      if (!parWilaya.has(c.code_wilaya_commune)) {
+        parWilaya.set(c.code_wilaya_commune, []);
+      }
+      parWilaya.get(c.code_wilaya_commune).push(c);
+    }
+
+    const wilayas = [...parWilaya.entries()]
+      .map(([code, liste]) => {
+        const groupesTarifs = new Set(
+          liste.map((c) =>
+            [
+              c.express_home,
+              c.express_desk,
+              c.economic_home,
+              c.economic_desk,
+            ]
+              .map((v) => (v === null ? "—" : String(v)))
+              .join("|"),
+          ),
+        );
+        const tarifsUniformes =
+          groupesTarifs.size === 1
+            ? [...groupesTarifs][0].split("|").map((v) =>
+                v === "—" ? null : parseFloat(v),
+              )
+            : null;
+        return {
+          code_wilaya: code,
+          nom_wilaya: liste[0]?.nom_wilaya_commune || `Wilaya ${code}`,
+          livrable: liste.every((c) => c.livrable),
+          nb_communes: liste.length,
+          nb_communes_bureau: liste.filter((c) => c.a_bureau).length,
+          nb_bureaux: liste.reduce((t, c) => t + (c._count?.bureaux || 0), 0),
+          date_synchro: liste
+            .map((c) => c.date_synchro)
+            .filter(Boolean)
+            .sort((a, b) => b - a)[0] || null,
+          delai_livraison_jours:
+            [...new Set(liste.map((c) => c.delai_livraison_jours))].length === 1
+              ? liste[0].delai_livraison_jours
+              : null,
+          tarifs_uniformes: tarifsUniformes,
+          oversize_fee: liste[0]?.oversize_fee ?? null,
+          retour_fee: liste[0]?.retour_fee ?? null,
+        };
+      })
+      .sort((a, b) => a.code_wilaya - b.code_wilaya);
+
+    res.status(200).json({ wilayas });
   } catch (error) {
     res
       .status(500)
@@ -119,21 +151,38 @@ export const getAllTarifsLivraison = async (req, res) => {
   }
 };
 
-export const getTarifLivraisonById = async (req, res) => {
-  const idTarif = parseInt(req.params.id, 10);
-  if (isNaN(idTarif)) {
-    return res.status(400).json({ message: "Identifiant invalide." });
+// Détail d'une wilaya : toutes ses communes triées par nom (livrable ou
+// non, délai, bureau + nombre de bureaux, les 4 tarifs, valeurs de route).
+export const getCommunesWilayaReferentiel = async (req, res) => {
+  const codeWilaya = parseInt(req.params.code, 10);
+  if (isNaN(codeWilaya) || codeWilaya < 1 || codeWilaya > 69) {
+    return res
+      .status(400)
+      .json({ message: "Le code wilaya doit être entre 1 et 69." });
   }
-
   try {
-    const tarif = await prisma.tarif_livraison.findUnique({
-      where: { id_tarif: idTarif },
+    const communes = await prisma.commune_livraison.findMany({
+      where: { code_wilaya_commune: codeWilaya },
+      select: {
+        id_commune: true,
+        nom_commune: true,
+        nom_wilaya_commune: true,
+        livrable: true,
+        a_bureau: true,
+        delai_livraison_jours: true,
+        delai_paiement_jours: true,
+        express_home: true,
+        express_desk: true,
+        economic_home: true,
+        economic_desk: true,
+        retour_fee: true,
+        oversize_fee: true,
+        date_synchro: true,
+        _count: { select: { bureaux: true } },
+      },
+      orderBy: [{ nom_commune: "asc" }],
     });
-    if (!tarif) {
-      return res.status(404).json({ message: "Tarif introuvable." });
-    }
-
-    res.status(200).json(tarif);
+    res.status(200).json({ wilaya: codeWilaya, communes });
   } catch (error) {
     res
       .status(500)
@@ -141,150 +190,25 @@ export const getTarifLivraisonById = async (req, res) => {
   }
 };
 
-export const updateTarifLivraison = [
-  body("code_wilaya_tarif")
-    .optional()
-    .isInt({ min: 1, max: 58 })
-    .withMessage("Le code wilaya doit être entre 1 et 58"),
-  body("nom_wilaya_tarif")
-    .optional()
-    .isString()
-    .trim()
-    .notEmpty()
-    .withMessage("Le nom de la wilaya est obligatoire"),
-  body("type_livraison_tarif")
-    .optional()
-    .customSanitizer((value) =>
-      typeof value === "string" ? value.trim().toUpperCase() : value,
-    )
-    .isIn(TYPES_LIVRAISON)
-    .withMessage(
-      `Le type de livraison doit être ${TYPES_LIVRAISON.join(", ")}`,
-    ),
-  body("prix_livraison_tarif")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Le prix de livraison doit être un nombre positif ou nul"),
-  body("actif_tarif")
-    .optional()
-    .isBoolean()
-    .withMessage("L'activation du tarif doit être un booléen"),
-
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const idTarif = parseInt(req.params.id, 10);
-    if (isNaN(idTarif)) {
-      return res.status(400).json({ message: "Identifiant invalide." });
-    }
-
-    const {
-      code_wilaya_tarif,
-      nom_wilaya_tarif,
-      type_livraison_tarif,
-      prix_livraison_tarif,
-      actif_tarif,
-    } = req.body;
-
-    try {
-      const tarif = await prisma.tarif_livraison.findUnique({
-        where: { id_tarif: idTarif },
-      });
-      if (!tarif) {
-        return res.status(404).json({ message: "Tarif introuvable." });
-      }
-
-      const codeEffectif =
-        code_wilaya_tarif !== undefined
-          ? parseInt(code_wilaya_tarif, 10)
-          : tarif.code_wilaya_tarif;
-      const typeEffectif =
-        type_livraison_tarif !== undefined
-          ? type_livraison_tarif
-          : tarif.type_livraison_tarif;
-
-      if (
-        codeEffectif !== tarif.code_wilaya_tarif ||
-        typeEffectif !== tarif.type_livraison_tarif
-      ) {
-        const conflit = await prisma.tarif_livraison.findUnique({
-          where: {
-            code_wilaya_tarif_type_livraison_tarif: {
-              code_wilaya_tarif: codeEffectif,
-              type_livraison_tarif: typeEffectif,
-            },
-          },
-        });
-        if (conflit) {
-          return res.status(409).json({
-            message:
-              "Un tarif existe déjà pour cette wilaya et ce type de livraison.",
-          });
-        }
-      }
-
-      const dataToUpdate = {};
-      if (code_wilaya_tarif !== undefined) {
-        dataToUpdate.code_wilaya_tarif = parseInt(code_wilaya_tarif, 10);
-      }
-      if (nom_wilaya_tarif !== undefined) {
-        dataToUpdate.nom_wilaya_tarif = nom_wilaya_tarif.trim();
-      }
-      if (type_livraison_tarif !== undefined) {
-        dataToUpdate.type_livraison_tarif = type_livraison_tarif;
-      }
-      if (prix_livraison_tarif !== undefined) {
-        dataToUpdate.prix_livraison_tarif = parseFloat(prix_livraison_tarif);
-      }
-      if (actif_tarif !== undefined) {
-        dataToUpdate.actif_tarif = actif_tarif;
-      }
-
-      if (Object.keys(dataToUpdate).length === 0) {
-        return res
-          .status(400)
-          .json({ message: "Aucune donnée à mettre à jour fournie." });
-      }
-
-      const tarifModifie = await prisma.tarif_livraison.update({
-        where: { id_tarif: idTarif },
-        data: dataToUpdate,
-      });
-
-      res.status(200).json(tarifModifie);
-    } catch (error) {
-      if (error.code === "P2002") {
-        return res.status(409).json({
-          message: "Un tarif existe déjà pour cette wilaya et ce type de livraison.",
-        });
-      }
-      res
-        .status(500)
-        .json({ error: { code: error.code, message: error.message } });
-    }
-  },
-];
-
-export const deleteTarifLivraison = async (req, res) => {
-  const idTarif = parseInt(req.params.id, 10);
-  if (isNaN(idTarif)) {
-    return res.status(400).json({ message: "Identifiant invalide." });
-  }
-
+// Donnée légère pour la bannière D7 (page tarifs ET page commandes web) :
+// la date de dernière synchro vient de la BASE (robuste au redémarrage du
+// serveur, contrairement au journal en mémoire).
+export const getDerniereSynchronisation = async (req, res) => {
   try {
-    const tarif = await prisma.tarif_livraison.findUnique({
-      where: { id_tarif: idTarif },
+    const derniere = await prisma.commune_livraison.aggregate({
+      _max: { date_synchro: true },
     });
-    if (!tarif) {
-      return res.status(404).json({ message: "Tarif introuvable." });
-    }
-
-    await prisma.tarif_livraison.delete({ where: { id_tarif: idTarif } });
-
-    res.status(200).json({ message: "Tarif supprimé avec succès." });
+    const dateDerniere = derniere?._max?.date_synchro || null;
+    const jours =
+      dateDerniere !== null
+        ? Math.floor((Date.now() - dateDerniere.getTime()) / 86400000)
+        : null;
+    res.status(200).json({
+      date_derniere_synchro: dateDerniere,
+      jours_ecoules: jours,
+      seuil_alerte_jours: SEUIL_ALERTE_JOURS,
+      alerte: jours === null || jours > SEUIL_ALERTE_JOURS,
+    });
   } catch (error) {
     res
       .status(500)

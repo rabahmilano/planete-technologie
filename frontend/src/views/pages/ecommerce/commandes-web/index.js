@@ -21,6 +21,7 @@ import {
   Typography
 } from '@mui/material'
 import { useCommandeWeb } from 'src/context/CommandeWebContext'
+import BanniereSynchroLivraison from 'src/components/BanniereSynchroLivraison'
 
 export const STATUTS_COMMANDE = ['NOUVELLE', 'CONFIRMEE', 'EXPEDIEE', 'LIVREE', 'ANNULEE']
 
@@ -61,6 +62,9 @@ const CommandesWebView = () => {
 
   return (
     <Grid container spacing={6}>
+      <Grid item xs={12}>
+        <BanniereSynchroLivraison />
+      </Grid>
       <Grid item xs={12}>
         <Typography variant='h5'>Commandes web</Typography>
       </Grid>

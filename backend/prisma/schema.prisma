@@ -515,13 +515,52 @@ model ligne_commande_web {
   produit  produit?     @relation(fields: [prd_id], references: [id_prd])
 }
 
-model tarif_livraison {
-  id_tarif              Int     @id
-  code_wilaya_tarif     Int
-  nom_wilaya_tarif      String  @db.VarChar(100)
-  type_livraison_tarif  String  @db.VarChar(20)
-  prix_livraison_tarif  Decimal @db.Decimal(10, 2)
-  actif_tarif           Boolean @default(true)
+// Phase 7 (28/11/2026) : le modèle tarif_livraison (grille de secours par
+// wilaya) a été supprimé du schéma et de la base (DROP TABLE) — le devis
+// lit désormais commune_livraison en premier, avec repli Yalidine en direct
+// (voir boutiqueController.calculerFraisLivraison).
 
-  @@unique([code_wilaya_tarif, type_livraison_tarif])
+// Phase 2 (27/11/2026) : référentiel livraison Yalidine, stocké par COMMUNE
+// (décision D4 — les tarifs peuvent varier d'une commune à l'autre, même si
+// une wilaya est uniforme aujourd'hui). Les ids sont les ids Yalidine
+// (id_commune = /communes id) : écrits par la synchro en upsert, jamais
+// autoincrémentés. La date de dernière synchro est portée par chaque ligne
+// (D7). Le champ zone de l'API est volontairement ignoré (décision D5).
+// code_wilaya_commune / nom_wilaya_commune : suffixe de table car
+// commande_web porte déjà un attribut code_wilaya (jamais le même nom
+// d'attribut dans deux tables).
+model commune_livraison {
+  id_commune            Int      @id
+  code_wilaya_commune   Int
+  nom_wilaya_commune    String   @db.VarChar(100)
+  nom_commune           String   @db.VarChar(100)
+  livrable              Boolean
+  a_bureau              Boolean  // has_stop_desk de l'API (D10)
+  delai_livraison_jours Int?
+  delai_paiement_jours  Int?
+  express_home          Decimal? @db.Decimal(10, 2)
+  express_desk          Decimal? @db.Decimal(10, 2)
+  economic_home         Decimal? @db.Decimal(10, 2)
+  economic_desk         Decimal? @db.Decimal(10, 2)
+  retour_fee            Decimal? @db.Decimal(10, 2)
+  oversize_fee          Decimal? @db.Decimal(10, 2)
+  date_synchro          DateTime?
+
+  bureaux bureau_livraison[]
+
+  @@index([code_wilaya_commune])
+}
+
+// Un bureau Yalidine (stop-desk, /centers) est rattaché à SA commune (D10) ;
+// plusieurs bureaux possibles pour une même commune (199 centres pour 155
+// communes avec bureau, constat phase 1). id_centre = center_id de l'API.
+model bureau_livraison {
+  id_centre  Int     @id
+  commune_id Int
+  nom_centre String  @db.VarChar(150)
+  adresse    String? @db.VarChar(255)
+
+  commune commune_livraison @relation(fields: [commune_id], references: [id_commune])
+
+  @@index([commune_id])
 }

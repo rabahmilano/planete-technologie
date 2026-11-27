@@ -46,6 +46,7 @@ const formaterProduitBoutique = (produit, contextePromotions) => {
   const principale = imagesTriees[0] || null;
   const gagnante = promoGagnante(produit, contextePromotions);
   const enPromo = gagnante !== null;
+  const stockRestant = produit.qte_dispo - produit.qte_reservee;
   return {
     slug: produit.slug_prd,
     designation: produit.designation_prd,
@@ -73,9 +74,20 @@ const formaterProduitBoutique = (produit, contextePromotions) => {
           slug: produit.famille.slug_famille,
         }
       : null,
-    en_stock: produit.qte_dispo - produit.qte_reservee > 0,
+    en_stock: stockRestant > 0,
+    // Stock numérique exposé UNIQUEMENT quand il est faible (≤ 3) :
+    // « Presque épuisé » doit refléter un vrai stock faible sans
+    // publier le niveau de stock de tout le catalogue.
+    stock_restant:
+      stockRestant > 0 && stockRestant <= 3 ? stockRestant : null,
     est_mis_en_avant: produit.est_mis_en_avant,
     poids_grammes: produit.poids_grammes,
+    // Dimensions exposées pour que la boutique calcule le poids FACTURÉ du
+    // panier (max(poids réel, L×l×h/5000) × quantité) et l'envoie à l'appel
+    // de devis (D8 — supplément surpoids).
+    longueur_cm: produit.longueur_cm,
+    largeur_cm: produit.largeur_cm,
+    hauteur_cm: produit.hauteur_cm,
     paliers: (produit.paliers || []).map((palier) => ({
       quantite_min: palier.quantite_min,
       prix_unitaire: parseFloat(palier.prix_unitaire),
@@ -126,13 +138,59 @@ const getIdsFamillesMasquees = async () => {
 // `poidsKg` = poids FACTURÉ total de la commande (max(poids réel, poids
 // volumétrique), voir calculerPoidsFactureKg) — c'est lui qui détermine le
 // supplément surpoids côté Yalidine, pas le poids réel seul.
+//
+// Phase 6/7 — bascule du devis vers les nouvelles tables (D4/D6/D7) :
+// 1. commune_livraison : prix EXACT de la commune (les 4 tarifs selon le
+//    mode domicile/bureau et express/économique), si la ligne est fraîche
+//    (date_synchro ≤ SEUIL_FRAICHEUR_JOURS — même seuil que la bannière D7).
+//    Une commune connue et NON livrable est refusée sans repli.
+// 2. Repli : Yalidine en direct (getFrais existant, cache 1 h).
+// 3. Sinon prix 0 « indisponible » (la grille de secours tarif_livraison a
+//    été supprimée en phase 7).
+const SEUIL_FRAICHEUR_JOURS = 14;
+
 const calculerFraisLivraison = async ({
   codeWilaya,
   typeLivraison,
   poidsKg = 0,
   idCommune = null,
+  economique = false,
 }) => {
   const estBureau = typeLivraison === "BUREAU";
+  // 1. Référentiel en base (prix par commune, D4).
+  if (idCommune) {
+    const commune = await prisma.commune_livraison.findUnique({
+      where: { id_commune: idCommune },
+    });
+    if (commune && !commune.livrable) {
+      return { prix: 0, source: "indisponible" };
+    }
+    if (commune && commune.livrable) {
+      const fraiche =
+        commune.date_synchro !== null &&
+        Date.now() - commune.date_synchro.getTime() <=
+          SEUIL_FRAICHEUR_JOURS * 24 * 60 * 60 * 1000;
+      const brutTarif = economique
+        ? estBureau
+          ? commune.economic_desk
+          : commune.economic_home
+        : estBureau
+          ? commune.express_desk
+          : commune.express_home;
+      const tarifBase = brutTarif === null ? NaN : parseFloat(brutTarif);
+      if (fraiche && Number.isFinite(tarifBase)) {
+        // Supplément surpoids (D8) : (facturable − 5) × oversize_fee au-delà
+        // de 5 kg, sur le poids FACTURÉ (réel ou volumétrique).
+        const oversize = commune.oversize_fee === null ? 0 : parseFloat(commune.oversize_fee);
+        const supplement = poidsKg > 5 && Number.isFinite(oversize) ? (poidsKg - 5) * oversize : 0;
+        return {
+          prix: Math.round((tarifBase + supplement) * 100) / 100,
+          source: "referentiel",
+        };
+      }
+    }
+  }
+  // 2. Yalidine en direct.
   if (yalidineConfigure()) {
     try {
       const devis = await getFrais({
@@ -143,24 +201,8 @@ const calculerFraisLivraison = async ({
       });
       return { prix: devis.prix, source: "yalidine" };
     } catch (erreur) {
-      console.error(
-        "Devis Yalidine indisponible, repli sur la grille locale :",
-        erreur.message,
-      );
+      console.error("Devis Yalidine indisponible :", erreur.message);
     }
-  }
-  const tarif = await prisma.tarif_livraison.findFirst({
-    where: {
-      code_wilaya_tarif: codeWilaya,
-      type_livraison_tarif: typeLivraison,
-      actif_tarif: true,
-    },
-  });
-  if (tarif) {
-    return {
-      prix: parseFloat(tarif.prix_livraison_tarif),
-      source: "tarif_livraison",
-    };
   }
   return { prix: 0, source: "indisponible" };
 };
@@ -412,6 +454,23 @@ export const getWilayas = async (req, res) => {
   res.status(200).json(WILAYAS.filter((wilaya) => !wilaya.a_venir));
 };
 
+// Référentiel fraîche pour une wilaya ? La date_synchro est commune à toutes
+// les communes de la wilaya (écrites ensemble par la synchro) : une lecture
+// findFirst suffit.
+const referentielWilayaFraiche = async (codeWilaya) => {
+  const temoin = await prisma.commune_livraison.findFirst({
+    where: { code_wilaya_commune: codeWilaya },
+    select: { date_synchro: true },
+    orderBy: { date_synchro: "desc" },
+  });
+  return (
+    temoin !== null &&
+    temoin.date_synchro !== null &&
+    Date.now() - temoin.date_synchro.getTime() <=
+      SEUIL_FRAICHEUR_JOURS * 24 * 60 * 60 * 1000
+  );
+};
+
 export const getCommunesBoutique = async (req, res) => {
   const codeWilaya = parseInt(req.query.wilaya, 10);
   if (isNaN(codeWilaya) || codeWilaya < 1 || codeWilaya > 58) {
@@ -419,6 +478,29 @@ export const getCommunesBoutique = async (req, res) => {
       .status(400)
       .json({ message: "Le code wilaya doit être entre 1 et 58." });
   }
+  // 1. Référentiel en base : communes LIVRABLES triées par nom, avec le
+  //    flag a_bureau (la livraison au bureau ne propose que ces communes,
+  //    D10). Aucun appel Yalidine : le quota reste réservé aux synchro.
+  const fraiche = await referentielWilayaFraiche(codeWilaya);
+  if (fraiche) {
+    const communesBase = await prisma.commune_livraison.findMany({
+      where: { code_wilaya_commune: codeWilaya, livrable: true },
+      select: { id_commune: true, nom_commune: true, a_bureau: true },
+      orderBy: { nom_commune: "asc" },
+    });
+    return res.status(200).json({
+      wilaya: codeWilaya,
+      communes: communesBase.map((c) => ({
+        id: c.id_commune,
+        nom: c.nom_commune,
+        code: c.id_commune,
+        a_bureau: c.a_bureau,
+      })),
+      disponible: true,
+      source: "referentiel",
+    });
+  }
+  // 2. Repli : Yalidine en direct (référentiel vide ou périmé).
   if (!yalidineConfigure()) {
     return res.status(200).json({
       wilaya: codeWilaya,
@@ -456,6 +538,36 @@ export const getBureauxBoutique = async (req, res) => {
   const idCommune = req.query.commune
     ? parseInt(req.query.commune, 10)
     : null;
+  // 1. Référentiel en base : bureaux stop-desk rattachés à leurs communes
+  //    (D10), triés par nom. Filtre commune optionnel.
+  const fraiche = await referentielWilayaFraiche(codeWilaya);
+  if (fraiche) {
+    const bureauxBase = await prisma.bureau_livraison.findMany({
+      where: {
+        commune: { code_wilaya_commune: codeWilaya },
+        ...(idCommune ? { commune_id: idCommune } : {}),
+      },
+      select: {
+        id_centre: true,
+        nom_centre: true,
+        adresse: true,
+        commune_id: true,
+      },
+      orderBy: { nom_centre: "asc" },
+    });
+    return res.status(200).json({
+      wilaya: codeWilaya,
+      bureaux: bureauxBase.map((b) => ({
+        id: b.id_centre,
+        nom: b.nom_centre,
+        adresse: b.adresse,
+        commune_id: b.commune_id,
+      })),
+      disponible: true,
+      source: "referentiel",
+    });
+  }
+  // 2. Repli : Yalidine en direct.
   if (!yalidineConfigure()) {
     return res.status(200).json({
       wilaya: codeWilaya,
@@ -498,15 +610,31 @@ export const getTarifBoutique = async (req, res) => {
       message: `Le type de livraison doit être ${TYPES_LIVRAISON.join(", ")}.`,
     });
   }
+  // D8 : le poids FACTURÉ du panier est envoyé par la boutique (max(poids
+  // réel, L×l×h/5000) × quantité) ; défaut 200 g si absent. `commune` (id
+  // Yalidine) active le prix exact par commune (D4) ; `economique` choisit
+  // le tier économique.
+  const poidsGrammes = req.query.poids_grammes
+    ? parseInt(req.query.poids_grammes, 10)
+    : POIDS_DEFAUT_GRAMMES;
+  const poidsKg = Math.max(0, poidsGrammes) / 1000;
+  const idCommune = req.query.commune
+    ? parseInt(req.query.commune, 10)
+    : null;
+  const economique = req.query.economique === "true";
   try {
     const frais = await calculerFraisLivraison({
       codeWilaya,
       typeLivraison,
+      poidsKg,
+      idCommune,
+      economique,
     });
     res.status(200).json({
       wilaya: codeWilaya,
       nom_wilaya: nomWilaya(codeWilaya),
       type: typeLivraison,
+      poids_grammes: poidsGrammes,
       prix: frais.prix,
       disponible: frais.source !== "indisponible",
       source: frais.source,
@@ -585,6 +713,10 @@ export const createCommandeBoutique = [
     .trim()
     .notEmpty()
     .withMessage("La commune est obligatoire"),
+  body("commune_id")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("L'identifiant de la commune doit être un entier positif"),
   body("adresse_exacte")
     .optional()
     .isString()
@@ -633,6 +765,7 @@ export const createCommandeBoutique = [
       wilaya,
       code_wilaya,
       commune,
+      commune_id,
       adresse_exacte,
       type_livraison,
       bureau_livraison,
@@ -695,6 +828,9 @@ export const createCommandeBoutique = [
         codeWilaya: parseInt(code_wilaya, 10),
         typeLivraison: type_livraison,
         poidsKg: poidsFactureTotalKg,
+        // Prix exact par commune (D4) quand la boutique fournit l'id Yalidine
+        // de la commune choisie.
+        idCommune: commune_id ? parseInt(commune_id, 10) : null,
       });
 
       const commandeCreee = await prisma.$transaction((tx) =>

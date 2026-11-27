@@ -8,10 +8,13 @@ const BASE_URL = (
 const TIMEOUT_MS = 15000;
 
 // Limites officielles du compte : 5 requêtes/s, 50/min, 1 000/h, 10 000/jour.
-// Le limiteur client cible la fenêtre la plus stricte (5/s) ; les seuils
-// d'alerte correspondent à 20 % restants sur chaque fenêtre.
+// Le limiteur client tient les deux fenêtres les plus strictes (5/s et, depuis
+// la synchro tarifaire qui enchaîne ~62 appels, 48/min pour garder une marge
+// sous la limite minute) ; les seuils d'alerte correspondent à 20 % restants.
 const MAX_REQUETES_PAR_SECONDE = 5;
+const MAX_REQUETES_PAR_MINUTE = 48;
 const FENETRE_LIMITEUR_MS = 1000;
+const FENETRE_MINUTE_MS = 60000;
 const SEUILS_ALERTE_QUOTA = {
   seconde: 1,
   minute: 10,
@@ -41,22 +44,31 @@ const ecrireCache = (cle, valeur) => {
 const attendre = (ms) => new Promise((resolution) => setTimeout(resolution, ms));
 
 // Limiteur client en mémoire (même style Map que le cache) : jamais plus de
-// MAX_REQUETES_PAR_SECONDE départs de requête par fenêtre glissante d'1 s.
+// MAX_REQUETES_PAR_SECONDE départs de requête par fenêtre glissante d'1 s,
+// ni plus de MAX_REQUETES_PAR_MINUTE par fenêtre glissante d'1 min.
 const horodatagesRequetes = [];
 const reserverRequete = async () => {
   for (;;) {
     const maintenant = Date.now();
     while (
       horodatagesRequetes.length &&
-      maintenant - horodatagesRequetes[0] >= FENETRE_LIMITEUR_MS
+      maintenant - horodatagesRequetes[0] >= FENETRE_MINUTE_MS
     ) {
       horodatagesRequetes.shift();
     }
-    if (horodatagesRequetes.length < MAX_REQUETES_PAR_SECONDE) {
+    if (horodatagesRequetes.length >= MAX_REQUETES_PAR_MINUTE) {
+      const attente = FENETRE_MINUTE_MS - (maintenant - horodatagesRequetes[0]) + 1;
+      await attendre(attente);
+      continue;
+    }
+    const dansLaSeconde = horodatagesRequetes.filter(
+      (t) => maintenant - t < FENETRE_LIMITEUR_MS,
+    );
+    if (dansLaSeconde.length < MAX_REQUETES_PAR_SECONDE) {
       horodatagesRequetes.push(maintenant);
       return;
     }
-    const attente = FENETRE_LIMITEUR_MS - (maintenant - horodatagesRequetes[0]) + 1;
+    const attente = FENETRE_LIMITEUR_MS - (maintenant - dansLaSeconde[0]) + 1;
     await attendre(attente);
   }
 };
@@ -327,6 +339,61 @@ export const getFrais = async ({
   };
   ecrireCache(cle, resultat);
   return resultat;
+};
+
+// ---- Fonctions brutes pour la synchro tarifaire en base -------------------
+// Elles renvoient les champs API SANS filtre livrable (la base doit aussi
+// porter les communes/wilayas non livrables) et SANS cache : une synchro est
+// un acte volontaire qui doit lire les données à jour.
+
+// Liste paginée brute : page_size=1000, on suit links.next tant que has_more.
+const listerBrut = async (ressource, filtre = "") => {
+  const elements = [];
+  let chemin = `${ressource}/?${filtre}${filtre ? "&" : ""}page_size=1000`;
+  const urlsVisitees = new Set();
+  for (;;) {
+    if (urlsVisitees.has(chemin)) break;
+    urlsVisitees.add(chemin);
+    const corps = await appeler(chemin);
+    elements.push(...(corps?.data || []));
+    const suivant = corps?.links?.next;
+    if (!corps?.has_more || !suivant) break;
+    // links.next peut être une URL absolue ou relative.
+    try {
+      const url = new URL(suivant, `${BASE_URL}/`);
+      const prefixe = url.pathname.startsWith("/v1/")
+        ? url.pathname.slice(4)
+        : url.pathname.replace(/^\//, "");
+      chemin = `${prefixe}${url.search}`;
+    } catch {
+      console.warn(
+        `Yalidine : links.next illisible (${suivant}) — liste partielle conservée.`,
+      );
+      break;
+    }
+  }
+  return elements;
+};
+
+export const getWilayasBrut = async () => listerBrut("wilayas");
+
+export const getCommunesBrut = async (codeWilaya = null) =>
+  listerBrut("communes", codeWilaya ? `wilaya_id=${codeWilaya}` : "");
+
+export const getCentresBrut = async (codeWilaya = null) =>
+  listerBrut("centers", codeWilaya ? `wilaya_id=${codeWilaya}` : "");
+
+/** Corps brut de /fees pour une wilaya de destination (départ = FROM_WILAYA). */
+export const getFraisRouteBrut = async (idWilayaDestination) => {
+  const origine = process.env.YALIDINE_FROM_WILAYA
+    ? parseInt(process.env.YALIDINE_FROM_WILAYA, 10)
+    : null;
+  if (!origine) {
+    throw new ErreurYalidine("Wilaya d'origine Yalidine non configurée.");
+  }
+  return appeler(
+    `fees/?from_wilaya_id=${origine}&to_wilaya_id=${idWilayaDestination}`,
+  );
 };
 
 export const creerColis = async (colis) => {

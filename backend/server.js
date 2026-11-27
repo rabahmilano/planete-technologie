@@ -27,6 +27,7 @@ import codePromoRoutes from "./routes/codePromoRouter.js";
 import commandeWebRoutes from "./routes/commandeWebRouter.js";
 import tarifLivraisonRoutes from "./routes/tarifLivraisonRouter.js";
 import publicRoutes from "./routes/publicRouter.js";
+import { planifierSynchroHebdomadaire } from "./config/syncTarifs.js";
 
 const app = express();
 
@@ -156,3 +157,7 @@ prisma
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
+
+// D1 : synchro tarifaire automatique hebdomadaire (vérification horaire —
+// ne part que si la dernière date_synchro dépasse le seuil de 7 jours).
+planifierSynchroHebdomadaire();
