@@ -75,6 +75,13 @@ const formaterProduitBoutique = (produit, contextePromotions) => {
         }
       : null,
     en_stock: stockRestant > 0,
+    // Règle stock (réserves RABAH, 28 nov.) : la boutique distingue le
+    // stock RÉEL du stock RÉSERVÉ. Réel à 0 = produit masqué des listes
+    // (filtre qte_dispo ci-dessous) ; réel > 0 mais tout réservé =
+    // produit affiché avec la mention « stock épuisé ». Aucun changement
+    // de schéma : les deux champs existent déjà sur produit.
+    stock_reel: produit.qte_dispo,
+    stock_reserve: produit.qte_reservee,
     // Stock numérique exposé UNIQUEMENT quand il est faible (≤ 3) :
     // « Presque épuisé » doit refléter un vrai stock faible sans
     // publier le niveau de stock de tout le catalogue.
@@ -227,6 +234,10 @@ export const getProduitsBoutique = async (req, res) => {
   const whereClause = {
     statut_publication: "PUBLIE",
     prix_vente: { not: null },
+    // Stock RÉEL à 0 : le produit n'est plus affiché en boutique (réserves
+    // du 28 nov.). Tout réservé reste listé — la boutique affiche alors la
+    // mention « stock épuisé » ; seul le stock RÉEL filtre ici.
+    qte_dispo: { gt: 0 },
   };
   if (recherche) {
     whereClause.OR = [
@@ -377,6 +388,8 @@ export const getProduitBoutiqueParSlug = async (req, res) => {
       where: {
         statut_publication: "PUBLIE",
         prix_vente: { not: null },
+        // Les produits liés appliquent la même règle de stock réel.
+        qte_dispo: { gt: 0 },
         famille_id: produit.famille_id,
         slug_prd: { not: slug },
       },
