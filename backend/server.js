@@ -7,7 +7,7 @@ import rateLimit from "express-rate-limit";
 import bodyParser from "body-parser";
 import prisma from "./config/dbConfig.js";
 
-import { verifyToken } from "./middlewares/authMiddleware.js";
+import { verifyToken, requireRole } from "./middlewares/authMiddleware.js";
 
 import authRouter from "./routes/authRouter.js";
 import deviseRoutes from "./routes/deviseRouter.js";
@@ -116,24 +116,25 @@ app.use("/api/auth", authRouter);
 
 app.use("/api/public", limiteurPublic, publicRoutes);
 
-app.use("/api/devises", verifyToken, deviseRoutes);
-app.use("/api/comptes", verifyToken, compteRoutes);
-app.use("/api/depenses", verifyToken, depenseRoutes);
-app.use("/api/produits", verifyToken, produitRoutes);
-app.use("/api/produits", verifyToken, produitEcommerceRoutes);
-app.use("/api/familles", verifyToken, familleRoutes);
-app.use("/api/promotions", verifyToken, promotionRoutes);
-app.use("/api/codes-promo", verifyToken, codePromoRoutes);
-app.use("/api/commandes-web", verifyToken, commandeWebRoutes);
-app.use("/api/tarifs-livraison", verifyToken, tarifLivraisonRoutes);
-app.use("/api/commandes", verifyToken, commandeRoutes);
-app.use("/api/emprunts", verifyToken, empruntRoutes);
-app.use("/api/voyages", verifyToken, voyageRoutes);
-app.use("/api/transferts", verifyToken, transfertRoutes);
-app.use("/api/ajustements", verifyToken, ajustementCompteRoutes);
+app.use("/api/devises", verifyToken, requireRole(["ADMIN", "MANAGER"]), deviseRoutes);
+app.use("/api/comptes", verifyToken, requireRole(["ADMIN", "MANAGER"]), compteRoutes);
+app.use("/api/depenses", verifyToken, requireRole(["ADMIN", "MANAGER"]), depenseRoutes);
+app.use("/api/produits", verifyToken, requireRole(["ADMIN", "MANAGER"]), produitRoutes);
+app.use("/api/produits", verifyToken, requireRole(["ADMIN", "MANAGER"]), produitEcommerceRoutes);
+app.use("/api/familles", verifyToken, requireRole(["ADMIN", "MANAGER"]), familleRoutes);
+app.use("/api/promotions", verifyToken, requireRole(["ADMIN", "MANAGER"]), promotionRoutes);
+app.use("/api/codes-promo", verifyToken, requireRole(["ADMIN", "MANAGER"]), codePromoRoutes);
+app.use("/api/commandes-web", verifyToken, requireRole(["ADMIN", "MANAGER"]), commandeWebRoutes);
+app.use("/api/tarifs-livraison", verifyToken, requireRole(["ADMIN", "MANAGER"]), tarifLivraisonRoutes);
+app.use("/api/commandes", verifyToken, requireRole(["ADMIN", "MANAGER"]), commandeRoutes);
+app.use("/api/emprunts", verifyToken, requireRole(["ADMIN", "MANAGER"]), empruntRoutes);
+app.use("/api/voyages", verifyToken, requireRole(["ADMIN", "MANAGER"]), voyageRoutes);
+app.use("/api/transferts", verifyToken, requireRole(["ADMIN", "MANAGER"]), transfertRoutes);
+app.use("/api/ajustements", verifyToken, requireRole(["ADMIN", "MANAGER"]), ajustementCompteRoutes);
 app.use(
   "/api/sorties-exceptionnelles",
   verifyToken,
+  requireRole(["ADMIN", "MANAGER"]),
   sortieExceptionnelleRoutes,
 );
 app.use((req, res, next) => {

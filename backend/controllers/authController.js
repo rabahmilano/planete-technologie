@@ -31,7 +31,7 @@ export const register = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, nom_complet, role, avatar } = req.body;
+    const { email, password, nom_complet, avatar } = req.body;
 
     try {
       const existingUser = await prisma.utilisateur.findUnique({
@@ -51,7 +51,7 @@ export const register = [
           email,
           password: hashedPassword,
           nom_complet,
-          role: role || "USER",
+          role: "USER", // inscription publique = toujours USER, jamais ADMIN/MANAGER
           avatar: avatar || null,
         },
       });
